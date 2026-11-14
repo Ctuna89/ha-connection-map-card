@@ -1,0 +1,86 @@
+# Connection Map Card
+
+A Lovelace card that shows **how every device reaches Home Assistant**: through the cloud, over your local network (directly or through a hub such as a Hue Bridge, IKEA DIRIGERA or an Aqara hub), or over a local radio coordinator (Zigbee2MQTT, ZHA, Z-Wave).
+
+Most network maps show one protocol at a time. This card draws all of them in one picture, so you can see at a glance which devices depend on the internet, which hub each one sits behind, and what is offline right now.
+
+## Features
+
+- **Zero configuration.** Hubs and bridges are detected from the device registry (`via_device`), and each integration is placed in the cloud or local group from its `iot_class`.
+- **Live status.** Offline devices (all entities `unavailable`) are outlined in red and listed in the side panel.
+- **Click to explore.** Tap a device to see its full path, for example `Bedroom lamp → Hue Bridge → Philips Hue → Local network → Home Assistant`, and open its device page.
+- **Filter and search** by connection type, area, name or model, or show only offline devices.
+- **Zoom and pan** with the mouse wheel, by dragging, or with the buttons.
+- Follows your Home Assistant theme, including dark mode.
+- English and Spanish built in.
+
+## Installation
+
+### HACS (custom repository)
+
+1. Open **HACS → ⋮ → Custom repositories**.
+2. Add `https://github.com/Ctuna89/ha-connection-map-card` with type **Dashboard**.
+3. Install **Connection Map Card** and reload your browser.
+
+### Manual
+
+1. Download `ha-connection-map-card.js` from the latest release.
+2. Copy it to `config/www/`.
+3. Add it as a dashboard resource: **Settings → Dashboards → ⋮ → Resources → Add**, URL `/local/ha-connection-map-card.js`, type **JavaScript module**.
+
+## Usage
+
+The card works best in a **panel** view, so it can use the full width:
+
+```yaml
+views:
+  - title: Map
+    path: map
+    type: panel
+    cards:
+      - type: custom:connection-map-card
+```
+
+### Options
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `title` | string | `Connection map` | Card title. |
+| `group_small` | number | `1` | Integrations with this many devices or fewer (and no hub) are grouped into "Other cloud services" / "Other local devices". Use `0` to never group. |
+| `exclude_integrations` | list | `[]` | Integration domains to hide, for example `[mobile_app, bambu_lab]`. |
+| `exclude_devices` | list | `[]` | Device IDs to hide. |
+| `show_trackers` | boolean | `false` | Show devices that only have `device_tracker` entities (for example, every phone and laptop your router reports). |
+| `show_panel` | boolean | `true` | Show the side panel with the summary and details. |
+| `colors` | map | | Override the colors: `cloud`, `local`, `radio`. |
+
+```yaml
+type: custom:connection-map-card
+title: How my home is connected
+group_small: 2
+exclude_integrations:
+  - mobile_app
+colors:
+  cloud: "#8b5cf6"
+```
+
+## How devices are classified
+
+| Group | Rule |
+| --- | --- |
+| **Local radio** | The device belongs to a radio integration (ZHA, Z-Wave JS, deCONZ, Insteon, …) or is an MQTT device behind a Zigbee2MQTT bridge. |
+| **Internet** | The integration's `iot_class` is `cloud_push` or `cloud_polling`. |
+| **Local network** | Everything else (`local_push`, `local_polling`). |
+
+A device is drawn behind a **hub** when it has a `via_device` and that parent device either has at least two children or looks like a bridge (few entities of its own). Virtual rooms and zones that some hubs expose (for example Hue rooms) are skipped.
+
+Helpers and system integrations (template, group, Supervisor, Sun, Backup, HACS and similar) are ignored. Devices whose only entities are `update` entities are ignored as well.
+
+The card reads the device and entity registries that the frontend already loads, so it works for non-admin users. The integration list used for cloud/local detection needs an admin user; for other users the card falls back to a built-in list of common cloud integrations.
+
+## Contributing
+
+Issues and pull requests are welcome. If a device ends up in the wrong group, open an issue with the integration name and, if possible, its `iot_class`.
+
+## License
+
+[MIT](LICENSE)
