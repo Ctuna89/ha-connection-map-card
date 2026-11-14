@@ -8,6 +8,7 @@ Most network maps show one protocol at a time. This card draws all of them in on
 
 - **Zero configuration.** Hubs and bridges are detected from the device registry (`via_device`), and each integration is placed in the cloud or local group from its `iot_class`.
 - **Your real infrastructure.** Routers and access points from router integrations (UniFi, FRITZ!Box, Huawei, TP-Link Omada, ASUSWRT, …) become the local network node, the Zigbee coordinator (Connect ZBT-1, SkyConnect, Yellow, …) becomes the radio node, and the centre shows the host (Home Assistant OS version, virtual machine or bare metal).
+- **Wi-Fi or cable.** With a router integration that reports its clients (Huawei Mesh Router, UniFi, FRITZ!Box, …) every hub and device is attached to the access point it actually uses, with a solid line for Ethernet and a dotted line for Wi-Fi (2.4 / 5 GHz). Even Home Assistant's own link is shown.
 - **Zigbee mesh (Zigbee2MQTT).** The card asks Zigbee2MQTT for its network map and shows which router (repeater) each device goes through, with its link quality (LQI).
 - **Live status.** Offline devices (all entities `unavailable`) are outlined in red and listed in the side panel.
 - **Click to explore.** Tap a device to see its full path, for example `Bedroom lamp → Hue Bridge → Philips Hue → Local network → Home Assistant`, and open its device page.
@@ -58,6 +59,7 @@ views:
 | `z2m_base_topic` | string | `zigbee2mqtt` | Zigbee2MQTT MQTT base topic. |
 | `router_name` | string | | Override the name shown for the local network node. |
 | `coordinator_name` | string | | Override the name shown for the radio coordinator node. |
+| `overrides` | map | `{}` | Force an integration into a group: `cloud`, `local` or `radio`. Example: `bambu_lab: cloud` for a printer that talks to Home Assistant through Bambu Cloud. |
 
 ```yaml
 type: custom:connection-map-card
@@ -84,6 +86,7 @@ Helpers and system integrations (template, group, Supervisor, Sun, Backup, HACS 
 ### Network infrastructure
 
 - **Router / Wi-Fi:** devices from router integrations are not drawn as dots. They become the local network node, and its panel lists every mesh node with its status.
+- **Clients:** the router's `device_tracker` entities tell which access point each client uses (`connected_via`) and how (`interface_type`: LAN, 2.4 GHz, 5 GHz). Devices are matched to trackers by MAC address, by the IP in their configuration URL, or by name. Extra mesh nodes are drawn next to the main router, and a cloud device that is on your Wi-Fi shows that hop in its path too.
 - **Coordinator:** a Connect ZBT-1 / SkyConnect / Yellow radio becomes the radio node.
 - **Host:** on Home Assistant OS / Supervised installs the centre shows the OS version and whether it runs in a virtual machine (VirtualBox, Proxmox/KVM, Hyper-V, …) or on bare metal.
 - **Zigbee mesh:** for Zigbee2MQTT the card requests the network map over MQTT (it publishes to `<base_topic>/bridge/request/networkmap`). Devices behind a router are drawn next to that router with a dashed orange line, and routers get an outer ring. Building the map can take a few seconds on large networks.
