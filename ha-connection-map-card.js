@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.1.0';
+  var VERSION = '0.2.0';
 
   var STR = {
     en: {
@@ -23,7 +23,12 @@
       intDesc: 'Devices handled directly by this integration.',
       otherDesc: 'Integrations with only a few devices, grouped together.',
       summaryText: 'Each dot is a device. Lines show the path its data takes to Home Assistant.',
-      zoomIn: 'Zoom in', zoomOut: 'Zoom out', fit: 'Fit', nodata: 'No devices to show.'
+      zoomIn: 'Zoom in', zoomOut: 'Zoom out', fit: 'Fit', nodata: 'No devices to show.',
+      meshNodes: 'nodes', coordinator: 'Zigbee coordinator', repeater: 'repeater', connectedTo: 'Connected to', signal: 'Signal (LQI)',
+      role: 'Role', roleRouter: 'Router / repeater', roleEnd: 'End device', host: 'Host', os: 'System', runsOn: 'Runs on', vm: 'Virtual machine',
+      disk: 'Disk', version: 'Version', hostname: 'Hostname', infraLocal: 'Every local device and hub reaches Home Assistant through this network.',
+      infraRadio: 'Radio devices talk to this coordinator, directly or through a router (repeater).', coreDesc: 'The machine that runs Home Assistant.',
+      meshNote: 'Zigbee routes come from the Zigbee2MQTT network map.', status2: 'Status'
     },
     es: {
       title: 'Mapa de conexiones', loading: 'Cargando equipos…', cloud: 'Internet', local: 'Red local', radio: 'Radio local',
@@ -37,7 +42,12 @@
       intDesc: 'Equipos que maneja directamente esta integración.',
       otherDesc: 'Integraciones con pocos equipos, agrupadas.',
       summaryText: 'Cada punto es un equipo. Las líneas muestran el camino que siguen sus datos hasta Home Assistant.',
-      zoomIn: 'Acercar', zoomOut: 'Alejar', fit: 'Ver todo', nodata: 'No hay equipos para mostrar.'
+      zoomIn: 'Acercar', zoomOut: 'Alejar', fit: 'Ver todo', nodata: 'No hay equipos para mostrar.',
+      meshNodes: 'nodos', coordinator: 'Coordinador Zigbee', repeater: 'repetidor', connectedTo: 'Conectado a', signal: 'Señal (LQI)',
+      role: 'Rol', roleRouter: 'Router / repetidor', roleEnd: 'Equipo final', host: 'Host', os: 'Sistema', runsOn: 'Corre en', vm: 'Máquina virtual',
+      disk: 'Disco', version: 'Versión', hostname: 'Nombre', infraLocal: 'Todos los equipos y hubs locales llegan a Home Assistant por esta red.',
+      infraRadio: 'Los equipos por radio le hablan a este coordinador, directo o a través de un router (repetidor).', coreDesc: 'La máquina donde corre Home Assistant.',
+      meshNote: 'Las rutas Zigbee vienen del mapa de red de Zigbee2MQTT.', status2: 'Estado'
     }
   };
 
@@ -46,6 +56,13 @@
     'utility_meter', 'threshold', 'trend', 'statistics', 'integration', 'hacs', 'marketplace', 'homeassistant',
     'homeassistant_sky_connect', 'homeassistant_hardware', 'homeassistant_yellow', 'homeassistant_green', 'person', 'zone'];
   var RADIO = ['zha', 'zwave_js', 'zwave_me', 'deconz', 'insteon', 'zigbee2mqtt', 'enocean', 'rfxtrx'];
+  // Integrations for routers / access points: drawn as the local network itself, not as devices.
+  var ROUTER_INTS = ['huawei_mesh_router', 'huawei_lte', 'unifi', 'fritz', 'tplink_omada', 'tplink_router', 'tplink_deco', 'asuswrt',
+    'netgear', 'keenetic_ndms2', 'mikrotik', 'openwrt', 'luci', 'ubus', 'eero', 'google_wifi', 'synology_srm', 'ruckus_unleashed',
+    'vodafone_station', 'sfr_box', 'freebox', 'bbox', 'orbi', 'linksys_smart', 'aruba', 'cisco_ios', 'ddwrt', 'tomato', 'opnsense', 'pfsense'];
+  // Radio coordinators (USB sticks / built-in radios).
+  var COORD_INTS = ['homeassistant_sky_connect', 'homeassistant_hardware', 'homeassistant_yellow', 'homeassistant_connect_zbt2'];
+  var VIRT = { oracle: 'VirtualBox', kvm: 'KVM', qemu: 'QEMU', vmware: 'VMware', microsoft: 'Hyper-V', xen: 'Xen', parallels: 'Parallels', lxc: 'LXC', docker: 'Docker' };
   var CLOUD_GUESS = ['smartthings', 'tuya', 'spotify', 'met', 'google_translate', 'anthropic', 'openai_conversation', 'nest',
     'ring', 'tesla_fleet', 'netatmo', 'ecobee', 'alexa', 'google_assistant', 'cloud', 'waze_travel_time', 'openweathermap'];
   var NS = 'http://www.w3.org/2000/svg';
@@ -93,7 +110,7 @@
     '.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px;font-size:13px;margin:0}.kv dt{color:var(--cm-muted)}.kv dd{margin:0}',
     '.msg{padding:32px 12px;text-align:center;color:var(--cm-muted)}',
     '.edge{stroke-width:2;fill:none;stroke-opacity:.55}.edge.hot{stroke-width:4;stroke-opacity:.9}',
-    '.spoke{stroke:var(--cm-line);stroke-width:1}',
+    '.spoke{stroke:var(--cm-line);stroke-width:1}.spoke.meshl{stroke:var(--cm-radio);stroke-dasharray:3 2;stroke-opacity:.8}',
     '.dev{cursor:pointer}.dev circle{stroke:var(--cm-bg);stroke-width:1.5}',
     '.dev.offline circle{fill:var(--cm-bg)!important;stroke:var(--cm-bad);stroke-width:2.2}',
     '.dev.sel circle{stroke:var(--cm-ink);stroke-width:3}',
@@ -110,7 +127,7 @@
     setConfig(config) {
       this._cfg = Object.assign({
         title: null, group_small: 1, exclude_integrations: [], exclude_devices: [], show_trackers: false,
-        show_panel: true, colors: {}
+        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt'
       }, config || {});
       if (this._root) this._built = false;
     }
@@ -155,6 +172,72 @@
       this._loading = false;
       this._built = true;
       this._render();
+      this._extras();
+    }
+
+    // Host details (Supervisor, admin only) and the Zigbee2MQTT mesh. Both are optional.
+    async _extras() {
+      var H = this._hass;
+      try {
+        var hi = await H.callWS({ type: 'supervisor/api', endpoint: '/host/info', method: 'get' });
+        this._host = { os: hi.operating_system, chassis: hi.chassis, virt: hi.virtualization, hostname: hi.hostname, disk: [hi.disk_used, hi.disk_total] };
+        this._coreText();
+      } catch (e) { /* not supervised or not admin */ }
+      if (this._cfg.show_mesh !== false && this._z2mBridge) {
+        try { await this._loadMesh(); this._render(); } catch (e) { /* no MQTT access or Zigbee2MQTT did not answer */ }
+      }
+    }
+    _loadMesh() {
+      var H = this._hass, base = this._cfg.z2m_base_topic || 'zigbee2mqtt', self = this;
+      return new Promise(function (resolve, reject) {
+        var done = false, unsub = null;
+        var timer = setTimeout(function () { if (!done) { done = true; if (unsub) unsub(); reject(new Error('timeout')); } }, 45000);
+        H.connection.subscribeMessage(function (m) {
+          if (done) return; done = true; clearTimeout(timer); if (unsub) unsub();
+          try { var p = JSON.parse(m.variables.trigger.payload); self._applyMesh(p.data && p.data.value); resolve(); } catch (e) { reject(e); }
+        }, { type: 'subscribe_trigger', trigger: { platform: 'mqtt', topic: base + '/bridge/response/networkmap' } }).then(function (u) {
+          unsub = u; if (done) u();
+          return H.callService('mqtt', 'publish', { topic: base + '/bridge/request/networkmap', payload: JSON.stringify({ type: 'raw', routes: false }) });
+        }).catch(function (e) { if (!done) { done = true; clearTimeout(timer); reject(e); } });
+      });
+    }
+    _applyMesh(v) {
+      if (!v || !v.nodes) return;
+      var byIeee = {}, types = {}, coord = null, parent = {}, lqi = {};
+      (this._devs || []).forEach(function (d) { if (d.ieee) byIeee[d.ieee] = d; });
+      v.nodes.forEach(function (n) { types[n.ieeeAddr] = n.type; if (n.type === 'Coordinator') coord = n.ieeeAddr; });
+      // A link means: target reported source in its neighbour table. relationship 1 = source is a child of target.
+      (v.links || []).forEach(function (l) {
+        var s = l.source.ieeeAddr, t = l.target.ieeeAddr;
+        if (l.relationship === 1) { parent[s] = t; lqi[s] = l.lqi; }
+      });
+      (v.links || []).forEach(function (l) {
+        var s = l.source.ieeeAddr, t = l.target.ieeeAddr;
+        if (l.relationship === 0 && types[t] === 'EndDevice' && !parent[t]) { parent[t] = s; lqi[t] = l.lqi; }
+        // routers are meshed: keep their strongest link towards the coordinator or another router
+        if (types[s] === 'Router' && !parent[s] && (types[t] === 'Coordinator' || types[t] === 'Router') && (lqi[s] == null || l.lqi > lqi[s])) { parent['~' + s] = t; lqi[s] = l.lqi; }
+      });
+      Object.keys(byIeee).forEach(function (ie) {
+        var d = byIeee[ie], p = parent[ie] || parent['~' + ie];
+        d.router = types[ie] === 'Router'; d.lqi = lqi[ie];
+        d.meshParent = p && p !== coord && byIeee[p] && byIeee[p] !== d ? byIeee[p] : null;
+      });
+      this._mesh = true;
+    }
+    _hostText() {
+      var h = this._host, t = this._t.bind(this); if (!h) return '';
+      var where = h.chassis === 'vm' ? t('vm') + (h.virt && h.virt !== 'none' ? ' (' + (VIRT[h.virt] || h.virt) + ')' : '') : (h.chassis || '');
+      return [h.os, where].filter(Boolean).join(' · ');
+    }
+    _hostShort() {
+      var h = this._host; if (!h) return '';
+      return h.chassis === 'vm' ? ((VIRT[h.virt] || (h.virt && h.virt !== 'none' ? h.virt : '')) + ' VM').trim() : (h.os || '');
+    }
+    _coreText() { var e = this._root && this._root.getElementById('coreHost'); if (e) e.textContent = this._hostShort(); }
+    _mname(m) {
+      if (m === 'local' && this._router) return this._router.n;
+      if (m === 'radio' && this._coord) return this._coord;
+      return this._t(m);
     }
 
     _intName(p) { return (this._man[p] && this._man[p].name) || p.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
@@ -177,7 +260,8 @@
         return Object.keys(c).sort(function (a, b) { return c[b] - c[a]; })[0];
       }
       function isHubDevice(v) { return v && !v.disabled_by && ((children[v.id] || 0) >= 2 || (byDev[v.id] || []).length <= 5); }
-      var hubs = {}, devs = [];
+      var hubs = {}, devs = [], routers = [], coords = [];
+      this._z2mBridge = null;
       function hubFor(key, name, medium, kind, p) {
         if (!hubs[key]) hubs[key] = { key: key, n: name, m: medium, kind: kind, p: p, dv: [] };
         return hubs[key];
@@ -187,10 +271,15 @@
         if (d.disabled_by || cfg.exclude_devices.indexOf(id) >= 0) return;
         if (d.entry_type === 'service' && d.via_device_id) return; // virtual rooms/zones/groups exposed by a hub
         var es = byDev[id] || []; if (!es.length) return;
+        var p = primary(es); if (!p) return;
+        var nm = (d.name_by_user || d.name || id).trim();
+        if (COORD_INTS.indexOf(p) >= 0) { coords.push(nm.replace(/\s*\([^)]*\)\s*$/, '').replace(/^Home Assistant\s+/, '')); return; }
+        if (p === 'mqtt' && /zigbee2mqtt/i.test(d.manufacturer || '')) self._z2mBridge = d;
         var doms = es.map(function (e) { return e.entity_id.split('.')[0]; });
         if (doms.every(function (x) { return x === 'update'; })) return;
         if (!cfg.show_trackers && doms.every(function (x) { return x === 'device_tracker' || x === 'update'; })) return;
-        var p = primary(es); if (!p || SKIP.indexOf(p) >= 0 || cfg.exclude_integrations.indexOf(p) >= 0) return;
+        if (SKIP.indexOf(p) >= 0 || cfg.exclude_integrations.indexOf(p) >= 0) return;
+        if (ROUTER_INTS.indexOf(p) >= 0) { routers.push({ id: id, n: nm, p: p, ents: es.map(function (e) { return e.entity_id; }) }); return; }
         if ((children[id] || 0) > 0 && isHubDevice(d)) return; // the hub itself is drawn as a hub node
         var v = d.via_device_id ? devices[d.via_device_id] : null;
         var medium = self._medium(p);
@@ -210,8 +299,14 @@
           a: d.area_id && areas[d.area_id] ? areas[d.area_id].name : '', p: p, hub: hub, ents: es.filter(function (e) { return !e.hidden; }).map(function (e) { return e.entity_id; })
         };
         if (!x.ents.length) x.ents = es.map(function (e) { return e.entity_id; });
+        var ie = (d.identifiers || []).map(function (i) { return String(i[1] || ''); }).filter(function (s) { return s.indexOf('zigbee2mqtt_0x') === 0; })[0];
+        x.ieee = ie ? ie.slice(12) : null;
         hub.dv.push(x); devs.push(x);
       });
+      this._routers = routers;
+      this._router = routers.filter(function (r) { return /primary|main|principal|gateway|router/i.test(r.n); })[0] || routers[0] || null;
+      if (this._router && cfg.router_name) this._router.n = cfg.router_name;
+      this._coord = cfg.coordinator_name || coords[0] || null;
       // Merge small integration groups into one "other" node per medium.
       var small = Math.max(0, cfg.group_small | 0);
       Object.keys(hubs).forEach(function (k) {
@@ -230,7 +325,7 @@
 
     _status() {
       var S = this._hass.states;
-      (this._devs || []).forEach(function (d) {
+      (this._devs || []).concat(this._routers || []).forEach(function (d) {
         var st = d.ents.map(function (e) { return S[e] ? S[e].state : 'unavailable'; });
         d.off = st.length > 0 && st.every(function (s) { return s === 'unavailable'; });
       });
@@ -239,12 +334,29 @@
     _layout() {
       var hubs = this._hubs, C = { x: 0, y: 0 };
       hubs.forEach(function (h) {
-        var i = 0, ring = 0; h.outer = 30;
-        while (i < h.dv.length) {
-          var rad = 34 + ring * 15, cap = Math.floor(2 * Math.PI * rad / 15), n = Math.min(cap, h.dv.length - i);
-          h.dv.slice(i, i + n).forEach(function (d, k) { d.ang = -Math.PI / 2 + (k / n) * 2 * Math.PI + ring * 0.2; d.rad = rad; });
+        h.dv.forEach(function (d) { d.rx = null; d.ry = null; });
+        // devices that reach the hub through a mesh router are drawn next to that router
+        var top = h.dv.filter(function (d) { return !d.meshParent || h.dv.indexOf(d.meshParent) < 0; }), i = 0, ring = 0; h.outer = 30;
+        while (i < top.length) {
+          var rad = 34 + ring * 15, cap = Math.floor(2 * Math.PI * rad / 15), n = Math.min(cap, top.length - i);
+          top.slice(i, i + n).forEach(function (d, k) { var a = -Math.PI / 2 + (k / n) * 2 * Math.PI + ring * 0.2; d.ang = a; d.rx = rad * Math.cos(a); d.ry = rad * Math.sin(a); });
           i += n; ring++; h.outer = rad;
         }
+        var level = top, guard = 0;
+        while (level.length && guard++ < 6) {
+          var next = [];
+          level.forEach(function (p) {
+            var kids = h.dv.filter(function (d) { return d.meshParent === p && d.rx == null; });
+            kids.forEach(function (d, k) {
+              var a = p.ang + (k - (kids.length - 1) / 2) * 0.6; d.ang = a;
+              d.rx = p.rx + 22 * Math.cos(a); d.ry = p.ry + 22 * Math.sin(a);
+              h.outer = Math.max(h.outer, Math.sqrt(d.rx * d.rx + d.ry * d.ry));
+            });
+            next = next.concat(kids);
+          });
+          level = next;
+        }
+        h.dv.forEach(function (d) { if (d.rx == null) { d.ang = Math.PI / 2; d.rx = 0; d.ry = h.outer + 15; h.outer += 15; } });
         h.w = h.outer * 2 + 70;
       });
       var order = ['cloud', 'local', 'radio'], groups = {}, W = 0;
@@ -267,7 +379,7 @@
           var ac = a + aw / 2; a += aw;
           var rr = R + (arranged.length > 4 && arranged.indexOf(h) % 2 ? h.outer * 0.9 : 0);
           h.x = C.x + rr * Math.cos(deg(ac)); h.y = C.y + rr * Math.sin(deg(ac)); h.ac = ac;
-          h.dv.forEach(function (d) { d.x = h.x + d.rad * Math.cos(d.ang); d.y = h.y + d.rad * Math.sin(d.ang); });
+          h.dv.forEach(function (d) { d.x = h.x + d.rx; d.y = h.y + d.ry; });
         });
         mnodes[m] = { m: m, x: C.x + 140 * Math.cos(deg(mid)), y: C.y + 140 * Math.sin(deg(mid)), r: 28, ac: mid };
         start += span + gap;
@@ -304,8 +416,10 @@
         h.edge = el('line', { x1: n.x, y1: n.y, x2: h.x, y2: h.y, 'class': 'edge', stroke: M[h.m], 'stroke-dasharray': h.m === 'cloud' ? '6 6' : '' }, gE);
       });
       this._devs.forEach(function (d) {
-        d.spoke = el('line', { x1: d.hub.x, y1: d.hub.y, x2: d.x, y2: d.y, 'class': 'spoke' }, gS);
+        var from = d.meshParent && d.meshParent.x != null ? d.meshParent : d.hub;
+        d.spoke = el('line', { x1: from.x, y1: from.y, x2: d.x, y2: d.y, 'class': 'spoke' + (d.meshParent ? ' meshl' : '') }, gS);
         var g = el('g', { 'class': 'dev', tabindex: 0, role: 'button', 'aria-label': d.n }, gD);
+        if (d.router) el('circle', { cx: d.x, cy: d.y, r: 10, fill: 'none', stroke: M[d.hub.m], 'stroke-width': 1.6, 'class': 'rring' }, g);
         el('circle', { cx: d.x, cy: d.y, r: 6.2, fill: M[d.hub.m] }, g); d.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selDev(d); });
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selDev(d); });
@@ -318,15 +432,20 @@
       el('circle', { cx: 0, cy: 0, r: 56, fill: M.core }, gc);
       var tc = el('text', { x: 0, y: -2, 'text-anchor': 'middle', 'class': 'lbl', style: 'fill:#fff;font-size:14px' }, gc); tc.textContent = 'Home Assistant';
       var ts = el('text', { x: 0, y: 15, 'text-anchor': 'middle', 'class': 'sub', style: 'fill:rgba(255,255,255,.85)' }, gc); ts.textContent = (this._hass.config && this._hass.config.version) || '';
-      gc.addEventListener('click', function (e) { e.stopPropagation(); self._reset(); });
+      var th = el('text', { x: 0, y: 31, 'text-anchor': 'middle', 'class': 'sub', id: 'coreHost', style: 'fill:rgba(255,255,255,.85)' }, gc); th.textContent = this._hostShort();
+      gc.addEventListener('click', function (e) { e.stopPropagation(); self._selCore(); });
       Object.keys(this._mnodes).forEach(function (m) {
         var n = self._mnodes[m], g = el('g', { 'class': 'mnode' }, gN);
-        el('circle', { cx: n.x, cy: n.y, r: n.r, 'class': 'disc', stroke: M[m] }, g);
+        var down = m === 'local' && self._routers && self._routers.length && self._routers.every(function (r) { return r.off; });
+        el('circle', { cx: n.x, cy: n.y, r: n.r, 'class': 'disc', stroke: down ? 'var(--cm-bad)' : M[m] }, g);
         var ic = el('text', { x: n.x, y: n.y + 4, 'text-anchor': 'middle', style: 'font-size:11px;font-weight:700;fill:' + M[m] }, g);
-        ic.textContent = m === 'cloud' ? 'WWW' : m === 'local' ? 'LAN' : 'RF';
+        ic.textContent = m === 'cloud' ? 'WWW' : m === 'local' ? (self._router ? 'Wi-Fi' : 'LAN') : (self._coord ? 'USB' : 'RF');
         var oy = Math.sin(deg(n.ac)) >= 0 ? n.r + 15 : -(n.r + 20);
-        var tl = el('text', { x: n.x, y: n.y + oy, 'text-anchor': 'middle', 'class': 'lbl' }, g); tl.textContent = t(m);
-        var tsb = el('text', { x: n.x, y: n.y + oy + 13, 'text-anchor': 'middle', 'class': 'sub' }, g); tsb.textContent = t(m + 'Sub');
+        var name = self._mname(m), sub = t(m + 'Sub');
+        if (m === 'local' && self._router) sub = self._intName(self._router.p) + (self._routers.length > 1 ? ' · ' + self._routers.length + ' ' + t('meshNodes') : '');
+        if (m === 'radio' && self._coord) sub = t('coordinator');
+        var tl = el('text', { x: n.x, y: n.y + oy, 'text-anchor': 'middle', 'class': 'lbl' }, g); tl.textContent = name.length > 30 ? name.slice(0, 29) + '…' : name;
+        var tsb = el('text', { x: n.x, y: n.y + oy + 13, 'text-anchor': 'middle', 'class': 'sub' }, g); tsb.textContent = sub;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selMedium(m); });
       });
       this._hubs.forEach(function (h) {
@@ -423,10 +542,18 @@
     }
     _route(arr) { return '<div class="route">' + arr.map(function (x, i) { return (i ? '<em>→</em>' : '') + '<span>' + esc(x) + '</span>'; }).join('') + '</div>'; }
     _pathOf(d) {
-      var t = this._t.bind(this), r = [d.n];
-      if (d.hub.kind === 'hub') r.push(d.hub.n);
-      r.push(d.via || this._intName(d.p));
-      r.push(t(d.hub.m)); r.push('Home Assistant');
+      var t = this._t.bind(this), r = [d.n], m = d.hub.m;
+      if (m === 'radio') {
+        var p = d.meshParent, guard = 0;
+        while (p && guard++ < 6) { r.push(p.n + ' (' + t('repeater') + ')'); p = p.meshParent; }
+        if (this._coord) r.push(this._coord);
+        r.push(d.hub.kind === 'hub' ? d.hub.n : (d.via || this._intName(d.p)));
+      } else {
+        if (d.hub.kind === 'hub') r.push(d.hub.n);
+        r.push(d.via || this._intName(d.p));
+        r.push(this._mname(m));
+      }
+      r.push('Home Assistant');
       return r;
     }
     _clear() {
@@ -455,7 +582,9 @@
       if (!keep) S.sel = h; this._clear(); h.g.classList.add('sel'); this._hot(h);
       var f = S.q || S.area || S.off, list = h.dv.filter(function (d) { return !f || d.vis; }), off = h.dv.filter(function (d) { return d.off; }).length;
       var desc = h.kind === 'hub' ? t('hubDesc') : h.kind === 'other' ? t('otherDesc') : t('intDesc');
-      var route = h.kind === 'hub' ? [t('device'), h.n, h.sub, t(h.m), 'Home Assistant'] : [t('device'), h.kind === 'other' ? t('integration') : h.n, t(h.m), 'Home Assistant'];
+      var route = h.m === 'radio' ? [t('device'), this._coord || t('radio'), h.n, 'Home Assistant'] :
+        h.kind === 'hub' ? [t('device'), h.n, h.sub, this._mname(h.m), 'Home Assistant'] : [t('device'), h.kind === 'other' ? t('integration') : h.n, this._mname(h.m), 'Home Assistant'];
+      if (h.m === 'radio' && this._mesh) desc += ' ' + t('meshNote');
       this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M[h.m] + '">' + esc(t(h.m)) + (h.kind === 'hub' ? ' · ' + esc(t('hub')) : '') + '</div><h2>' + esc(h.n) + '</h2>' + this._route(route) + '<p>' + esc(desc) + '</p>' +
         '<dl class="kv"><dt>' + esc(t('devices')) + '</dt><dd>' + h.dv.length + '</dd>' + (off ? '<dt>' + esc(t('offline')) + '</dt><dd class="off">' + off + '</dd>' : '') + '</dl>' +
         '<div class="list">' + list.map(function (d) { return self._item(d); }).join('') + '</div><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
@@ -465,7 +594,13 @@
       var t = this._t.bind(this), self = this; this._S.sel = { medium: m }; this._clear();
       var n = this._mnodes[m]; if (n.edge) n.edge.classList.add('hot');
       var hs = this._hubs.filter(function (h) { return h.m === m; });
-      this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M[m] + '">' + esc(t(m + 'Sub')) + '</div><h2>' + esc(t(m)) + '</h2><div class="list">' +
+      var extra = '';
+      if (m === 'local' && this._routers && this._routers.length) {
+        extra = '<p>' + esc(t('infraLocal')) + '</p><div class="eyebrow" style="color:var(--cm-muted)">' + esc(this._intName(this._router.p)) + '</div><div class="list">' +
+          this._routers.map(function (r) { return '<div class="item"><i style="' + (r.off ? 'border:2px solid var(--cm-bad)' : 'background:' + self._M.local) + '"></i><span class="nm">' + esc(r.n) + '</span><small class="' + (r.off ? 'off' : '') + '">' + esc(r.off ? t('offline') : t('online')) + '</small></div>'; }).join('') + '</div>';
+      }
+      if (m === 'radio' && this._coord) extra = '<p>' + esc(t('infraRadio')) + '</p>';
+      this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M[m] + '">' + esc(t(m)) + '</div><h2>' + esc(this._mname(m)) + '</h2>' + extra + '<div class="list">' +
         hs.map(function (h) { return '<button class="item" data-hub="' + esc(h.key) + '"><i style="background:' + self._M[h.m] + '"></i><span class="nm">' + esc(h.n) + '</span><small>' + h.dv.length + '</small></button>'; }).join('') +
         '</div><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
       this._bind();
@@ -476,7 +611,10 @@
       this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M[h.m] + '">' + esc(t(h.m)) + '</div><h2>' + esc(d.n) + '</h2><dl class="kv">' +
         (d.mo ? '<dt>' + esc(t('model')) + '</dt><dd>' + esc(d.mo) + '</dd>' : '') + (d.a ? '<dt>' + esc(t('area')) + '</dt><dd>' + esc(d.a) + '</dd>' : '') +
         '<dt>' + esc(t('integration')) + '</dt><dd>' + esc(this._intName(d.p)) + '</dd>' +
-        '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '">' + esc(d.off ? t('offline') : t('online')) + '</dd></dl>' +
+        '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '">' + esc(d.off ? t('offline') : t('online')) + '</dd>' +
+        (d.router != null && d.ieee ? '<dt>' + esc(t('role')) + '</dt><dd>' + esc(d.router ? t('roleRouter') : t('roleEnd')) + '</dd>' : '') +
+        (d.ieee && this._mesh ? '<dt>' + esc(t('connectedTo')) + '</dt><dd>' + esc(d.meshParent ? d.meshParent.n : (this._coord || t('coordinator'))) + '</dd>' : '') +
+        (d.lqi != null ? '<dt>' + esc(t('signal')) + '</dt><dd>' + d.lqi + ' / 255</dd>' : '') + '</dl>' +
         '<div class="eyebrow" style="color:var(--cm-muted)">' + esc(t('path')) + '</div>' + this._route(this._pathOf(d)) +
         '<button class="btn" id="open">' + esc(t('open')) + '</button><button class="btn" id="hubb">' + esc(t('seeAll')) + ' ' + esc(h.n) + '</button><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
       this._bind();
@@ -485,6 +623,19 @@
         window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
       };
       this._$('panel').querySelector('#hubb').onclick = function () { self._selHub(h); };
+    }
+    _selCore() {
+      var t = this._t.bind(this), h = this._host, cfg = this._hass.config || {};
+      this._S.sel = { core: true }; this._clear();
+      var rows = '<dt>' + esc(t('version')) + '</dt><dd>' + esc(cfg.version || '') + '</dd>';
+      if (h) {
+        rows += '<dt>' + esc(t('os')) + '</dt><dd>' + esc(h.os || '') + '</dd>' +
+          '<dt>' + esc(t('runsOn')) + '</dt><dd>' + esc(this._hostText().split(' · ').slice(1).join(' · ') || h.chassis || '') + '</dd>' +
+          (h.hostname ? '<dt>' + esc(t('hostname')) + '</dt><dd>' + esc(h.hostname) + '</dd>' : '') +
+          (h.disk && h.disk[1] ? '<dt>' + esc(t('disk')) + '</dt><dd>' + h.disk[0] + ' / ' + h.disk[1] + ' GB</dd>' : '');
+      }
+      this._$('panel').innerHTML = '<div class="eyebrow" style="color:var(--cm-core)">' + esc(t('host')) + '</div><h2>Home Assistant</h2><p>' + esc(t('coreDesc')) + '</p><dl class="kv">' + rows + '</dl><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
+      this._bind();
     }
     _reset() { if (!this._S) return; this._S.sel = null; this._clear(); this._list(); }
   }
