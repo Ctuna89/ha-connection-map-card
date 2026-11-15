@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A device set up through several integrations was drawn once per integration, for example an Android TV through its own integration and through the companion app, or a phone known to two integrations. They are now one dot, and the panel says what else the device is set up as (`merge_duplicates`).
+
 ## 0.7.0 — 2026-11-15
 
 This release starts from the feedback in the r/homeassistant thread and adds rules the map must keep, with a test suite to hold them.

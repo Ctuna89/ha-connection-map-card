@@ -173,3 +173,45 @@ test('Netgear / Orbi: clients are placed behind the satellite named by their acc
   assert.deepEqual(await H.linkProblems(page), []);
   await page.close();
 });
+
+test('a device set up through several integrations is drawn once', async () => {
+  const page = await H.newPage(browser);
+  const mount = (config) => page.evaluate(async (config) => {
+    const devices = {}, entities = {}, states = {};
+    const dev = (id, name, o = {}) => { devices[id] = { id, name, manufacturer: o.mf || '', model: o.mo || '', via_device_id: null, connections: o.mac ? [['mac', o.mac]] : [], identifiers: [], disabled_by: null, area_id: null }; };
+    const ent = (eid, device_id, platform, state, attributes) => { entities[eid] = { entity_id: eid, device_id, platform }; states[eid] = { entity_id: eid, state, attributes: attributes || {} }; };
+    dev('gw', 'UDM Gateway', { mac: 'aa:00:00:00:00:01' }); ent('sensor.gw_a', 'gw', 'unifi', '1'); ent('sensor.gw_b', 'gw', 'unifi', '1');
+    // a TV: its own integration, and the companion app running on it (same name, different capitals, another model text)
+    dev('tv', 'Sony XR-55A84L', { mf: 'Sony', mo: 'XR-55A84L' }); ent('media_player.tv', 'tv', 'braviatv', 'on'); ent('remote.tv', 'tv', 'braviatv', 'on');
+    dev('tvapp', 'SONY XR-55A84L', { mf: 'Sony', mo: 'BRAVIA 4K VH22' }); for (let i = 0; i < 6; i++) ent('sensor.tvapp_' + i, 'tvapp', 'mobile_app', '1');
+    // a phone: the companion app, on mobile data, and a second integration under the same name
+    dev('phoneapp', 'Pixel 9'); for (let i = 0; i < 5; i++) ent('sensor.pixel_9_' + i, 'phoneapp', 'mobile_app', '1'); ent('sensor.pixel_9_network_type', 'phoneapp', 'mobile_app', 'cellular');
+    dev('phoneadb', 'Pixel 9'); ent('media_player.pixel_adb', 'phoneadb', 'androidtv', 'on');
+    // a speaker known to two integrations by the same network address
+    dev('spk1', 'Kitchen speaker', { mac: 'aa:00:00:00:00:10' }); ent('media_player.spk1', 'spk1', 'cast', 'on'); ent('sensor.spk1', 'spk1', 'cast', 'on');
+    dev('spk2', 'Nest Mini', { mac: 'aa:00:00:00:00:10' }); ent('media_player.spk2', 'spk2', 'dlna_dmr', 'on');
+    ent('device_tracker.kitchen_speaker', null, 'unifi', 'home', { mac: 'aa:00:00:00:00:10' });
+    // two different lamps that happen to share a name: not the same device
+    dev('l1', 'Lamp'); ent('light.l1', 'l1', 'wiz', 'on'); dev('l2', 'Lamp'); ent('light.l2', 'l2', 'wiz', 'on');
+    const man = ['unifi', 'braviatv', 'mobile_app', 'androidtv', 'cast', 'dlna_dmr', 'wiz'].map((d) => ({ domain: d, name: { braviatv: 'Sony Bravia TV', mobile_app: 'Mobile App', androidtv: 'Android Debug Bridge' }[d] || d, iot_class: 'local_push' }));
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig(Object.assign({ animations: false, group_small: 0 }, config)); host.appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+    const by = (n) => c._devs.filter((d) => d.n === n);
+    return { names: c._devs.map((d) => d.n).sort(), tv: by('Sony XR-55A84L').map((d) => ({ as: c._intName(d.p), also: d.also.map((o) => o.as) })),
+      phone: by('Pixel 9').map((d) => ({ as: c._intName(d.p), also: d.also.map((o) => o.as), remote: d.remote, path: c._pathOf(d).join(' > ') })),
+      speaker: by('Kitchen speaker').map((d) => d.also.map((o) => o.n)), groups: c._hubs.map((h) => h.n).sort() };
+  }, config);
+  const r = await mount({});
+  assert.deepEqual(r.names, ['Kitchen speaker', 'Lamp', 'Lamp', 'Pixel 9', 'Sony XR-55A84L']);
+  assert.deepEqual(r.tv, [{ as: 'Sony Bravia TV', also: ['Mobile devices'] }]);
+  assert.equal(r.phone.length, 1);
+  assert.deepEqual(r.phone[0].also, ['Mobile devices']);
+  assert.equal(r.phone[0].remote, true, 'its app says it is on mobile data');
+  assert.match(r.phone[0].path, /Mobile data > Internet > Home Assistant$/);
+  assert.deepEqual(r.speaker, [['Nest Mini']]);
+  assert.ok(!r.groups.includes('Mobile devices'), 'no empty group is left behind');
+  assert.equal((await mount({ merge_duplicates: false })).names.length, 8);
+  await page.close();
+});

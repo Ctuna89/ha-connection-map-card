@@ -89,6 +89,7 @@ views:
 | `recent_hours` | number | `24` | How long a battery device that stopped answering counts as *seen recently* (yellow) before it is shown as offline (red). `0` turns it off. The time is taken from when its entities became unavailable, so after a Home Assistant restart it counts from the restart. |
 | `layout` | string | `detailed` | `detailed` draws every device as a dot; `compact` draws one bubble per hub or integration. The ◎ button on the map switches between them without changing the configuration. |
 | `show_export` | boolean | `true` | Show the button that saves the map as an image. |
+| `merge_duplicates` | boolean | `true` | Draw a device that is set up through several integrations as a single dot. |
 | `show_panel` | boolean | `true` | Show the side panel with the summary and details. |
 | `animations` | boolean | `true` | Animated data flow, pop-in and hover effects. |
 | `language` | string | HA language | Force the card language: `en` or `es`. |
@@ -136,6 +137,8 @@ All of these, except `names`, `overrides`, `exclude_devices` and `z2m_base_topic
 A device is drawn behind a **hub** when it has a `via_device` and that parent device either has at least two children or looks like a bridge (few entities of its own). Virtual rooms and zones that some hubs expose (for example Hue rooms) are skipped.
 
 A parent that is just another device of the same integration, such as a power strip and its outlets, is not treated as a hub when the integration has at least as many devices of its own: the strip and its outlets are drawn together inside the integration's group, and the outlet's path shows the strip.
+
+**One device, several integrations.** A TV set up through its own integration and through the companion app, or a phone known to two integrations, has several entries in Home Assistant's device registry. The card draws them as one dot, and its panel says what else it is set up as. Two entries are taken as the same device when the router knows them by the same address, or when one of them is the companion app and has the same name as the other. Turn it off with `merge_duplicates: false`.
 
 **MQTT entities without a device**, the ones written by hand in YAML without a `device` block, are drawn as one dot each in the MQTT group. Tapping one opens the entity instead of a device page.
 

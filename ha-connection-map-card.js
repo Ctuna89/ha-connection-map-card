@@ -36,6 +36,7 @@
       noRoomName1: '1 label is hidden at this zoom: there is no room for it.', noRoomName: 'labels are hidden at this zoom: there is no room for them.', noRoomZoom: 'Zoom in to see them', notDrawn: 'Not drawn',
       layoutBtn: 'Switch between the detailed and the compact map', exportBtn: 'Save the map as an image', exportAnon: 'Image without names', exportFull: 'Image with names',
       exportHint: 'Without names, hubs, routers and devices are numbered: safe to share.',
+      alsoAs: 'Also set up as',
       recent: 'Seen recently', recentLong: 'Not answering now. Battery device, last seen', ago: '{t} ago', recentNow: 'Seen recently',
       bluetooth: 'Bluetooth', btDesc: 'Bluetooth devices: Home Assistant hears them directly or through a Bluetooth proxy.', btProxy: 'Bluetooth proxy', btAdapter: 'Bluetooth adapter', btSignal: 'Signal (RSSI)',
       btHeard: 'Devices that this Bluetooth receiver hears best right now.', threadDesc: 'Matter devices on the Thread mesh. They reach Home Assistant through a Thread border router.', mqttManual: 'MQTT entity without a device'
@@ -65,6 +66,7 @@
       noRoomName1: '1 etiqueta está oculta con este zoom: no hay espacio para ella.', noRoomName: 'etiquetas están ocultas con este zoom: no hay espacio para ellas.', noRoomZoom: 'Acerca el mapa para verlas', notDrawn: 'No dibujado',
       layoutBtn: 'Cambiar entre el mapa detallado y el compacto', exportBtn: 'Guardar el mapa como imagen', exportAnon: 'Imagen sin nombres', exportFull: 'Imagen con nombres',
       exportHint: 'Sin nombres, los hubs, routers y equipos van numerados: se puede compartir.',
+      alsoAs: 'También configurado como',
       recent: 'Visto hace poco', recentLong: 'No responde ahora. Equipo a batería, visto por última vez', ago: 'hace {t}', recentNow: 'Vistos hace poco',
       bluetooth: 'Bluetooth', btDesc: 'Equipos Bluetooth: Home Assistant los escucha directo o a través de un proxy Bluetooth.', btProxy: 'Proxy Bluetooth', btAdapter: 'Adaptador Bluetooth', btSignal: 'Señal (RSSI)',
       btHeard: 'Equipos que este receptor Bluetooth escucha mejor en este momento.', threadDesc: 'Equipos Matter en la malla Thread. Llegan a Home Assistant a través de un border router Thread.', mqttManual: 'Entidad MQTT sin dispositivo'
@@ -337,7 +339,7 @@
     setConfig(config) {
       this._cfg = Object.assign({
         title: null, group_small: 1, exclude_integrations: [], exclude_devices: [], show_trackers: false,
-        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', mqtt_entities: true, recent_hours: 24, layout: 'detailed', show_export: true
+        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', mqtt_entities: true, merge_duplicates: true, recent_hours: 24, layout: 'detailed', show_export: true
       }, config || {});
       // look-only options are applied by drawing again; anything else needs the model to be rebuilt
       var LOOK = ['title', 'colors', 'lines', 'sizes', 'core_size', 'minimap', 'device_labels', 'animations', 'show_panel', 'layout', 'show_export'];
@@ -660,6 +662,7 @@
           if (a.mac && macs.indexOf(String(a.mac).toLowerCase()) >= 0) best = eid;
           else if (host && a.ip === host) best = eid;
         });
+        findTrk.sure = !!best;
         var ds = slug(dev.name_by_user || dev.name), dt = ds.split('_').filter(Boolean);
         if (!best && ds) trk.forEach(function (eid) {
           if (best) return; var ts = eid.slice(15), tt = ts.split('_');
@@ -677,7 +680,7 @@
         if (!x.ents.length) x.ents = es.map(function (e) { return e.entity_id; });
         var ie = (d.identifiers || []).map(function (i) { return String(i[1] || ''); }).filter(function (s) { return s.indexOf('zigbee2mqtt_0x') === 0; })[0];
         x.ieee = ie ? ie.slice(12) : null;
-        x.trk = x.ieee ? null : findTrk(d);
+        x.trk = x.ieee ? null : findTrk(d); x.trkSure = !!x.trk && findTrk.sure; x.also = [];
         // the companion app reports how the phone is connected (Android: network_type, iOS: connection_type)
         if (p === 'mobile_app') x.net = (es.filter(function (e) { return /^sensor\..*_(network|connection)_type$/.test(e.entity_id); })[0] || {}).entity_id || null;
         // battery devices sleep between reports: see _status
@@ -742,6 +745,42 @@
         }
         var made = mk(id, d, es, p, hub); if (hub.own) made.via = self._intName(p); if (rssi != null) made.rssi = rssi;
       });
+      // One physical device is often set up through several integrations, each with its own entry in the device registry:
+      // a TV through its own integration and through the companion app, for example. They are drawn as one dot.
+      // Two entries are the same device when the router knows them by the same address, or when one of them is the
+      // companion app and it has the same name as the other, or was matched to the same client of the router.
+      if (cfg.merge_duplicates !== false) {
+        var groups = [], gOf = {};
+        var join = function (a, b) {
+          var ga = gOf[a.id], gb = gOf[b.id];
+          if (ga && gb) { if (ga !== gb) { gb.forEach(function (x) { ga.push(x); gOf[x.id] = ga; }); gb.length = 0; } }
+          else if (ga) { ga.push(b); gOf[b.id] = ga; } else if (gb) { gb.push(a); gOf[a.id] = gb; }
+          else { var g = [a, b]; groups.push(g); gOf[a.id] = gOf[b.id] = g; }
+        };
+        var byTrk = {}, byName = {};
+        devs.forEach(function (x) {
+          if (x.trk && x.trkSure) { if (byTrk[x.trk]) join(byTrk[x.trk], x); else byTrk[x.trk] = x; }
+          if (x.p !== 'mobile_app') (byName[slug(x.n)] = byName[slug(x.n)] || []).push(x);
+        });
+        devs.forEach(function (x) {
+          if (x.p !== 'mobile_app') return;
+          var same = (byName[slug(x.n)] || [])[0] || (x.trk && devs.filter(function (y) { return y !== x && y.p !== 'mobile_app' && y.trk === x.trk; })[0]);
+          if (same) join(same, x);
+        });
+        groups.forEach(function (g) {
+          if (g.length < 2) return;
+          // the entry that stays is the one Home Assistant controls the device through, not the app running on it
+          var main = g.slice().sort(function (a, b) { return (a.p === 'mobile_app') - (b.p === 'mobile_app') || b.ents.length - a.ents.length; })[0];
+          g.forEach(function (o) {
+            if (o === main) return;
+            main.also.push({ id: o.id, n: o.n, as: self._intName(o.p) });
+            if (o.p === 'mobile_app') { main.app = true; main.net = main.net || o.net; }
+            if (!main.trk) { main.trk = o.trk; main.trkSure = o.trkSure; }
+            if (!main.a) main.a = o.a;
+            o.hub.dv.splice(o.hub.dv.indexOf(o), 1); devs.splice(devs.indexOf(o), 1);
+          });
+        });
+      }
       // MQTT entities configured by hand without a device block have no device: draw each one as its own dot.
       if (cfg.mqtt_entities !== false && cfg.exclude_integrations.indexOf('mqtt') < 0) {
         var src = this._src || {}, loose = {};
@@ -810,7 +849,7 @@
         d.away = !d.off && !!d.trk && !!S[d.trk] && S[d.trk].state === 'not_home';
         // a phone or tablet on mobile data, or away from the home network, reaches Home Assistant over the internet
         d.cell = !d.off && !!d.net && !!S[d.net] && /cell|mobile/i.test(S[d.net].state);
-        d.remote = d.p === 'mobile_app' && (d.cell || d.away); if (d.remote) d.away = true;
+        d.remote = (d.p === 'mobile_app' && (d.cell || d.away)) || (!!d.app && d.cell); if (d.remote) d.away = true;
       });
     }
 
@@ -1598,6 +1637,7 @@
       this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M[h.m] + '">' + esc(t(h.m)) + '</div><h2>' + esc(d.n) + '</h2><dl class="kv">' +
         (d.mo ? '<dt>' + esc(t('model')) + '</dt><dd>' + esc(d.mo) + '</dd>' : '') + (d.a ? '<dt>' + esc(t('area')) + '</dt><dd>' + esc(d.a) + '</dd>' : '') +
         '<dt>' + esc(t('integration')) + '</dt><dd>' + esc(this._intName(d.p)) + '</dd>' +
+        (d.also && d.also.length ? '<dt>' + esc(t('alsoAs')) + '</dt><dd>' + esc(d.also.map(function (o) { return o.as; }).filter(function (v, i, l) { return l.indexOf(v) === i; }).join(', ')) + '</dd>' : '') +
         (d.entity ? '<dt>' + esc(t('entity')) + '</dt><dd style="word-break:break-all">' + esc(d.entity) + '</dd>' : '') +
         '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away);font-weight:600' : '') + '">' + esc(d.off ? t('offline') : d.recent ? t('recentLong') + ' ' + this._ago(d.seen) : d.remote ? t('remoteLong') : d.away ? t('awayLong') : t('online')) + '</dd>' +
         (d.meshParent && !d.ieee ? '<dt>' + esc(t('parentDev')) + '</dt><dd>' + esc(d.meshParent.n) + '</dd>' : '') +
@@ -1648,7 +1688,7 @@
       lines: 'Lines', lcloud: 'Internet links', llocal: 'Cable links', lradio: 'Radio links', lwifi: 'Wi-Fi links', solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted', width: 'Line width',
       sizes: 'Bubble sizes', score: 'Home Assistant', snetwork: 'Network nodes (router, coordinator, internet)', shub: 'Hubs and integrations', sdevice: 'Devices',
       content: 'What is shown', group_small: 'Group integrations with this many devices or fewer', show_trackers: 'Devices that only have a device tracker', show_mesh: 'Zigbee mesh routes',
-      mqtt_entities: 'MQTT entities without a device', recent_hours: 'Hours a silent battery device counts as seen recently (0: never)', exclude_integrations: 'Hidden integrations (domains, separated by commas)', router_name: 'Name of the local network node',
+      mqtt_entities: 'MQTT entities without a device', merge_duplicates: 'Draw a device set up through several integrations as one', recent_hours: 'Hours a silent battery device counts as seen recently (0: never)', exclude_integrations: 'Hidden integrations (domains, separated by commas)', router_name: 'Name of the local network node',
       coordinator_name: 'Name of the radio coordinator', demo: 'Demo installation', none: 'None (my installation)', yaml: 'names, overrides, exclude_devices and z2m_base_topic are edited in YAML.' },
     es: { general: 'General', title: 'Título', language: 'Idioma', auto: 'Automático', sort: 'Orden de las listas', byArea: 'Por pieza', byName: 'Por nombre',
       layout: 'Mapa', detailed: 'Detallado: cada equipo es un punto', compact: 'Compacto: una burbuja por hub', show_export: 'Botón para guardar el mapa como imagen', show_panel: 'Panel lateral', animations: 'Animaciones', minimap: 'Mini-mapa cuando no se ve el mapa completo', device_labels: 'Nombres de los equipos al acercar',
@@ -1656,7 +1696,7 @@
       lines: 'Líneas', lcloud: 'Enlaces por internet', llocal: 'Enlaces por cable', lradio: 'Enlaces por radio', lwifi: 'Enlaces Wi-Fi', solid: 'Continua', dashed: 'Segmentada', dotted: 'Punteada', width: 'Grosor de línea',
       sizes: 'Tamaño de las burbujas', score: 'Home Assistant', snetwork: 'Nodos de red (router, coordinador, internet)', shub: 'Hubs e integraciones', sdevice: 'Equipos',
       content: 'Qué se muestra', group_small: 'Agrupar integraciones con esta cantidad de equipos o menos', show_trackers: 'Equipos que solo tienen device tracker', show_mesh: 'Rutas de la malla Zigbee',
-      mqtt_entities: 'Entidades MQTT sin dispositivo', recent_hours: 'Horas en que un equipo a batería sin respuesta cuenta como visto hace poco (0: nunca)', exclude_integrations: 'Integraciones ocultas (dominios, separados por comas)', router_name: 'Nombre del nodo de red local',
+      mqtt_entities: 'Entidades MQTT sin dispositivo', merge_duplicates: 'Dibujar como uno solo un equipo configurado en varias integraciones', recent_hours: 'Horas en que un equipo a batería sin respuesta cuenta como visto hace poco (0: nunca)', exclude_integrations: 'Integraciones ocultas (dominios, separados por comas)', router_name: 'Nombre del nodo de red local',
       coordinator_name: 'Nombre del coordinador de radio', demo: 'Instalación de demostración', none: 'Ninguna (mi instalación)', yaml: 'names, overrides, exclude_devices y z2m_base_topic se editan en YAML.' }
   };
   var LINE = ['solid', 'dashed', 'dotted'];
@@ -1670,7 +1710,7 @@
     { p: 'lines.wifi', k: 'select', o: LINE, d: 'dotted', l: 'lwifi' }, { p: 'lines.radio', k: 'select', o: LINE, d: 'solid', l: 'lradio' }, { p: 'lines.width', k: 'range', min: 0.5, max: 6, step: 0.5, d: 2, l: 'width' },
     { sec: 'sizes' }, { p: 'sizes.core', k: 'range', min: 20, max: 80, step: 1, d: 56, l: 'score' }, { p: 'sizes.network', k: 'range', min: 16, max: 40, step: 1, d: 28, l: 'snetwork' },
     { p: 'sizes.hub', k: 'range', min: 14, max: 34, step: 1, d: 22, l: 'shub' }, { p: 'sizes.device', k: 'range', min: 3, max: 9, step: 0.2, d: 6.2, l: 'sdevice' },
-    { sec: 'content' }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'mqtt_entities', k: 'bool', d: true }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
+    { sec: 'content' }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'mqtt_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'bool', d: true }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
     { p: 'exclude_integrations', k: 'list' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
     { p: 'demo', k: 'select', o: [['', 'none'], ['unifi', 'UniFi'], ['fritz', 'FRITZ!Box'], ['large', '350']], d: '' }
   ];
