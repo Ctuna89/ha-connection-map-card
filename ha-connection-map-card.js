@@ -266,12 +266,18 @@
     '.spoke.meshl{animation:cmmesh 1s linear infinite}@keyframes cmmesh{to{stroke-dashoffset:10}}',
     '.enter{animation:cmpop .55s cubic-bezier(.2,.8,.3,1.35) backwards;transform-box:fill-box;transform-origin:center}',
     '@keyframes cmpop{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}',
-    '.dev circle{transition:transform .15s ease;transform-box:fill-box;transform-origin:center}.dev:hover circle{transform:scale(1.45)}',
-    '.hub .disc{transition:stroke-width .15s ease}.hub:hover .disc{stroke-width:4.5}',
+    '.dev circle{transition:transform .18s cubic-bezier(.2,.8,.3,1.3);transform-box:fill-box;transform-origin:center}.dev:hover circle,.dev.hov circle,.dev:focus-visible circle{transform:scale(1.7)}',
+    '.disc{transition:transform .18s cubic-bezier(.2,.8,.3,1.3),stroke-width .15s ease;transform-box:fill-box;transform-origin:center}',
+    '.hub:hover .disc,.hub.hov .disc,.hub:focus-visible .disc,.mnode:hover .disc,.mnode.hov .disc,.mnode:focus-visible .disc{transform:scale(1.14);stroke-width:4.5}',
+    '.dev:focus,.hub:focus,.mnode:focus{outline:none}.dev:focus-visible circle:last-of-type{stroke:var(--cm-ink);stroke-width:3}',
+    // focus + context: pointing at something keeps its whole path to Home Assistant bright and fades the rest, without hiding it
+    '.dev,.hub,.mnode,.edge,.spoke,.elbl{transition:opacity .18s ease}',
+    '.foc .dev:not(.on),.foc .hub:not(.on),.foc .mnode:not(.on),.foc .elbl{opacity:.2}.foc .edge:not(.on),.foc .spoke:not(.on){opacity:.14}.foc .edge:not(.on)+.flow{opacity:.04}',
+    '.foc .edge.on{stroke-opacity:.95;stroke-width:3.2}.foc .edge.on+.flow{opacity:.95;animation-duration:1.1s}.foc .spoke.on{stroke:var(--cm-muted);stroke-width:1.5}',
     '.dev.offline circle:last-of-type{animation:cmblink 2.4s ease-in-out infinite}@keyframes cmblink{50%{stroke-opacity:.25}}',
     '.dev.away circle:last-of-type{fill:var(--cm-bg)!important;stroke:var(--cm-away);stroke-width:2.2;stroke-dasharray:2.5 2}',
     '.still .flow{display:none}.still *{animation:none!important;transition:none!important}',
-    '@media (prefers-reduced-motion:reduce){.flow{display:none}.enter,.spoke.meshl,.dev circle{animation:none!important;transition:none!important}}',
+    '@media (prefers-reduced-motion:reduce){.flow{display:none}.enter,.spoke.meshl,.dev circle,.disc,.dev,.hub,.mnode,.edge,.spoke,.elbl{animation:none!important;transition:none!important}}',
     '.elbl{font-size:calc(10px / var(--k,1));font-weight:600;fill:var(--cm-muted);paint-order:stroke;stroke:var(--cm-bg);stroke-width:calc(4px / var(--k,1));stroke-linejoin:round}',
     '.dev{cursor:pointer}.dev circle{stroke:var(--cm-bg);stroke-width:1.5}',
     '.dev.offline circle{fill:var(--cm-bg)!important;stroke:var(--cm-bad);stroke-width:2.2}',
@@ -284,7 +290,7 @@
     '.dim{opacity:.12}',
     '.pulse{animation:cmpulse 2.4s ease-in-out infinite}@keyframes cmpulse{0%,100%{opacity:.3}50%{opacity:.85}}',
     '@media (prefers-reduced-motion:reduce){.pulse{animation:none}}',
-    '.tip{position:absolute;pointer-events:none;background:var(--cm-ink);color:var(--cm-bg);font-size:12px;padding:5px 8px;border-radius:7px;white-space:nowrap;transform:translate(-50%,-135%);display:none;z-index:3}'
+    '.tip{position:absolute;pointer-events:none;background:var(--cm-ink);color:var(--cm-bg);font-size:12px;padding:5px 8px;border-radius:7px;white-space:nowrap;transform:translate(-50%,calc(-100% - 14px));display:none;z-index:3;text-align:center;line-height:1.35}.tip b{display:block;font-weight:600}.tip span{opacity:.75;font-size:11px}'
   ].join('\n');
 
   class ConnectionMapCard extends HTMLElement {
@@ -761,7 +767,15 @@
       this._$('zin').title = t('zoomIn'); this._$('zout').title = t('zoomOut'); this._$('zfit').title = t('fit');
       if (!this._devs.length) { this._$('panel').innerHTML = '<div class="msg">' + esc(t('nodata')) + '</div>'; return; }
       this._layout();
-      svg.innerHTML = '';
+      svg.innerHTML = ''; svg.classList.remove('foc'); this._on = [];
+      // pointing at (or tabbing to) something: highlight its path and show a tooltip. Touch has no hover: a tap selects.
+      function hov(g, target, x, y, tip) {
+        function inn() { var a = tip(); self._focus(target); self._tip(x, y, a[0], a[1]); }
+        g.addEventListener('pointerenter', function (e) { if (e.pointerType === 'touch' || (self._drag && self._drag.on)) return; inn(); });
+        g.addEventListener('pointerleave', function () { self._unfocus(); });
+        g.addEventListener('focus', function () { if (g.matches(':focus-visible')) inn(); });
+        g.addEventListener('blur', function () { self._unfocus(); });
+      }
       function el(tag, a, p) { var e = document.createElementNS(NS, tag); for (var k in a) e.setAttribute(k, a[k]); (p || svg).appendChild(e); return e; }
       var gE = el('g'), gS = el('g'), gN = el('g'), gH = el('g'), gD = el('g');
       this._edges = [];
@@ -814,11 +828,10 @@
         el('circle', { cx: d.x, cy: d.y, r: 6.2, fill: M[d.hub.m] }, g); d.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selDev(d); });
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selDev(d); });
-        g.addEventListener('pointerenter', function () { self._tip(d.x, d.y, d.n + (d.off ? ' · ' + t('offline') : d.remote ? ' · ' + t('remote') : d.away ? ' · ' + t('away') : '')); });
-        g.addEventListener('pointerleave', function () { self._$('tip').style.display = 'none'; });
+        hov(g, d, d.x, d.y, function () { return [d.n, [d.off ? t('offline') : d.remote ? t('remote') : d.away ? t('away') : '', d.a, d.hub.kind === 'hub' ? d.hub.n : (d.via || self._intName(d.p))].filter(Boolean).join(' · ')]; });
       });
       // core
-      var gc = el('g', { 'class': 'mnode' }, gN);
+      var gc = el('g', { 'class': 'mnode', tabindex: 0, role: 'button', 'aria-label': 'Home Assistant' }, gN); this._coreG = gc;
       var small = this._cfg.core_size === 'compact'; // same size as the network nodes; version and host stay in the side panel
       el('circle', { cx: 0, cy: 0, r: small ? 36 : 70, fill: 'none', stroke: M.core, 'stroke-width': 2, 'class': 'pulse' }, gc);
       el('circle', { cx: 0, cy: 0, r: small ? 28 : 56, fill: M.core }, gc);
@@ -827,8 +840,10 @@
       var ts = el('text', { x: 0, y: 15, 'text-anchor': 'middle', style: 'fill:rgba(255,255,255,.88);font-size:10.5px' }, gc); ts.textContent = small ? '' : (this._hass.config && this._hass.config.version) || '';
       var th = el('text', { x: 0, y: 31, 'text-anchor': 'middle', id: 'coreHost', style: 'fill:rgba(255,255,255,.88);font-size:10.5px' }, gc); th.textContent = small ? '' : this._hostShort();
       gc.addEventListener('click', function (e) { e.stopPropagation(); self._selCore(); });
+      gc.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selCore(); });
+      hov(gc, { core: true }, 0, 0, function () { return ['Home Assistant', [(self._hass.config && self._hass.config.version) || '', self._hostShort()].filter(Boolean).join(' · ')]; });
       Object.keys(this._mnodes).forEach(function (m) {
-        var n = self._mnodes[m], g = el('g', { 'class': 'mnode' }, gN);
+        var n = self._mnodes[m], g = el('g', { 'class': 'mnode', tabindex: 0, role: 'button' }, gN); n.g = g;
         var down = m === 'local' && self._routers && self._routers.length && self._routers.every(function (r) { return r.off; });
         el('circle', { cx: n.x, cy: n.y, r: n.r, 'class': 'disc', stroke: down ? 'var(--cm-bad)' : M[m] }, g);
         var ic = el('text', { x: n.x, y: n.y + 4, 'text-anchor': 'middle', style: 'font-size:11px;font-weight:700;fill:' + M[m] }, g);
@@ -839,17 +854,23 @@
         if (m === 'radio' && self._coord) sub = t('coordinator');
         tlabel(g, n.x, n.y, n.r + 2, below, name.length > 30 ? name.slice(0, 29) + '…' : name, sub, false, 0);
         obst.push({ x: n.x, y: n.y, r: n.r + 2 });
-        g.addEventListener('click', function (e) { e.stopPropagation(); if (m === 'local' && self._router) self._selRouter(self._router); else self._selMedium(m); });
+        function pick() { if (m === 'local' && self._router) self._selRouter(self._router); else self._selMedium(m); }
+        g.setAttribute('aria-label', name);
+        g.addEventListener('click', function (e) { e.stopPropagation(); pick(); });
+        g.addEventListener('keydown', function (e) { if (e.key === 'Enter') pick(); });
+        hov(g, { node: n }, n.x, n.y - n.r, function () { return [name, sub]; });
       });
       Object.keys(this._rnodes || {}).forEach(function (k) {
         var n = self._rnodes[k]; if (!n.router) return; var r = n.router;
-        var g = el('g', { 'class': 'mnode' }, gN);
+        var g = el('g', { 'class': 'mnode', tabindex: 0, role: 'button', 'aria-label': r.n }, gN); n.g = g;
         el('circle', { cx: n.x, cy: n.y, r: n.r, 'class': 'disc', stroke: r.off ? 'var(--cm-bad)' : M.local }, g);
         var ic = el('text', { x: n.x, y: n.y + 4, 'text-anchor': 'middle', style: 'font-size:9.5px;font-weight:700;fill:' + M.local }, g); ic.textContent = 'AP';
         var below = Math.sin(deg(n.ac)) >= 0;
         tlabel(g, n.x, n.y, n.r + 2, below, r.n, '', true, 1);
         obst.push({ x: n.x, y: n.y, r: n.r + 2 });
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selRouter(r); });
+        g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selRouter(r); });
+        hov(g, { node: n }, n.x, n.y - n.r, function () { return [r.n, r.off ? t('offline') : t('routerDesc')]; });
       });
       this._hubs.forEach(function (h, i) {
         var g = el('g', { 'class': 'hub' + (first ? ' enter' : ''), tabindex: 0, role: 'button', 'aria-label': h.n, style: first ? 'animation-delay:' + (80 + i * 45) + 'ms' : '' }, gH);
@@ -861,6 +882,7 @@
         h.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selHub(h); });
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selHub(h); });
+        hov(g, h, h.x, h.y - 22, function () { var off = h.dv.filter(function (d) { return d.off; }).length; return [h.n, [h.kind === 'hub' ? h.sub : '', h.dv.length + ' ' + t('devices'), off ? off + ' ' + t('offline').toLowerCase() : ''].filter(Boolean).join(' · ')]; });
       });
       obst.push({ x: 0, y: 0, r: small ? 30 : 58 });
       if (first) this._fit(); else this._setVB();
@@ -972,10 +994,36 @@
       var nw = Math.min(this._vb0.w * 1.6, Math.max(this._vb0.w * 0.15, v.w * f)), k = nw / v.w;
       this._vb = { x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k, w: nw, h: v.h * k }; this._setVB();
     }
-    _tip(x, y, txt) {
+    _tip(x, y, title, sub) {
       var svg = this._$('svg'), pt = svg.createSVGPoint(); pt.x = x; pt.y = y; var s = pt.matrixTransform(svg.getScreenCTM());
       var b = this._$('map').getBoundingClientRect(), tip = this._$('tip');
-      tip.style.left = (s.x - b.left) + 'px'; tip.style.top = (s.y - b.top) + 'px'; tip.textContent = txt; tip.style.display = 'block';
+      tip.style.left = (s.x - b.left) + 'px'; tip.style.top = (s.y - b.top) + 'px';
+      tip.innerHTML = '<b>' + esc(title) + '</b>' + (sub ? '<span>' + esc(sub) + '</span>' : ''); tip.style.display = 'block';
+    }
+    // Highlight a device, hub or network node together with everything on its path to Home Assistant; the rest fades.
+    _focus(tg) {
+      clearTimeout(this._ft); this._unmark();
+      if (!tg || tg.core) { this._$('svg').classList.remove('foc'); return; }
+      var self = this, on = [this._coreG];
+      function dev(d) { on.push(d.g, d.spoke); var p = d.meshParent, n = 0; while (p && n++ < 6) { on.push(p.g, p.spoke); p = p.meshParent; } }
+      function hub(h) { on.push(h.g, h.edge); if (h.from) on.push(h.from.g, h.from.edge); var m = self._mnodes[h.m]; if (m) on.push(m.g, m.edge); }
+      var own = tg.node ? tg.node.g : tg.g;
+      if (tg.dv) { tg.dv.forEach(dev); hub(tg); }
+      else if (tg.node) {
+        var n = tg.node, loc = this._mnodes.local; on.push(n.g, n.edge);
+        if (n.router && loc) on.push(loc.g, loc.edge);
+        if (n === loc) Object.keys(this._rnodes || {}).forEach(function (k) { on.push(self._rnodes[k].g, self._rnodes[k].edge); });
+        this._hubs.forEach(function (h) { if (n.router ? h.from === n : h.m === n.m) { h.dv.forEach(dev); hub(h); } });
+      } else if (tg.hub) { dev(tg); hub(tg.hub); }
+      else return;
+      on.forEach(function (e) { if (e) e.classList.add('on'); });
+      if (own) own.classList.add('hov');
+      this._on = on; this._hov = own; this._$('svg').classList.add('foc');
+    }
+    _unmark() { (this._on || []).forEach(function (e) { if (e) e.classList.remove('on'); }); this._on = []; if (this._hov) this._hov.classList.remove('hov'); this._hov = null; }
+    _unfocus() {
+      var self = this; clearTimeout(this._ft);
+      this._ft = setTimeout(function () { self._unmark(); self._$('svg').classList.remove('foc'); self._$('tip').style.display = 'none'; }, 70);
     }
 
     _filters() {
@@ -1015,8 +1063,15 @@
     }
     _bind() {
       var self = this, p = this._$('panel');
-      p.querySelectorAll('.item[data-id]').forEach(function (b) { b.onclick = function () { self._selDev(self._devs.find(function (d) { return d.id === b.dataset.id; })); }; });
-      p.querySelectorAll('[data-hub]').forEach(function (b) { b.onclick = function () { self._selHub(self._hubs.find(function (h) { return h.key === b.dataset.hub; })); }; });
+      // the list and the map are linked: pointing at a row highlights that device or hub on the map
+      function link(b, target, pick) {
+        if (!target) return;
+        b.onclick = function () { self._unfocus(); pick(target); };
+        b.onpointerenter = function (e) { if (e.pointerType === 'touch') return; self._focus(target); self._$('tip').style.display = 'none'; };
+        b.onpointerleave = function () { self._unfocus(); };
+      }
+      p.querySelectorAll('.item[data-id]').forEach(function (b) { link(b, self._devs.find(function (d) { return d.id === b.dataset.id; }), function (d) { self._selDev(d); }); });
+      p.querySelectorAll('[data-hub]').forEach(function (b) { link(b, self._hubs.find(function (h) { return h.key === b.dataset.hub; }), function (h) { self._selHub(h); }); });
       var bk = p.querySelector('#back'); if (bk) bk.onclick = function () { self._reset(); };
     }
     _route(arr) { return '<div class="route">' + arr.map(function (x, i) { return (i ? '<em>→</em>' : '') + '<span>' + esc(x) + '</span>'; }).join('') + '</div>'; }
