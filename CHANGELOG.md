@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.7.1 — 2026-11-15
+
+Fixes from the reports that followed 0.7.0, most of them from one very thorough comparison of a real installation against the map.
+
+### Added
+
+- **Devices without entities** are drawn: a remote that only sends events (Lutron Pico), a lock its integration cannot control (Tuya). Their panel says they have no entities, and they are never reported offline (`devices_without_entities`).
+- **Entities without a device**, for any integration that talks to devices or hubs and not only MQTT (Obihai, some custom integrations): each thing you can operate (light, switch, lock, …) is a dot, and the integration's plain sensors are one dot. Needs an admin user, since it relies on the integration list (`entities_without_device`).
+- Two more rules, checked by the tests: **dots never sit on top of each other**, and **a group's own link reaches its bubble without running over its dots**.
+
+### Fixed
+
+- The outlets of a power strip, and the devices behind a Zigbee router in small meshes, could be drawn on top of neighbouring dots and of the group's bubble. A device with children now sits on a ring with its children on the next ring out, inside its own slice of the circle.
+- The link of a group ran between its dots, and under some of them. Every group now keeps a free lane, turned towards its link.
+- A two-outlet plug whose own entry has no entities (TP-Link EP40) was left as a separate hub instead of being drawn inside its integration's group.
+- A device set up through several integrations was drawn once per integration, for example an Android TV through its own integration and through the companion app, or a phone known to two integrations. They are now one dot, and the panel says what else the device is set up as (`merge_duplicates`).
+- In a home with many integrations, small groups are folded into "Other ..." to keep the map readable. That also swallowed Z-Wave (shown as "Other radio devices") and the phones (lost inside "Other local devices"). Radio integrations and mobile devices now always keep their own group.
+- A phone whose companion app only has its device tracker enabled was not drawn at all.
+- The path of a Z-Wave, EnOcean or 433 MHz device no longer goes through the Zigbee coordinator, and those groups link straight to Home Assistant when the radio node is a Zigbee coordinator.
+
+### Not verified on real hardware
+
+As with 0.7.0, this was tested with simulated installations built from the reports, not on the hardware itself. In particular: the TP-Link EP40, Lutron Pico remotes, Tuya locks, Obihai, and the merging of duplicated Android devices. Reports are welcome.
+
 ## 0.7.0 — 2026-11-15
 
 This release starts from the feedback in the r/homeassistant thread and adds rules the map must keep, with a test suite to hold them.

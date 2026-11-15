@@ -173,3 +173,115 @@ test('Netgear / Orbi: clients are placed behind the satellite named by their acc
   assert.deepEqual(await H.linkProblems(page), []);
   await page.close();
 });
+
+test('a device set up through several integrations is drawn once', async () => {
+  const page = await H.newPage(browser);
+  const mount = (config) => page.evaluate(async (config) => {
+    const devices = {}, entities = {}, states = {};
+    const dev = (id, name, o = {}) => { devices[id] = { id, name, manufacturer: o.mf || '', model: o.mo || '', via_device_id: null, connections: o.mac ? [['mac', o.mac]] : [], identifiers: [], disabled_by: null, area_id: null }; };
+    const ent = (eid, device_id, platform, state, attributes) => { entities[eid] = { entity_id: eid, device_id, platform }; states[eid] = { entity_id: eid, state, attributes: attributes || {} }; };
+    dev('gw', 'UDM Gateway', { mac: 'aa:00:00:00:00:01' }); ent('sensor.gw_a', 'gw', 'unifi', '1'); ent('sensor.gw_b', 'gw', 'unifi', '1');
+    // a TV: its own integration, and the companion app running on it (same name, different capitals, another model text)
+    dev('tv', 'Sony XR-55A84L', { mf: 'Sony', mo: 'XR-55A84L' }); ent('media_player.tv', 'tv', 'braviatv', 'on'); ent('remote.tv', 'tv', 'braviatv', 'on');
+    dev('tvapp', 'SONY XR-55A84L', { mf: 'Sony', mo: 'BRAVIA 4K VH22' }); for (let i = 0; i < 6; i++) ent('sensor.tvapp_' + i, 'tvapp', 'mobile_app', '1');
+    // a phone: the companion app, on mobile data, and a second integration under the same name
+    dev('phoneapp', 'Pixel 9'); for (let i = 0; i < 5; i++) ent('sensor.pixel_9_' + i, 'phoneapp', 'mobile_app', '1'); ent('sensor.pixel_9_network_type', 'phoneapp', 'mobile_app', 'cellular');
+    dev('phoneadb', 'Pixel 9'); ent('media_player.pixel_adb', 'phoneadb', 'androidtv', 'on');
+    // a speaker known to two integrations by the same network address
+    dev('spk1', 'Kitchen speaker', { mac: 'aa:00:00:00:00:10' }); ent('media_player.spk1', 'spk1', 'cast', 'on'); ent('sensor.spk1', 'spk1', 'cast', 'on');
+    dev('spk2', 'Nest Mini', { mac: 'aa:00:00:00:00:10' }); ent('media_player.spk2', 'spk2', 'dlna_dmr', 'on');
+    ent('device_tracker.kitchen_speaker', null, 'unifi', 'home', { mac: 'aa:00:00:00:00:10' });
+    // two different lamps that happen to share a name: not the same device
+    dev('l1', 'Lamp'); ent('light.l1', 'l1', 'wiz', 'on'); dev('l2', 'Lamp'); ent('light.l2', 'l2', 'wiz', 'on');
+    const man = ['unifi', 'braviatv', 'mobile_app', 'androidtv', 'cast', 'dlna_dmr', 'wiz'].map((d) => ({ domain: d, name: { braviatv: 'Sony Bravia TV', mobile_app: 'Mobile App', androidtv: 'Android Debug Bridge' }[d] || d, iot_class: 'local_push' }));
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig(Object.assign({ animations: false, group_small: 0 }, config)); host.appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+    const by = (n) => c._devs.filter((d) => d.n === n);
+    return { names: c._devs.map((d) => d.n).sort(), tv: by('Sony XR-55A84L').map((d) => ({ as: c._intName(d.p), also: d.also.map((o) => o.as) })),
+      phone: by('Pixel 9').map((d) => ({ as: c._intName(d.p), also: d.also.map((o) => o.as), remote: d.remote, path: c._pathOf(d).join(' > ') })),
+      speaker: by('Kitchen speaker').map((d) => d.also.map((o) => o.n)), groups: c._hubs.map((h) => h.n).sort() };
+  }, config);
+  const r = await mount({});
+  assert.deepEqual(r.names, ['Kitchen speaker', 'Lamp', 'Lamp', 'Pixel 9', 'Sony XR-55A84L']);
+  assert.deepEqual(r.tv, [{ as: 'Sony Bravia TV', also: ['Mobile devices'] }]);
+  assert.equal(r.phone.length, 1);
+  assert.deepEqual(r.phone[0].also, ['Mobile devices']);
+  assert.equal(r.phone[0].remote, true, 'its app says it is on mobile data');
+  assert.match(r.phone[0].path, /Mobile data > Internet > Home Assistant$/);
+  assert.deepEqual(r.speaker, [['Nest Mini']]);
+  assert.ok(!r.groups.includes('Mobile devices'), 'no empty group is left behind');
+  assert.equal((await mount({ merge_duplicates: false })).names.length, 8);
+  await page.close();
+});
+
+test('in a big home, radios and phones keep their own group, and Z-Wave does not go through the Zigbee coordinator', async () => {
+  const page = await H.newPage(browser);
+  const r = await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {}, man = []; let n = 0;
+    const dev = (name, platform, o = {}) => { const id = 'd' + (++n); devices[id] = { id, name, via_device_id: o.via || null, connections: [], identifiers: [], disabled_by: null, area_id: null };
+      (o.ents || ['sensor.e' + n]).forEach((e) => { entities[e] = { entity_id: e, device_id: id, platform }; states[e] = { entity_id: e, state: 'on', attributes: {} }; }); return id; };
+    const integ = (domain, name, iot) => man.push({ domain, name, iot_class: iot || 'local_push' });
+    for (let i = 0; i < 34; i++) { integ('loc' + i, 'Local ' + i); dev('Thing ' + i, 'loc' + i); dev('Thing ' + i + 'b', 'loc' + i); dev('Thing ' + i + 'c', 'loc' + i); dev('Thing ' + i + 'd', 'loc' + i); }
+    integ('zwave_js', 'Z-Wave'); dev('Z-Wave lock', 'zwave_js'); dev('Z-Wave dimmer', 'zwave_js');
+    integ('zha', 'Zigbee Home Automation'); const zc = dev('ZHA coordinator', 'zha'); dev('Zigbee plug', 'zha', { via: zc }); dev('Zigbee bulb', 'zha', { via: zc });
+    dev('Home Assistant SkyConnect', 'homeassistant_sky_connect');
+    integ('mobile_app', 'Mobile App'); dev('Pixel 9', 'mobile_app', { ents: ['sensor.pixel_a', 'sensor.pixel_b'] }); dev('iPhone', 'mobile_app', { ents: ['device_tracker.iphone'] }); // only its tracker is enabled
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false }); document.getElementById('host').appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((res) => setTimeout(res, 25));
+    const by = (name) => c._devs.find((d) => d.n === name);
+    return { groups: c._hubs.map((h) => h.n), zwave: c._pathOf(by('Z-Wave lock')).join(' > '), zigbee: c._pathOf(by('Zigbee plug')).join(' > '), phones: c._devs.filter((d) => d.p === 'mobile_app').map((d) => d.hub.n + ': ' + d.n).sort() };
+  });
+  assert.ok(r.groups.includes('Z-Wave'), 'Z-Wave has its own group');
+  assert.ok(!r.groups.includes('Other radio devices'));
+  assert.equal(r.zwave, 'Z-Wave lock > Z-Wave > Home Assistant');
+  assert.equal(r.zigbee, 'Zigbee plug > SkyConnect > ZHA coordinator > Home Assistant');
+  assert.deepEqual(r.phones, ['Mobile devices: Pixel 9', 'Mobile devices: iPhone']);
+  assert.deepEqual(await H.linkProblems(page), []);
+  await page.close();
+});
+
+test('devices without entities and entities without a device are on the map', async () => {
+  const page = await H.newPage(browser);
+  const mount = (config) => page.evaluate(async (config) => {
+    const devices = {}, entities = {}, states = {};
+    const dev = (id, name, domain, o = {}) => { devices[id] = { id, name, via_device_id: o.via || null, entry_type: o.service ? 'service' : null, connections: [], identifiers: [[domain, id]], disabled_by: null, area_id: null }; };
+    const ent = (eid, device_id, platform, name) => { entities[eid] = { entity_id: eid, device_id, platform }; states[eid] = { entity_id: eid, state: 'on', attributes: { friendly_name: name || eid } }; };
+    // Lutron: a bridge, two dimmers with entities and two Pico remotes that only send events
+    dev('bridge', 'Caseta Bridge', 'lutron_caseta'); ent('sensor.bridge', 'bridge', 'lutron_caseta');
+    for (const n of ['Hall dimmer', 'Porch dimmer']) { dev(n, n, 'lutron_caseta', { via: 'bridge' }); ent('light.' + n.replace(' ', '_'), n, 'lutron_caseta'); }
+    for (const n of ['Hall Pico', 'Bedroom Pico']) dev(n, n, 'lutron_caseta', { via: 'bridge' });
+    // Tuya: a plug with entities and a lock the integration creates nothing for
+    dev('plug', 'Tuya plug', 'tuya'); ent('switch.tuya_plug', 'plug', 'tuya'); dev('lock', 'Front door lock', 'tuya');
+    // a two-outlet plug whose own entry has no entities, next to enough plugs of the same integration
+    dev('ep40', 'Patio EP40', 'tplink'); for (const n of ['Patio left', 'Patio right']) { dev(n, n, 'tplink', { via: 'ep40' }); ent('switch.' + n.replace(' ', '_'), n, 'tplink'); }
+    for (let i = 0; i < 4; i++) { dev('kp' + i, 'Plug ' + i, 'tplink'); ent('switch.kp' + i, 'kp' + i, 'tplink'); }
+    // integrations that give their entities no device: an ATA box with sensors only, lights from a custom integration
+    for (const n of ['status', 'reboot_cause', 'last_caller']) ent('sensor.obihai_' + n, null, 'obihai');
+    ent('light.daybetter_strip', null, 'daybetter', 'Desk strip'); ent('light.daybetter_bulb', null, 'daybetter', 'Reading bulb'); ent('sensor.daybetter_rssi', null, 'daybetter');
+    // not devices: a helper, the sun, a service
+    ent('input_boolean.guests', null, 'input_boolean'); ent('sun.sun', null, 'sun'); ent('sensor.steps', null, 'google_health'); dev('room', 'Living room', 'hue', { service: true });
+    const man = [['lutron_caseta', 'Lutron Caséta', 'hub'], ['tuya', 'Tuya', 'hub', 'cloud_push'], ['tplink', 'TP-Link Smart Home', 'hub'], ['obihai', 'Obihai', 'device'], ['daybetter', 'DayBetter'], ['input_boolean', 'Toggle', 'helper'], ['sun', 'Sun', 'service'], ['google_health', 'Google Health', 'service', 'cloud_polling'], ['hue', 'Philips Hue', 'hub']]
+      .map((m) => ({ domain: m[0], name: m[1], integration_type: m[2], iot_class: m[3] || 'local_push' }));
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig(Object.assign({ animations: false, group_small: 0 }, config)); host.appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+    const by = (n) => c._devs.find((d) => d.n === n), path = (n) => by(n) && c._pathOf(by(n)).join(' > ');
+    return { names: c._devs.map((d) => d.n).sort(), pico: path('Hall Pico'), lock: by('Front door lock') && [by('Front door lock').hub.n, by('Front door lock').bare, by('Front door lock').off],
+      ep40: path('Patio left'), obihai: by('Obihai') && by('Obihai').mo, daybetter: c._devs.filter((d) => d.p === 'daybetter').map((d) => d.n + (d.mo ? ' (' + d.mo + ')' : '')).sort() };
+  }, config);
+  const r = await mount({});
+  assert.equal(r.pico, 'Hall Pico > Caseta Bridge > Lutron Caséta > Local network > Home Assistant');
+  assert.deepEqual(r.lock, ['Tuya', true, false], 'drawn in its integration, and never reported offline: there is nothing to tell');
+  assert.equal(r.ep40, 'Patio left > Patio EP40 > TP-Link Smart Home > Local network > Home Assistant');
+  assert.equal(r.obihai, '3 entities without a device');
+  assert.deepEqual(r.daybetter, ['DayBetter (1 entities without a device)', 'Desk strip', 'Reading bulb']);
+  for (const n of ['guests', 'sun', 'steps', 'Living room', 'Google Health', 'Sun', 'Toggle']) assert.ok(!r.names.some((x) => x.includes(n)), n + ' is not a device');
+  assert.deepEqual(await H.linkProblems(page), []);
+  const off = await mount({ devices_without_entities: false, entities_without_device: false });
+  for (const n of ['Hall Pico', 'Front door lock', 'Obihai', 'Desk strip']) assert.ok(!off.names.includes(n), n + ' is hidden when the options are off');
+  await page.close();
+});

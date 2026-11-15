@@ -44,7 +44,9 @@ async function mountRandom(page, seed) {
     if (hasRouter) { man.push({ domain: 'unifi', name: 'UniFi', iot_class: 'local_push' }); dev('unifi', 'UDM Gateway', { mac: mac(), ents: 6 }); for (let i = 0; i < nAp; i++) { const m = mac(); aps.push(m); dev('unifi', 'AP ' + i, { mac: m, ents: 4 }); } }
     const pickAp = (bias) => !aps.length || rnd() < 0.25 ? null : (bias != null && rnd() < 0.8 ? aps[bias] : aps[ri(0, aps.length - 1)]);
     for (let i = 0, n = ri(1, 14); i < n; i++) { const d = 'loc' + i; man.push({ domain: d, name: 'Local ' + i, iot_class: 'local_push' }); const bias = aps.length ? ri(0, aps.length - 1) : null;
-      for (let k = 0, c = ri(1, rnd() < 0.2 ? 45 : 12); k < c; k++) { const m = mac(); dev(d, d + '.' + k, { mac: m }); if (hasRouter) trk(m, pickAp(bias)); } }
+      for (let k = 0, c = ri(1, rnd() < 0.2 ? 45 : 12); k < c; k++) { const m = mac(); dev(d, d + '.' + k, { mac: m }); if (hasRouter) trk(m, pickAp(bias)); }
+      // power strips: a device of the same integration with outlets of its own (drawn as a family inside the group)
+      for (let k = 0, c = rnd() < 0.35 ? ri(1, 4) : 0; k < c; k++) { const st = dev(d, d + ' strip ' + k, { mac: mac(), ents: 2 }); for (let q = 0, w = ri(2, 8); q < w; q++) dev(d, d + ' strip ' + k + ' outlet ' + q, { via: st }); } }
     for (let i = 0, n = ri(0, 4); i < n; i++) { const d = 'hubint' + i; man.push({ domain: d, name: 'HubInt ' + i, iot_class: 'local_push' }); const m = mac(); const h = dev(d, 'Bridge ' + i, { mac: m, ents: 2 }); if (hasRouter) trk(m, pickAp());
       for (let k = 0, c = ri(2, 50); k < c; k++) dev(d, 'child ' + i + '.' + k, { via: h }); }
     for (let i = 0, n = ri(0, 9); i < n; i++) { const d = 'cl' + i; man.push({ domain: d, name: 'Cloud ' + i, iot_class: 'cloud_push' }); for (let k = 0, c = ri(1, 15); k < c; k++) dev(d, d + '.' + k); }
@@ -82,6 +84,17 @@ function linkProblems(page) {
     c._hubs.forEach((h) => D.push({ o: h, r: h.outer + Z.dev, n: h.n }));
     E.forEach((e) => D.forEach((d) => { if (d.o === e.a || d.o === e.b) return; const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y, t = Math.max(0, Math.min(1, ((d.o.x - e.a.x) * dx + (d.o.y - e.a.y) * dy) / (dx * dx + dy * dy)));
       if (Math.hypot(d.o.x - e.a.x - t * dx, d.o.y - e.a.y - t * dy) < d.r) out.push('link over a bubble: ' + e.n + ' over ' + d.n); }));
+    // Rule 3: dots never sit on top of each other, or on their hub's bubble.
+    const drawn = c._devs.filter((d) => d.g);
+    for (let i = 0; i < drawn.length; i++) {
+      const a = drawn[i]; if (Math.hypot(a.x - a.hub.x, a.y - a.hub.y) < Z.hub + Z.dev - 0.5) out.push('dot on its hub: ' + a.n);
+      for (let j = i + 1; j < drawn.length; j++) if (Math.hypot(a.x - drawn[j].x, a.y - drawn[j].y) < 2 * Z.dev - 0.5) out.push('dots overlap: ' + a.n + ' × ' + drawn[j].n);
+    }
+    // Rule 4: a group's own link reaches its bubble without running over its dots or crossing their lines.
+    c._hubs.forEach((h) => { const e = { a: h.from || core, b: h };
+      drawn.forEach((d) => { if (d.hub !== h) return; const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y, t = Math.max(0, Math.min(1, ((d.x - e.a.x) * dx + (d.y - e.a.y) * dy) / (dx * dx + dy * dy)));
+        if (Math.hypot(d.x - e.a.x - t * dx, d.y - e.a.y - t * dy) < Z.dev) out.push('link over a dot of its own group: ' + h.n + ' over ' + d.n); });
+      S.forEach((sp) => { if (sp.hub === h && sp.a !== h && X(e, sp)) out.push('link crosses a line of its own group: ' + h.n + ' × ' + sp.n); }); });
     if (c._linkProblems) out.push('the card itself reports ' + c._linkProblems + ' link problems');
     return out;
   });
