@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.7.1';
+  var VERSION = '0.7.2';
 
   var STR = {
     en: {
