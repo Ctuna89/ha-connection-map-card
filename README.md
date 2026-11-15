@@ -120,7 +120,8 @@ All of these, except `names`, `overrides`, `exclude_devices` and `z2m_base_topic
 | Group | Rule |
 | --- | --- |
 | **Local radio** | The device belongs to a radio integration (ZHA, Z-Wave JS, deCONZ, Insteon, …) or is an MQTT device behind a Zigbee2MQTT bridge. |
-| **Bluetooth** (in local radio) | The device is registered by its Bluetooth address and has no network address (SwitchBot, Xiaomi BLE, Govee, Inkbird, …), whatever integration it belongs to. Bluetooth proxies are not shown yet: the group links straight to Home Assistant. Use `overrides` to move an integration elsewhere. |
+| **Bluetooth** (in local radio) | The device is registered by its Bluetooth address and has no network address (SwitchBot, Xiaomi BLE, Govee, Inkbird, …), whatever integration it belongs to. For an admin user the card asks Home Assistant which receiver hears each device best, and draws it behind that Bluetooth adapter or proxy (for example an ESP32 running ESPHome), with its signal (RSSI); the path then continues through the proxy's own Wi-Fi link. Devices not heard yet stay in a plain *Bluetooth* group. Use `overrides` to move an integration elsewhere. |
+| **Thread** (in local radio) | A Matter device whose diagnostics report the Thread network. Matter devices on Wi-Fi or Ethernet stay in the local network. The border router is not shown. |
 | **Internet** | The integration's `iot_class` is `cloud_push` or `cloud_polling`. |
 | **Local network** | Everything else (`local_push`, `local_polling`). |
 
