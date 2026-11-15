@@ -16,6 +16,7 @@ Most network maps show one protocol at a time. This card draws all of them in on
 - **Zigbee mesh (Zigbee2MQTT and ZHA).** The card reads the Zigbee network map and shows which router (repeater) each device goes through, with its link quality (LQI).
 - **Coordinator details.** The radio node shows the real adapter (for example *Connect ZBT-1* or *Sonoff Zigbee 3.0 USB Dongle Plus*), its stack and firmware, read from Zigbee2MQTT or ZHA.
 - **Links never cross.** Two links never cross each other, and a link never runs over a bubble that is not one of its ends. The layout is built for that and checks itself: an access point that has no clean place is left off the map (its hubs hang from the router, and the router's panel still lists it).
+- **Nothing is left out silently.** If an access point or a label is not drawn for lack of room, a warning under the map says how many, with a shortcut to the router's panel or to zoom in.
 - **Scales to big homes.** Large hubs are drawn as rings instead of trees, tiny integrations are grouped automatically when there are many, and access points sit next to the hubs they serve.
 - **Demo mode.** `demo: unifi`, `demo: fritz` or `demo: large` draws a synthetic installation, so you can see what the card does with hardware you don't have.
 - **Live status.** Offline devices (all entities `unavailable`) are outlined in red and listed in the side panel. Devices that your router reports as disconnected get a dashed amber ring (off the network: powered off or sleeping).

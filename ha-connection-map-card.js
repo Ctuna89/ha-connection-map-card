@@ -32,7 +32,9 @@
       network: 'Network', wired: 'Ethernet', wifi: 'Wi-Fi', ip: 'IP address', cable: 'Cable', connectedHere: 'Connected to this node',
       routerDesc: 'Access point / mesh node of your network.', backhaul: 'Link to main router',
       away: 'Off the network', awayLong: 'Not connected to the network right now (off or sleeping)', mobile: 'Mobile devices', remote: 'Away · via internet', remoteLong: 'Away from your network: reaches Home Assistant over the internet', mobileData: 'Mobile data',
-      sortName: 'Sort: name', sortArea: 'Sort: area', parentDev: 'Part of', entity: 'Entity', openEntity: 'Open entity', bluetooth: 'Bluetooth', btDesc: 'Bluetooth devices: Home Assistant hears them directly or through a Bluetooth proxy.', btProxy: 'Bluetooth proxy', btAdapter: 'Bluetooth adapter', btSignal: 'Signal (RSSI)',
+      sortName: 'Sort: name', sortArea: 'Sort: area', parentDev: 'Part of', entity: 'Entity', openEntity: 'Open entity', noRoomAp1: '1 access point is not drawn: there is no room for it without crossing links.', noRoomAp: 'access points are not drawn: there is no room for them without crossing links.', noRoomSee: 'See them in the router panel',
+      noRoomName1: '1 label is hidden at this zoom: there is no room for it.', noRoomName: 'labels are hidden at this zoom: there is no room for them.', noRoomZoom: 'Zoom in to see them', notDrawn: 'Not drawn',
+      bluetooth: 'Bluetooth', btDesc: 'Bluetooth devices: Home Assistant hears them directly or through a Bluetooth proxy.', btProxy: 'Bluetooth proxy', btAdapter: 'Bluetooth adapter', btSignal: 'Signal (RSSI)',
       btHeard: 'Devices that this Bluetooth receiver hears best right now.', threadDesc: 'Matter devices on the Thread mesh. They reach Home Assistant through a Thread border router.', mqttManual: 'MQTT entity without a device'
     },
     es: {
@@ -56,7 +58,9 @@
       network: 'Red', wired: 'Cable (Ethernet)', wifi: 'Wi-Fi', ip: 'Dirección IP', cable: 'Cable', connectedHere: 'Conectados a este nodo',
       routerDesc: 'Punto de acceso / nodo de la red.', backhaul: 'Enlace al router principal',
       away: 'Fuera de la red', awayLong: 'No está conectado a la red ahora (apagado o en reposo)', mobile: 'Dispositivos móviles', remote: 'Fuera de casa · vía internet', remoteLong: 'Fuera de tu red: llega a Home Assistant por internet', mobileData: 'Datos móviles',
-      sortName: 'Orden: nombre', sortArea: 'Orden: pieza', parentDev: 'Parte de', entity: 'Entidad', openEntity: 'Abrir entidad', bluetooth: 'Bluetooth', btDesc: 'Equipos Bluetooth: Home Assistant los escucha directo o a través de un proxy Bluetooth.', btProxy: 'Proxy Bluetooth', btAdapter: 'Adaptador Bluetooth', btSignal: 'Señal (RSSI)',
+      sortName: 'Orden: nombre', sortArea: 'Orden: pieza', parentDev: 'Parte de', entity: 'Entidad', openEntity: 'Abrir entidad', noRoomAp1: '1 punto de acceso no se dibuja: no hay espacio para él sin cruzar líneas.', noRoomAp: 'puntos de acceso no se dibujan: no hay espacio para ellos sin cruzar líneas.', noRoomSee: 'Verlos en el panel del router',
+      noRoomName1: '1 etiqueta está oculta con este zoom: no hay espacio para ella.', noRoomName: 'etiquetas están ocultas con este zoom: no hay espacio para ellas.', noRoomZoom: 'Acerca el mapa para verlas', notDrawn: 'No dibujado',
+      bluetooth: 'Bluetooth', btDesc: 'Equipos Bluetooth: Home Assistant los escucha directo o a través de un proxy Bluetooth.', btProxy: 'Proxy Bluetooth', btAdapter: 'Adaptador Bluetooth', btSignal: 'Señal (RSSI)',
       btHeard: 'Equipos que este receptor Bluetooth escucha mejor en este momento.', threadDesc: 'Equipos Matter en la malla Thread. Llegan a Home Assistant a través de un border router Thread.', mqttManual: 'Entidad MQTT sin dispositivo'
     }
   };
@@ -264,6 +268,8 @@
     '.dl{font-size:calc(10px / var(--k,1));fill:var(--cm-ink);pointer-events:none;paint-order:stroke;stroke:var(--cm-bg);stroke-width:calc(3px / var(--k,1));stroke-linejoin:round;dominant-baseline:middle}',
     '.foc .dl{opacity:.25}',
     '.zoom .btn{padding:3px 10px;font-weight:700}',
+    '.note{display:none;font-size:12.5px;color:var(--cm-ink);background:rgba(255,166,0,.16);border-top:1px solid var(--warning-color,#ffa600);padding:7px 12px;line-height:1.5}',
+    '.note div{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline}.note button{font:inherit;background:none;border:0;padding:0;color:var(--cm-core);cursor:pointer;text-decoration:underline}',
     '.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--cm-muted);padding:8px 12px;border-top:1px solid var(--cm-line)}',
     '.legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.legend i{width:10px;height:10px;border-radius:50%;display:inline-block}',
     '.panel{border:1px solid var(--cm-line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:9px;min-width:0;color:var(--cm-ink)}',
@@ -374,7 +380,7 @@
       this._root.innerHTML = '<style>' + CSS + '</style><style id="dyn"></style><ha-card><div class="wrap"><div class="head"><h1 id="title"></h1><div class="stats" id="stats"></div></div>' +
         '<div class="tools"><input id="q" type="search"><select id="area"></select><button class="btn" id="offBtn" aria-pressed="false"></button></div>' +
         '<div class="main" id="main"><div class="map" id="map"><svg id="svg" viewBox="0 0 1000 700" role="img"></svg><div class="tip" id="tip"></div><div class="mini" id="mini"></div>' +
-        '<div class="legend" id="legend"></div><div class="zoom"><button class="btn" id="zin">+</button><button class="btn" id="zout">−</button><button class="btn" id="zfit">⤢</button></div></div>' +
+        '<div class="note" id="note" role="status"></div><div class="legend" id="legend"></div><div class="zoom"><button class="btn" id="zin">+</button><button class="btn" id="zout">−</button><button class="btn" id="zfit">⤢</button></div></div>' +
         '<aside class="panel" id="panel"><div class="msg" id="loading"></div></aside></div></div></ha-card>';
       var self = this;
       this._ro = new ResizeObserver(function (en) { var w = en[0].contentRect.width; self._$('main').classList.toggle('wide', w > 860 && self._cfg.show_panel !== false); if (self._vb) requestAnimationFrame(function () { self._setVB(); }); });
@@ -924,6 +930,8 @@
       if (problems()) { hubs.forEach(function (h) { if (h.from.router) { h.from = loc; h.ap = ''; } }); Object.keys(rn).forEach(function (k) { if (rn[k].router) delete rn[k]; }); }
       if (problems()) { hubs.forEach(function (h) { if (h.direct) { h.direct = false; h.from = mnodes[h.m]; } }); }
       this._mnodes = mnodes; this._rnodes = rn;
+      // routers and access points that exist but are not on the map (no clean place, or more than the map draws)
+      this._offMap = loc ? (this._routers || []).filter(function (r) { return r !== me._router && !rn[r.n]; }).map(function (r) { return r.n; }) : [];
       this._linkProblems = problems();
       var minX = -110, minY = -110, maxX = 110, maxY = 110;
       hubs.forEach(function (h) { var p = h.outer + 70; minX = Math.min(minX, h.x - p - 40); maxX = Math.max(maxX, h.x + p + 40); minY = Math.min(minY, h.y - p); maxY = Math.max(maxY, h.y + p); });
@@ -1167,7 +1175,7 @@
     // then the same without the subtitle; link labels slide along their link. A label with no free place is hidden
     // (the name is still in the tooltip and in the side panel) and comes back when zooming in makes room.
     _declutter() {
-      var k = this._k || 1, pad = 2 / k, obst = this._obst || [], placed = [];
+      var k = this._k || 1, pad = 2 / k, obst = this._obst || [], placed = [], hiddenNames = 0;
       this._dk = k;
       function box(e) { var b; try { b = e.getBBox(); } catch (err) { return null; } return b && b.width ? { x0: b.x - pad, y0: b.y - pad, x1: b.x + b.width + pad, y1: b.y + b.height + pad } : null; }
       function free(r, inner) {
@@ -1198,7 +1206,7 @@
           if (r || (!sub && !L.b)) return;
           modes.forEach(function (m) { if (r) return; put(L, m, sub && !!L.b); var b = box(L.tx); if (free(b)) r = b; });
         });
-        if (r) placed.push(r); else L.tx.style.display = 'none';
+        if (r) placed.push(r); else { L.tx.style.display = 'none'; hiddenNames++; }
       });
       (this._elabs || []).forEach(function (E) {
         E.e.style.display = '';
@@ -1208,7 +1216,7 @@
           E.e.setAttribute('x', E.x1 + (E.x2 - E.x1) * f); E.e.setAttribute('y', E.y1 + (E.y2 - E.y1) * f);
           var b = box(E.e); if (free(b)) r = b;
         });
-        if (r) placed.push(r); else E.e.style.display = 'none';
+        if (r) placed.push(r); else { E.e.style.display = 'none'; hiddenNames++; }
       });
       // Semantic zoom: once neighbouring dots are far enough apart on screen, the devices in view get their names,
       // pointing away from their hub. A name that would touch a dot, a node or another label is left out.
@@ -1233,6 +1241,18 @@
         });
         if (r) placed.push(r); else d.lab.style.display = 'none';
       });
+      this._hiddenNames = hiddenNames; this._note();
+    }
+    // Anything left off the map for lack of room is said out loud, under the map.
+    _note() {
+      var t = this._t.bind(this), self = this, el = this._$('note'), a = (this._offMap || []).length, n = this._hiddenNames || 0, h = '';
+      if (a) h += '<div><span>⚠ ' + (a === 1 ? esc(t('noRoomAp1')) : a + ' ' + esc(t('noRoomAp'))) + '</span><button id="noteAp">' + esc(t('noRoomSee')) + '</button></div>';
+      if (n) h += '<div><span>⚠ ' + (n === 1 ? esc(t('noRoomName1')) : n + ' ' + esc(t('noRoomName'))) + '</span><button id="noteZoom">' + esc(t('noRoomZoom')) + '</button></div>';
+      if (el.innerHTML !== h) el.innerHTML = h;
+      el.style.display = h ? 'block' : 'none';
+      var b1 = el.querySelector('#noteAp'), b2 = el.querySelector('#noteZoom');
+      if (b1) b1.onclick = function () { self._selRouter(self._router); };
+      if (b2) b2.onclick = function () { self._zoom(0.7); };
     }
     _zoom(f, cx, cy) {
       var v = this._vb; if (cx == null) { cx = v.x + v.w / 2; cy = v.y + v.h / 2; }
@@ -1374,7 +1394,7 @@
       var bc = this._conn(r.trk), others = r === this._router ? (this._routers || []).filter(function (x) { return x !== r; }) : [];
       this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M.local + '">' + esc(t('network')) + ' · ' + esc(this._intName(r.p)) + '</div><h2>' + esc(r.n) + '</h2><p>' + esc(r === this._router ? t('infraLocal') : t('routerDesc')) + '</p>' +
         (bc ? '<dl class="kv"><dt>' + esc(t('backhaul')) + '</dt><dd>' + esc((bc.via ? bc.via + ' · ' : '') + this._ifaceText(bc)) + '</dd>' + (bc.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(bc.ip) + '</dd>' : '') + '</dl>' : '') +
-        (others.length ? '<div class="list">' + others.map(function (x) { return '<button class="item" data-router="' + esc(x.n) + '"><i style="' + (x.off ? 'border:2px solid var(--cm-bad)' : 'background:' + self._M.local) + '"></i><span class="nm">' + esc(x.n) + '</span><small class="' + (x.off ? 'off' : '') + '">' + esc(x.off ? t('offline') : 'AP') + '</small></button>'; }).join('') + '</div>' : '') +
+        (others.length ? '<div class="list">' + others.map(function (x) { return '<button class="item" data-router="' + esc(x.n) + '"><i style="' + (x.off ? 'border:2px solid var(--cm-bad)' : 'background:' + self._M.local) + '"></i><span class="nm">' + esc(x.n) + '</span><small class="' + (x.off ? 'off' : '') + '">' + esc(x.off ? t('offline') : (self._offMap || []).indexOf(x.n) >= 0 ? t('notDrawn') : 'AP') + '</small></button>'; }).join('') + '</div>' : '') +
         '<div class="eyebrow" style="color:var(--cm-muted)">' + esc(t('connectedHere')) + ' · ' + items.length + '</div><div class="list">' +
         items.map(function (it) {
           var col = it.hub ? self._M[it.hub.m] : it.d ? self._M[it.d.hub.m] : self._M.core;
