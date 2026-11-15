@@ -28,9 +28,9 @@ Most network maps show one protocol at a time. This card draws all of them in on
 
 ## Installation
 
-### HACS (custom repository)
+### HACS / Marketplace (custom repository)
 
-1. Open **HACS → ⋮ → Custom repositories**.
+1. Open **HACS → ⋮ → Custom repositories** (or the equivalent custom repository screen in the Marketplace).
 2. Add `https://github.com/Ctuna89/ha-connection-map-card` with type **Dashboard**.
 3. Install **Connection Map Card** and reload your browser.
 
@@ -42,7 +42,19 @@ Most network maps show one protocol at a time. This card draws all of them in on
 
 ## Usage
 
-The card works best in a **panel** view, so it can use the full width:
+The card works best in a **panel** view, so it can use the full width. From the UI:
+
+1. Open the dashboard where you want the map and click the pencil icon (**Edit dashboard**).
+2. Click **+** in the tab bar to add a new view.
+3. Give it a title (for example `Map`) and choose **Panel (single card)** as the view type. Save.
+4. In the new view click **Add card**, scroll to the bottom and pick **Manual**.
+5. Paste this and save:
+
+```yaml
+type: custom:connection-map-card
+```
+
+No other configuration is needed. If you edit your dashboard in YAML, the same view looks like this:
 
 ```yaml
 views:
@@ -62,6 +74,8 @@ views:
 | `exclude_integrations` | list | `[]` | Integration domains to hide, for example `[mobile_app, bambu_lab]`. |
 | `exclude_devices` | list | `[]` | Device IDs to hide. |
 | `show_trackers` | boolean | `false` | Show devices that only have `device_tracker` entities (for example, every phone and laptop your router reports). |
+| `sort` | string | `area` | Order of the device lists: `area` (by area, then name) or `name` (alphabetical). The list of a hub also has a button to switch between the two. |
+| `core_size` | string | `large` | `compact` draws Home Assistant the same size as the network nodes; the version and host details stay in the side panel. |
 | `show_panel` | boolean | `true` | Show the side panel with the summary and details. |
 | `animations` | boolean | `true` | Animated data flow, pop-in and hover effects. |
 | `language` | string | HA language | Force the card language: `en` or `es`. |
@@ -93,6 +107,10 @@ colors:
 | **Local network** | Everything else (`local_push`, `local_polling`). |
 
 A device is drawn behind a **hub** when it has a `via_device` and that parent device either has at least two children or looks like a bridge (few entities of its own). Virtual rooms and zones that some hubs expose (for example Hue rooms) are skipped.
+
+A parent that is just another device of the same integration, such as a power strip and its outlets, is not treated as a hub when the integration has at least as many devices of its own: the strip and its outlets are drawn together inside the integration's group, and the outlet's path shows the strip.
+
+**Mobile devices** are the phones, tablets and watches that run the Home Assistant companion app. At home they are shown on the access point they use. When the app reports mobile data, or your router reports the device as away, the path becomes `Device → Mobile devices → Mobile data → Internet → Home Assistant`. The card cannot tell which remote access method the device uses (Home Assistant Cloud, a VPN such as Tailscale, or an exposed port), so it only says *Internet*.
 
 Helpers and system integrations (template, group, Supervisor, Sun, Backup, HACS and similar) are ignored. Devices whose only entities are `update` entities are ignored as well.
 
