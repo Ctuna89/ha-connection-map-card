@@ -347,6 +347,11 @@ test('a bridge is listed as a device of its own, and can be offline', async () =
     const row = c.shadowRoot.querySelector('#hubdev'), before = row.innerText.replace(/\n+/g, ' | ');
     h.ents.forEach((e) => { c._hass.states[e].state = 'unavailable'; }); c._status(); c._marks(); c._selHub(h);
     return { before, after: c.shadowRoot.querySelector('#hubdev').innerText.replace(/\n+/g, ' | '), red: h.g.classList.contains('offline') }; });
+  // entities that have no state at all (disabled) do not make a bridge, or a device, offline
+  const quiet = await page.evaluate(() => { const c = window.card, h = c._hubs.find((x) => x.n === 'Hue Bridge'), d = h.dv[0], S = c._hass.states, keep = {};
+    h.ents.concat(d.ents).forEach((e) => { keep[e] = S[e]; delete S[e]; }); c._status(); const out = [h.off, d.off];
+    Object.keys(keep).forEach((e) => { S[e] = keep[e]; }); c._status(); return out; });
+  assert.deepEqual(quiet, [false, false]);
   assert.equal(r.before, 'Hue Bridge · Signify · BSB002 | The bridge itself');
   assert.equal(r.after, 'Hue Bridge · Signify · BSB002 | Offline');
   assert.ok(r.red);
@@ -393,5 +398,28 @@ test('a Connect stick is the Zigbee coordinator or the Thread border router, dep
   r = await mount({ otbr: false, zigbee: true, port: 'tcp://10.0.0.5:6638' });
   assert.equal(r.radio, 'SLZB-06');
   assert.deepEqual(r.thread, ['Thread', 'ha-thread-9d7d']);
+  await page.close();
+});
+
+test('group_by_area also works in a group with power strips: singles by area, each strip with its outlets', async () => {
+  const page = await H.newPage(browser);
+  const r = await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {}, areas = { a: { area_id: 'a', name: 'Kitchen' }, b: { area_id: 'b', name: 'Office' } }; let n = 0;
+    const dev = (name, area, via) => { const id = 'd' + (++n); devices[id] = { id, name, via_device_id: via || null, connections: [], identifiers: [['tplink', id]], disabled_by: null, area_id: area || null };
+      const e = 'switch.e' + n; entities[e] = { entity_id: e, device_id: id, platform: 'tplink' }; states[e] = { entity_id: e, state: 'on', attributes: {} }; return id; };
+    for (let i = 0; i < 5; i++) dev('Kitchen plug ' + i, 'a'); for (let i = 0; i < 4; i++) dev('Office plug ' + i, 'b'); dev('Hall plug'); dev('Lone office lamp', 'b');
+    const st = dev('HS300', 'b'); for (let i = 0; i < 6; i++) dev('HS300 outlet ' + i, 'b', st);
+    const man = [{ domain: 'tplink', name: 'TP-Link Smart Home', iot_class: 'local_polling' }];
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false, group_by_area: true }); document.getElementById('host').appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((res) => setTimeout(res, 25));
+    const h = c._hubs[0], by = (name) => c._devs.find((d) => d.n === name);
+    return { hubs: c._hubs.length, areas: h.areas.map((a) => a.n + ':' + a.list.length), outlet: by('HS300 outlet 0').meshParent.n, outletArea: !!by('HS300 outlet 0').parentNode, strip: !!by('HS300').parentNode };
+  });
+  assert.equal(r.hubs, 1);
+  assert.deepEqual(r.areas, ['Kitchen:5', 'Office:5']);
+  assert.equal(r.outlet, 'HS300'); assert.equal(r.outletArea, false); assert.equal(r.strip, false);
+  assert.deepEqual(await H.linkProblems(page), []);
+  assert.deepEqual(await H.labelProblems(page), []);
   await page.close();
 });

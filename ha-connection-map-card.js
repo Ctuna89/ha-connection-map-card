@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.7.2';
+  var VERSION = '0.7.3';
 
   var STR = {
     en: {
@@ -896,10 +896,10 @@
 
     _status() {
       // a bridge is a device too: with all its own entities unavailable, it is offline
-      var S0 = this._hass.states; (this._hubs || []).forEach(function (h) { h.off = !!(h.ents && h.ents.length) && h.ents.every(function (e) { return !S0[e] || S0[e].state === 'unavailable'; }); });
+      var S0 = this._hass.states; (this._hubs || []).forEach(function (h) { var live = (h.ents || []).filter(function (e) { return !!S0[e]; }); h.off = live.length > 0 && live.every(function (e) { return S0[e].state === 'unavailable'; }); });
       var S = this._hass.states, now = Date.now(), win = Math.max(0, parseFloat(this._cfg.recent_hours) || 0) * 3600000;
       (this._devs || []).concat(this._routers || []).forEach(function (d) {
-        var st = d.ents.map(function (e) { return S[e] ? S[e].state : 'unavailable'; });
+        var st = d.ents.filter(function (e) { return !!S[e]; }).map(function (e) { return S[e].state; }); // an entity without a state (disabled) says nothing
         d.off = st.length > 0 && st.every(function (s) { return s === 'unavailable'; });
         // A battery device that stopped answering a short while ago is probably asleep, not gone: for a while it is
         // "seen recently" (yellow) instead of offline (red). The time comes from when its entities became unavailable.
@@ -927,8 +927,10 @@
         // Optional: the devices of a hub grouped by area, hub -> area -> devices, for areas with more than one device.
         // A Zigbee mesh keeps its own shape (who repeats for whom) instead.
         h.areas = []; h.dv.forEach(function (d) { d.parentNode = null; });
-        if (me._cfg.group_by_area && !h.dv.some(function (d) { return d.meshParent; })) {
-          var byArea = {}; h.dv.forEach(function (d) { if (d.a) (byArea[d.a] = byArea[d.a] || []).push(d); });
+        if (me._cfg.group_by_area && !h.dv.some(function (d) { return d.meshParent && d.ieee; })) {
+          // a device with children of its own (a power strip) keeps its family and stays outside the area nodes
+          var isParent = {}; h.dv.forEach(function (d) { if (d.meshParent) isParent[d.meshParent.id] = 1; });
+          var byArea = {}; h.dv.forEach(function (d) { if (d.a && !d.meshParent && !isParent[d.id]) (byArea[d.a] = byArea[d.a] || []).push(d); });
           Object.keys(byArea).sort().forEach(function (a) { if (byArea[a].length > 1) h.areas.push({ id: 'area:' + a, n: a, isArea: true, list: byArea[a], hub: h }); });
         }
         h.tree = h.dv.length <= 30 || h.areas.length > 0;
