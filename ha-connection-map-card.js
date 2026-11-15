@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.7.0';
+  var VERSION = '0.8.0';
 
   var STR = {
     en: {
@@ -240,6 +240,13 @@
     '.map{position:relative;border:1px solid var(--cm-line);border-radius:14px;overflow:hidden;min-width:0}',
     '.map svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}',
     '.zoom{position:absolute;right:8px;top:8px;display:flex;gap:6px}',
+    // overview map: only shown while part of the map is outside the view
+    '.mini{position:absolute;left:8px;top:8px;width:150px;border:1px solid var(--cm-line);border-radius:10px;background:var(--cm-bg);overflow:hidden;display:none;cursor:pointer;touch-action:none;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.12)}',
+    '.mini svg{display:block;width:100%;height:auto}.mini .view{fill:var(--cm-core);fill-opacity:.14;stroke:var(--cm-core);stroke-width:2;vector-effect:non-scaling-stroke}',
+    '@media (max-width:600px){.mini{width:104px}}',
+    // names of the devices, shown when the zoom leaves room for them
+    '.dl{font-size:calc(10px / var(--k,1));fill:var(--cm-ink);pointer-events:none;paint-order:stroke;stroke:var(--cm-bg);stroke-width:calc(3px / var(--k,1));stroke-linejoin:round;dominant-baseline:middle}',
+    '.foc .dl{opacity:.25}',
     '.zoom .btn{padding:3px 10px;font-weight:700}',
     '.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--cm-muted);padding:8px 12px;border-top:1px solid var(--cm-line)}',
     '.legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.legend i{width:10px;height:10px;border-radius:50%;display:inline-block}',
@@ -256,9 +263,8 @@
     '.off{color:var(--cm-bad)!important;font-weight:600}',
     '.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px;font-size:13px;margin:0}.kv dt{color:var(--cm-muted)}.kv dd{margin:0}',
     '.msg{padding:32px 12px;text-align:center;color:var(--cm-muted)}',
-    '.edge{stroke-width:2;fill:none;stroke-opacity:.55}.edge.hot{stroke-width:4;stroke-opacity:.9}',
+    '.edge{fill:none;stroke-opacity:.55}.edge.hot{stroke-opacity:.9}',
     '.spoke{stroke:var(--cm-line);stroke-width:1}.spoke.meshl{stroke:var(--cm-radio);stroke-dasharray:3 2;stroke-opacity:.8}',
-    '.edge.wifi{stroke-dasharray:1 6;stroke-linecap:round;stroke-width:3}',
     // motion: data flowing towards Home Assistant, devices popping in, offline / off-network rings breathing
     '.flow{fill:none;stroke-width:2;stroke-dasharray:2 18;stroke-linecap:round;opacity:.35;pointer-events:none;animation:cmflow 3.2s linear infinite}',
     '.edge.hot+.flow{stroke-width:3.6;animation-duration:.7s;opacity:1}.edge.dim+.flow{opacity:.08}',
@@ -273,7 +279,7 @@
     // focus + context: pointing at something keeps its whole path to Home Assistant bright and fades the rest, without hiding it
     '.dev,.hub,.mnode,.edge,.spoke,.elbl{transition:opacity .18s ease}',
     '.foc .dev:not(.on),.foc .hub:not(.on),.foc .mnode:not(.on),.foc .elbl{opacity:.2}.foc .edge:not(.on),.foc .spoke:not(.on){opacity:.14}.foc .edge:not(.on)+.flow{opacity:.04}',
-    '.foc .edge.on{stroke-opacity:.95;stroke-width:3.2}.foc .edge.on+.flow{opacity:.95;animation-duration:1.1s}.foc .spoke.on{stroke:var(--cm-muted);stroke-width:1.5}',
+    '.foc .edge.on{stroke-opacity:.95}.foc .edge.on+.flow{opacity:.95;animation-duration:1.1s}.foc .spoke.on{stroke:var(--cm-muted);stroke-width:1.5}',
     '.dev.offline circle:last-of-type{animation:cmblink 2.4s ease-in-out infinite}@keyframes cmblink{50%{stroke-opacity:.25}}',
     '.dev.away circle:last-of-type{fill:var(--cm-bg)!important;stroke:var(--cm-away);stroke-width:2.2;stroke-dasharray:2.5 2}',
     '.still .flow{display:none}.still *{animation:none!important;transition:none!important}',
@@ -300,7 +306,38 @@
         title: null, group_small: 1, exclude_integrations: [], exclude_devices: [], show_trackers: false,
         show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', mqtt_entities: true
       }, config || {});
-      if (this._root) this._built = false;
+      // look-only options are applied by drawing again; anything else needs the model to be rebuilt
+      var LOOK = ['title', 'colors', 'lines', 'sizes', 'core_size', 'minimap', 'device_labels', 'animations', 'show_panel'];
+      function rest(c) { var o = {}; Object.keys(c || {}).sort().forEach(function (k) { if (LOOK.indexOf(k) < 0) o[k] = c[k]; }); return JSON.stringify(o); }
+      var same = this._built && this._modelKey === rest(this._cfg);
+      this._modelKey = rest(this._cfg);
+      if (!this._root) return;
+      this._applyCfg();
+      if (same) { this._$('title').textContent = (this._cfg.title || this._t('title')) + (this._hass.demo ? ' · demo: ' + this._cfg.demo : ''); this._render(); }
+      else { this._built = false; this._demoHass = null; }
+    }
+    static getConfigElement() { return document.createElement('connection-map-card-editor'); }
+    // sizes of each level, in map units (the defaults are the original look)
+    _sizes() {
+      var z = this._cfg.sizes || {};
+      function num(v, d, lo, hi) { v = parseFloat(v); return isNaN(v) ? d : Math.max(lo, Math.min(hi, v)); }
+      return { core: num(z.core, this._cfg.core_size === 'compact' ? 28 : 56, 20, 80), net: num(z.network, 28, 16, 40), hub: num(z.hub, 22, 14, 34), dev: num(z.device, 6.2, 3, 9) };
+    }
+    // colours, line styles and widths come from the configuration: written as CSS so that a change needs no new model
+    _applyCfg() {
+      var cfg = this._cfg, c = cfg.colors || {}, L = cfg.lines || {}, card = this._root.querySelector('ha-card');
+      function col(v) { return /^[#a-z0-9(),.%\s-]+$/i.test(String(v || '')) ? String(v) : ''; }
+      var vars = ''; ['cloud', 'local', 'radio', 'core'].forEach(function (k) { if (col(c[k])) vars += '--cm-' + k + ':' + col(c[k]) + ';'; });
+      if (col(c.offline)) vars += '--cm-bad:' + col(c.offline) + ';'; if (col(c.away)) vars += '--cm-away:' + col(c.away) + ';';
+      card.setAttribute('style', vars); card.className = cfg.animations === false ? 'still' : '';
+      var w = parseFloat(L.width); w = isNaN(w) ? 2 : Math.max(0.5, Math.min(6, w));
+      function dash(st) { return st === 'dashed' ? 'stroke-dasharray:' + (w * 3) + ' ' + (w * 3) + ';stroke-linecap:butt;stroke-width:' + w : st === 'dotted' ? 'stroke-dasharray:1 ' + (w * 3) + ';stroke-linecap:round;stroke-width:' + (w * 1.5) : 'stroke-dasharray:none;stroke-width:' + w; }
+      var st = { cloud: L.cloud || 'dashed', local: L.local || 'solid', radio: L.radio || 'solid', wifi: L.wifi || 'dotted' };
+      this._lineCss = { cable: dash(st.local), wifi: dash(st.wifi) };
+      this._$('dyn').textContent = '.edge{stroke-width:' + w + '}.edge.l-cloud{' + dash(st.cloud) + '}.edge.l-local{' + dash(st.local) + '}.edge.l-radio{' + dash(st.radio) + '}.edge.wifi{' + dash(st.wifi) + '}' +
+        '.edge.hot{stroke-width:' + (w * 2) + '}.foc .edge.on{stroke-width:' + (w * 1.6) + '}';
+      this._$('panel').style.display = cfg.show_panel === false ? 'none' : '';
+      var m = this._$('main'); if (m) m.classList.toggle('wide', m.getBoundingClientRect().width > 860 && cfg.show_panel !== false);
     }
     getCardSize() { return 12; }
     getGridOptions() { return { columns: 'full', min_rows: 8 }; }
@@ -318,17 +355,15 @@
 
     _skeleton() {
       this._root = this.attachShadow({ mode: 'open' });
-      var c = this._cfg.colors || {};
-      var vars = (c.cloud ? '--cm-cloud:' + c.cloud + ';' : '') + (c.local ? '--cm-local:' + c.local + ';' : '') + (c.radio ? '--cm-radio:' + c.radio + ';' : '');
-      this._root.innerHTML = '<style>' + CSS + '</style><ha-card class="' + (this._cfg.animations === false ? 'still' : '') + '" style="' + vars + '"><div class="wrap"><div class="head"><h1 id="title"></h1><div class="stats" id="stats"></div></div>' +
+      this._root.innerHTML = '<style>' + CSS + '</style><style id="dyn"></style><ha-card><div class="wrap"><div class="head"><h1 id="title"></h1><div class="stats" id="stats"></div></div>' +
         '<div class="tools"><input id="q" type="search"><select id="area"></select><button class="btn" id="offBtn" aria-pressed="false"></button></div>' +
-        '<div class="main" id="main"><div class="map" id="map"><svg id="svg" viewBox="0 0 1000 700" role="img"></svg><div class="tip" id="tip"></div>' +
+        '<div class="main" id="main"><div class="map" id="map"><svg id="svg" viewBox="0 0 1000 700" role="img"></svg><div class="tip" id="tip"></div><div class="mini" id="mini"></div>' +
         '<div class="legend" id="legend"></div><div class="zoom"><button class="btn" id="zin">+</button><button class="btn" id="zout">−</button><button class="btn" id="zfit">⤢</button></div></div>' +
         '<aside class="panel" id="panel"><div class="msg" id="loading"></div></aside></div></div></ha-card>';
       var self = this;
       this._ro = new ResizeObserver(function (en) { var w = en[0].contentRect.width; self._$('main').classList.toggle('wide', w > 860 && self._cfg.show_panel !== false); if (self._vb) requestAnimationFrame(function () { self._setVB(); }); });
       this._ro.observe(this._$('main'));
-      if (this._cfg.show_panel === false) this._$('panel').style.display = 'none';
+      this._applyCfg();
     }
     _$(id) { return this._root.getElementById(id); }
 
@@ -336,7 +371,8 @@
       this._loading = true;
       var t = this._t.bind(this);
       this._$('title').textContent = (this._cfg.title || t('title')) + (this._hass.demo ? ' · demo: ' + this._cfg.demo : '');
-      this._$('loading').textContent = t('loading');
+      var ld = this._$('loading'); if (ld) ld.textContent = t('loading');
+      var key = this._modelKey;
       var man = {};
       try { (await this._hass.callWS({ type: 'manifest/list' })).forEach(function (m) { man[m.domain] = m; }); } catch (e) { /* non-admin: fall back to guesses */ }
       this._man = man;
@@ -345,6 +381,7 @@
       try { this._src = (await this._hass.callWS({ type: 'entity/source' })) || {}; } catch (e) { /* older versions: registry only */ }
       this._model();
       this._loading = false;
+      if (key !== this._modelKey) { this._load(); return; } // the configuration changed while loading
       this._built = true;
       this._render();
       this._extras();
@@ -460,7 +497,7 @@
       var h = this._host; if (!h) return '';
       return h.chassis === 'vm' ? ((VIRT[h.virt] || (h.virt && h.virt !== 'none' ? h.virt : '')) + ' VM').trim() : (h.os || '');
     }
-    _coreText() { var e = this._root && this._root.getElementById('coreHost'); if (e) e.textContent = this._cfg.core_size === 'compact' ? '' : this._hostShort(); }
+    _coreText() { var e = this._root && this._root.getElementById('coreHost'); if (e) e.textContent = this._sizes().core < 48 ? '' : this._hostShort(); }
     // Normalise what different router integrations report about a client:
     //   Huawei Mesh: connected_via + interface_type (LAN / 2.4GHz / 5GHz)
     //   FRITZ!Box:   connected_to + connection_type (LAN / WLAN) + ssid
@@ -671,7 +708,8 @@
     }
 
     _layout() {
-      var hubs = this._hubs, C = { x: 0, y: 0 }, me = this;
+      var hubs = this._hubs, C = { x: 0, y: 0 }, me = this, Z = this._sz = this._sizes(), old = this._vb0;
+      var sp = Math.max(15, Z.dev * 2 + 2.6), r0 = Math.max(34, Z.hub + Z.dev + 6), dist = Math.max(140, Z.core + Z.net + 56);
       hubs.forEach(function (h) {
         h.dv.forEach(function (d) { d.rx = null; d.ry = null; });
         // devices that reach the hub through a mesh router are drawn next to that router
@@ -679,9 +717,9 @@
         h.tree = h.dv.length <= 30;
         var top = h.tree ? h.dv.filter(function (d) { return !d.meshParent || h.dv.indexOf(d.meshParent) < 0; })
           : h.dv.slice().sort(function (x, y) { var px = x.meshParent ? x.meshParent.n : (x.router ? x.n : ''), py = y.meshParent ? y.meshParent.n : (y.router ? y.n : ''); return px === py ? (x.router ? -1 : 0) - (y.router ? -1 : 0) : (px < py ? -1 : 1); });
-        var i = 0, ring = 0; h.outer = 30;
+        var i = 0, ring = 0; h.outer = r0 - 4;
         while (i < top.length) {
-          var rad = 34 + ring * 15, cap = Math.floor(2 * Math.PI * rad / 15), n = Math.min(cap, top.length - i);
+          var rad = r0 + ring * sp, cap = Math.floor(2 * Math.PI * rad / sp), n = Math.min(cap, top.length - i);
           top.slice(i, i + n).forEach(function (d, k) { var a = -Math.PI / 2 + (k / n) * 2 * Math.PI + ring * 0.2; d.ang = a; d.rx = rad * Math.cos(a); d.ry = rad * Math.sin(a); });
           i += n; ring++; h.outer = rad;
         }
@@ -692,14 +730,14 @@
             var kids = h.dv.filter(function (d) { return d.meshParent === p && d.rx == null; });
             kids.forEach(function (d, k) {
               var a = p.ang + (k - (kids.length - 1) / 2) * 0.6; d.ang = a;
-              d.rx = p.rx + 22 * Math.cos(a); d.ry = p.ry + 22 * Math.sin(a);
+              d.rx = p.rx + sp * 1.45 * Math.cos(a); d.ry = p.ry + sp * 1.45 * Math.sin(a);
               h.outer = Math.max(h.outer, Math.sqrt(d.rx * d.rx + d.ry * d.ry));
             });
             next = next.concat(kids);
           });
           level = next;
         }
-        h.dv.forEach(function (d) { if (d.rx == null) { d.ang = Math.PI / 2; d.rx = 0; d.ry = h.outer + 15; h.outer += 15; } });
+        h.dv.forEach(function (d) { if (d.rx == null) { d.ang = Math.PI / 2; d.rx = 0; d.ry = h.outer + sp; h.outer += sp; } });
         h.w = h.outer * 2 + 70;
       });
       var order = ['cloud', 'local', 'radio'], groups = {}, W = 0;
@@ -713,7 +751,7 @@
       present.forEach(function (m) {
         var span = spans[m], g = groups[m];
         var maxOuter = g.reduce(function (s, h) { return Math.max(s, h.outer); }, 0);
-        var R = Math.max(250, g.w / deg(span), 215 + maxOuter); // never closer to the centre than the medium node + the biggest cluster
+        var R = Math.max(dist + 110, g.w / deg(span), dist + Z.net + 47 + maxOuter); // never closer to the centre than the medium node + the biggest cluster
         var totalDeg = g.w / R * 180 / Math.PI, scale = Math.min(1, span / totalDeg);
         var a = start + (span - totalDeg * scale) / 2, mid = start + span / 2;
         // centre the heaviest hubs in the sector, smaller ones towards the edges
@@ -730,7 +768,7 @@
           h.x = C.x + rr * Math.cos(deg(ac)); h.y = C.y + rr * Math.sin(deg(ac)); h.ac = ac;
           h.dv.forEach(function (d) { d.x = h.x + d.rx; d.y = h.y + d.ry; });
         });
-        mnodes[m] = { m: m, x: C.x + 140 * Math.cos(deg(mid)), y: C.y + 140 * Math.sin(deg(mid)), r: 28, ac: mid };
+        mnodes[m] = { m: m, x: C.x + dist * Math.cos(deg(mid)), y: C.y + dist * Math.sin(deg(mid)), r: Z.net, ac: mid };
         start += span + gap;
       });
       this._mnodes = mnodes;
@@ -742,15 +780,17 @@
           var hs = hubs.filter(function (h) { if (h.m !== 'local') return false; var c = self._hubConn(h); return c && c.via === r.n; });
           var a = hs.length ? hs.reduce(function (s, h) { return s + h.ac; }, 0) / hs.length : mnodes.local.ac + (i % 2 ? -1 : 1) * (44 + Math.floor(i / 2) * 20);
           // sit between the main router and its hubs, clear of the hubs' device rings
-          var rad = 215; hs.forEach(function (h) { rad = Math.min(rad, Math.sqrt(h.x * h.x + h.y * h.y) - h.outer - 34); });
-          rad = Math.max(rad, 175);
-          self._rnodes[r.n] = { x: rad * Math.cos(deg(a)), y: rad * Math.sin(deg(a)), r: 20, ac: a, router: r };
+          var rad = dist + 75; hs.forEach(function (h) { rad = Math.min(rad, Math.sqrt(h.x * h.x + h.y * h.y) - h.outer - 34); });
+          rad = Math.max(rad, dist + 35);
+          self._rnodes[r.n] = { x: rad * Math.cos(deg(a)), y: rad * Math.sin(deg(a)), r: Z.net * 0.72, ac: a, router: r };
         });
       }
       var minX = -110, minY = -110, maxX = 110, maxY = 110;
       hubs.forEach(function (h) { var p = h.outer + 70; minX = Math.min(minX, h.x - p - 40); maxX = Math.max(maxX, h.x + p + 40); minY = Math.min(minY, h.y - p); maxY = Math.max(maxY, h.y + p); });
       this._vb0 = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-      if (!this._vb) this._vb = Object.assign({}, this._vb0); // keep the user's zoom/pan when the map is redrawn
+      // keep the user's zoom/pan when the map is redrawn, unless they were looking at the whole map
+      var v = this._vb;
+      if (!v || (old && Math.abs(v.x - old.x) + Math.abs(v.y - old.y) + Math.abs(v.w - old.w) + Math.abs(v.h - old.h) < 1)) this._vb = Object.assign({}, this._vb0);
     }
 
     _render() {
@@ -762,8 +802,8 @@
       this._$('legend').innerHTML = ['cloud', 'local', 'radio'].map(function (m) { return '<span><i style="background:' + M[m] + '"></i>' + esc(t(m)) + '</span>'; }).join('') +
         '<span><i style="border:2px solid var(--cm-bad)"></i>' + esc(t('offline')) + '</span>' +
         '<span><i style="border:2px dashed var(--cm-away)"></i>' + esc(t('away')) + '</span>' +
-        '<span><svg width="22" height="6"><line x1="1" y1="3" x2="21" y2="3" stroke="var(--cm-local)" stroke-width="2"/></svg>' + esc(t('cable')) + '</span>' +
-        '<span><svg width="22" height="6"><line x1="2" y1="3" x2="21" y2="3" stroke="var(--cm-local)" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 6"/></svg>' + esc(t('wifi')) + '</span>';
+        '<span><svg width="26" height="8"><line x1="2" y1="4" x2="24" y2="4" stroke="var(--cm-local)" style="' + this._lineCss.cable + '"/></svg>' + esc(t('cable')) + '</span>' +
+        '<span><svg width="26" height="8"><line x1="2" y1="4" x2="24" y2="4" stroke="var(--cm-local)" style="' + this._lineCss.wifi + '"/></svg>' + esc(t('wifi')) + '</span>';
       this._$('zin').title = t('zoomIn'); this._$('zout').title = t('zoomOut'); this._$('zfit').title = t('fit');
       if (!this._devs.length) { this._$('panel').innerHTML = '<div class="msg">' + esc(t('nodata')) + '</div>'; return; }
       this._layout();
@@ -777,7 +817,8 @@
         g.addEventListener('blur', function () { self._unfocus(); });
       }
       function el(tag, a, p) { var e = document.createElementNS(NS, tag); for (var k in a) e.setAttribute(k, a[k]); (p || svg).appendChild(e); return e; }
-      var gE = el('g'), gS = el('g'), gN = el('g'), gH = el('g'), gD = el('g');
+      var gE = el('g'), gS = el('g'), gN = el('g'), gH = el('g'), gD = el('g'), Z = this._sz;
+      this._gL = el('g');
       this._edges = [];
       var core = { x: 0, y: 0 };
       // Labels keep their size on screen, so how much room they need depends on the zoom: every label is registered here
@@ -801,13 +842,13 @@
       function flow(x1, y1, x2, y2, col) { if (anim) el('line', { x1: x1, y1: y1, x2: x2, y2: y2, 'class': 'flow', stroke: col }, gE); }
       Object.keys(this._mnodes).forEach(function (m) {
         var n = self._mnodes[m], c = m === 'local' ? self._conn(self._haTrk) : null;
-        n.edge = el('line', { x1: 0, y1: 0, x2: n.x, y2: n.y, 'class': 'edge' + (c && c.wifi ? ' wifi' : ''), stroke: M[m], 'stroke-dasharray': m === 'cloud' ? '6 6' : '' }, gE);
+        n.edge = el('line', { x1: 0, y1: 0, x2: n.x, y2: n.y, 'class': 'edge l-' + m + (c && c.wifi ? ' wifi' : ''), stroke: M[m] }, gE);
         flow(0, 0, n.x, n.y, M[m]);
         if (c) lbl(0, 0, n.x, n.y, short(c));
       });
       Object.keys(this._rnodes || {}).forEach(function (k) {
         var n = self._rnodes[k]; if (!n.router) return; var p = self._mnodes.local, c = self._conn(n.router.trk);
-        n.edge = el('line', { x1: p.x, y1: p.y, x2: n.x, y2: n.y, 'class': 'edge' + (c && c.wifi ? ' wifi' : ''), stroke: M.local }, gE);
+        n.edge = el('line', { x1: p.x, y1: p.y, x2: n.x, y2: n.y, 'class': 'edge l-local' + (c && c.wifi ? ' wifi' : ''), stroke: M.local }, gE);
         flow(p.x, p.y, n.x, n.y, M.local);
         if (c) lbl(p.x, p.y, n.x, n.y, short(c), 0.62);
       });
@@ -815,7 +856,7 @@
         var n = self._mnodes[h.m], c = null;
         if (h.m === 'local') { c = self._hubConn(h); if (c && c.via && self._rnodes[c.via]) n = self._rnodes[c.via]; }
         h.from = n;
-        h.edge = el('line', { x1: n.x, y1: n.y, x2: h.x, y2: h.y, 'class': 'edge' + (c && c.wifi ? ' wifi' : ''), stroke: M[h.m], 'stroke-dasharray': h.m === 'cloud' ? '6 6' : '' }, gE);
+        h.edge = el('line', { x1: n.x, y1: n.y, x2: h.x, y2: h.y, 'class': 'edge l-' + h.m + (c && c.wifi ? ' wifi' : ''), stroke: M[h.m] }, gE);
         flow(n.x, n.y, h.x, h.y, M[h.m]);
         if (c && h.trk) lbl(n.x, n.y, h.x, h.y, short(c));
       });
@@ -824,21 +865,21 @@
         var from = tree ? d.meshParent : d.hub;
         d.spoke = el('line', { x1: from.x, y1: from.y, x2: d.x, y2: d.y, 'class': 'spoke' + (tree && d.ieee ? ' meshl' : '') }, gS);
         var g = el('g', { 'class': 'dev' + (first ? ' enter' : ''), tabindex: 0, role: 'button', 'aria-label': d.n, style: first ? 'animation-delay:' + Math.min(1100, 250 + i * 6) + 'ms' : '' }, gD);
-        if (d.router) el('circle', { cx: d.x, cy: d.y, r: 10, fill: 'none', stroke: M[d.hub.m], 'stroke-width': 1.6, 'class': 'rring' }, g);
-        el('circle', { cx: d.x, cy: d.y, r: 6.2, fill: M[d.hub.m] }, g); d.g = g;
+        d.lab = null;
+        if (d.router) el('circle', { cx: d.x, cy: d.y, r: Z.dev + 3.8, fill: 'none', stroke: M[d.hub.m], 'stroke-width': 1.6, 'class': 'rring' }, g);
+        el('circle', { cx: d.x, cy: d.y, r: Z.dev, fill: M[d.hub.m] }, g); d.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selDev(d); });
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selDev(d); });
         hov(g, d, d.x, d.y, function () { return [d.n, [d.off ? t('offline') : d.remote ? t('remote') : d.away ? t('away') : '', d.a, d.hub.kind === 'hub' ? d.hub.n : (d.via || self._intName(d.p))].filter(Boolean).join(' · ')]; });
       });
       // core
       var gc = el('g', { 'class': 'mnode', tabindex: 0, role: 'button', 'aria-label': 'Home Assistant' }, gN); this._coreG = gc;
-      var small = this._cfg.core_size === 'compact'; // same size as the network nodes; version and host stay in the side panel
-      el('circle', { cx: 0, cy: 0, r: small ? 36 : 70, fill: 'none', stroke: M.core, 'stroke-width': 2, 'class': 'pulse' }, gc);
-      el('circle', { cx: 0, cy: 0, r: small ? 28 : 56, fill: M.core }, gc);
-      var tc = el('text', { x: 0, y: small ? 5 : -2, 'text-anchor': 'middle', 'class': 'lbl', style: 'fill:#fff;font-size:14px' }, gc); tc.textContent = small ? 'HA' : 'Home Assistant';
-      if (small) { var tl = el('title', {}, gc); tl.textContent = 'Home Assistant'; }
-      var ts = el('text', { x: 0, y: 15, 'text-anchor': 'middle', style: 'fill:rgba(255,255,255,.88);font-size:10.5px' }, gc); ts.textContent = small ? '' : (this._hass.config && this._hass.config.version) || '';
-      var th = el('text', { x: 0, y: 31, 'text-anchor': 'middle', id: 'coreHost', style: 'fill:rgba(255,255,255,.88);font-size:10.5px' }, gc); th.textContent = small ? '' : this._hostShort();
+      var cr = Z.core, small = cr < 48, cf = cr / 56; // a small centre only says "HA": version and host stay in the side panel
+      el('circle', { cx: 0, cy: 0, r: cr * 1.25, fill: 'none', stroke: M.core, 'stroke-width': 2, 'class': 'pulse' }, gc);
+      el('circle', { cx: 0, cy: 0, r: cr, fill: M.core }, gc);
+      var tc = el('text', { x: 0, y: small ? cr * 0.18 : -2 * cf, 'text-anchor': 'middle', 'class': 'lbl', style: 'fill:#fff;font-size:' + (small ? cr * 0.5 : 14 * cf) + 'px' }, gc); tc.textContent = small ? 'HA' : 'Home Assistant';
+      var ts = el('text', { x: 0, y: 15 * cf, 'text-anchor': 'middle', style: 'fill:rgba(255,255,255,.88);font-size:' + (10.5 * cf) + 'px' }, gc); ts.textContent = small ? '' : (this._hass.config && this._hass.config.version) || '';
+      var th = el('text', { x: 0, y: 31 * cf, 'text-anchor': 'middle', id: 'coreHost', style: 'fill:rgba(255,255,255,.88);font-size:' + (10.5 * cf) + 'px' }, gc); th.textContent = small ? '' : this._hostShort();
       gc.addEventListener('click', function (e) { e.stopPropagation(); self._selCore(); });
       gc.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selCore(); });
       hov(gc, { core: true }, 0, 0, function () { return ['Home Assistant', [(self._hass.config && self._hass.config.version) || '', self._hostShort()].filter(Boolean).join(' · ')]; });
@@ -846,7 +887,7 @@
         var n = self._mnodes[m], g = el('g', { 'class': 'mnode', tabindex: 0, role: 'button' }, gN); n.g = g;
         var down = m === 'local' && self._routers && self._routers.length && self._routers.every(function (r) { return r.off; });
         el('circle', { cx: n.x, cy: n.y, r: n.r, 'class': 'disc', stroke: down ? 'var(--cm-bad)' : M[m] }, g);
-        var ic = el('text', { x: n.x, y: n.y + 4, 'text-anchor': 'middle', style: 'font-size:11px;font-weight:700;fill:' + M[m] }, g);
+        var ic = el('text', { x: n.x, y: n.y + n.r * 0.14, 'text-anchor': 'middle', style: 'font-size:' + (n.r * 0.39) + 'px;font-weight:700;fill:' + M[m] }, g);
         ic.textContent = m === 'cloud' ? 'WWW' : m === 'local' ? (self._router ? 'Wi-Fi' : 'LAN') : (self._coord ? 'USB' : 'RF');
         var below = Math.sin(deg(n.ac)) >= 0;
         var name = self._mname(m), sub = t(m + 'Sub');
@@ -864,7 +905,7 @@
         var n = self._rnodes[k]; if (!n.router) return; var r = n.router;
         var g = el('g', { 'class': 'mnode', tabindex: 0, role: 'button', 'aria-label': r.n }, gN); n.g = g;
         el('circle', { cx: n.x, cy: n.y, r: n.r, 'class': 'disc', stroke: r.off ? 'var(--cm-bad)' : M.local }, g);
-        var ic = el('text', { x: n.x, y: n.y + 4, 'text-anchor': 'middle', style: 'font-size:9.5px;font-weight:700;fill:' + M.local }, g); ic.textContent = 'AP';
+        var ic = el('text', { x: n.x, y: n.y + n.r * 0.17, 'text-anchor': 'middle', style: 'font-size:' + (n.r * 0.47) + 'px;font-weight:700;fill:' + M.local }, g); ic.textContent = 'AP';
         var below = Math.sin(deg(n.ac)) >= 0;
         tlabel(g, n.x, n.y, n.r + 2, below, r.n, '', true, 1);
         obst.push({ x: n.x, y: n.y, r: n.r + 2 });
@@ -874,17 +915,18 @@
       });
       this._hubs.forEach(function (h, i) {
         var g = el('g', { 'class': 'hub' + (first ? ' enter' : ''), tabindex: 0, role: 'button', 'aria-label': h.n, style: first ? 'animation-delay:' + (80 + i * 45) + 'ms' : '' }, gH);
-        el('circle', { cx: h.x, cy: h.y, r: 22, 'class': 'disc', stroke: M[h.m] }, g);
-        var c = el('text', { x: h.x, y: h.y + 5, 'text-anchor': 'middle', style: 'font-size:13px;font-weight:700;fill:' + M[h.m] }, g); c.textContent = h.dv.length;
+        el('circle', { cx: h.x, cy: h.y, r: Z.hub, 'class': 'disc', stroke: M[h.m] }, g);
+        var c = el('text', { x: h.x, y: h.y + Z.hub * 0.22, 'text-anchor': 'middle', style: 'font-size:' + (Z.hub * 0.59) + 'px;font-weight:700;fill:' + M[h.m] }, g); c.textContent = h.dv.length;
         var below = Math.sin(deg(h.ac)) > -0.35;
-        tlabel(g, h.x, h.y, h.outer + 7, below, h.n.length > 26 ? h.n.slice(0, 25) + '…' : h.n, h.kind === 'hub' ? h.sub : '', false, 2 + i / 1000);
-        obst.push({ x: h.x, y: h.y, r: h.outer + 7 });
+        tlabel(g, h.x, h.y, h.outer + Z.dev + 1, below, h.n.length > 26 ? h.n.slice(0, 25) + '…' : h.n, h.kind === 'hub' ? h.sub : '', false, 2 + i / 1000);
+        obst.push({ x: h.x, y: h.y, r: h.outer + Z.dev + 1, hr: Z.hub + 2 });
         h.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selHub(h); });
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selHub(h); });
-        hov(g, h, h.x, h.y - 22, function () { var off = h.dv.filter(function (d) { return d.off; }).length; return [h.n, [h.kind === 'hub' ? h.sub : '', h.dv.length + ' ' + t('devices'), off ? off + ' ' + t('offline').toLowerCase() : ''].filter(Boolean).join(' · ')]; });
+        hov(g, h, h.x, h.y - Z.hub, function () { var off = h.dv.filter(function (d) { return d.off; }).length; return [h.n, [h.kind === 'hub' ? h.sub : '', h.dv.length + ' ' + t('devices'), off ? off + ' ' + t('offline').toLowerCase() : ''].filter(Boolean).join(' · ')]; });
       });
-      obst.push({ x: 0, y: 0, r: small ? 30 : 58 });
+      obst.push({ x: 0, y: 0, r: cr * 1.25 + 2, hr: cr + 2 });
+      this._miniDraw();
       if (first) this._fit(); else this._setVB();
       this._declutter();
       this._entered = true;
@@ -915,7 +957,7 @@
         var p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; var s = p.matrixTransform(svg.getScreenCTM().inverse());
         var bd = 24 / (self._k || 1), best = null;
         (self._devs || []).forEach(function (d) { if (d.x == null || d.vis === false) return; var dd = Math.sqrt((d.x - s.x) * (d.x - s.x) + (d.y - s.y) * (d.y - s.y)); if (dd < bd) { bd = dd; best = { d: d }; } });
-        (self._hubs || []).forEach(function (h) { if (Math.sqrt((h.x - s.x) * (h.x - s.x) + (h.y - s.y) * (h.y - s.y)) <= 25) best = { h: h }; }); // inside a hub disc wins
+        (self._hubs || []).forEach(function (h) { if (Math.sqrt((h.x - s.x) * (h.x - s.x) + (h.y - s.y) * (h.y - s.y)) <= self._sz.hub + 3) best = { h: h }; }); // inside a hub disc wins
         if (best && best.d) self._selDev(best.d); else if (best && best.h) self._selHub(best.h); else self._reset();
       });
       this._$('q').addEventListener('input', function (e) { self._S.q = e.target.value.trim().toLowerCase(); self._apply(); self._list(); });
@@ -926,11 +968,50 @@
       var v = this._vb, svg = this._$('svg'); svg.setAttribute('viewBox', v.x + ' ' + v.y + ' ' + v.w + ' ' + v.h);
       var r = svg.getBoundingClientRect(), k = r.width && v.w ? Math.min(r.width / v.w, (r.height || r.width) / v.h) : 1;
       this._k = k || 1; svg.style.setProperty('--k', this._k.toFixed(4));
-      // labels change size relative to the map when the zoom changes: place them again
-      if (this._labs && Math.abs(this._k - (this._dk || 0)) > this._k * 0.02 && !this._dq) {
+      // what is really on screen (the viewBox is letterboxed to keep its proportions)
+      var vw = r.width / this._k, vh = (r.height || r.width) / this._k;
+      this._view = { x: v.x + v.w / 2 - vw / 2, y: v.y + v.h / 2 - vh / 2, w: vw, h: vh };
+      this._miniView();
+      // labels change size relative to the map when the zoom changes, and device names depend on what is in view: place them again
+      var zoomed = Math.abs(this._k - (this._dk || 0)) > this._k * 0.02;
+      if (this._labs && (zoomed || this._dlOn || this._k >= this._dlMin()) && !this._dq) {
         var self = this; this._dq = true;
-        requestAnimationFrame(function () { self._dq = false; self._declutter(); });
+        if (zoomed) requestAnimationFrame(function () { self._dq = false; self._declutter(); });
+        else setTimeout(function () { self._dq = false; self._declutter(); }, 140);
       }
+    }
+    // device names need about 26 px between neighbouring dots
+    _dlMin() { var z = this._sz || this._sizes(); return 26 / Math.max(15, z.dev * 2 + 2.6); }
+    // Overview: the whole map in a corner with the visible part marked. Click or drag on it to move.
+    _miniDraw() {
+      var mini = this._$('mini'), v = this._vb0, M = this._M, self = this;
+      if (this._cfg.minimap === false || !v) { mini.innerHTML = ''; mini.style.display = 'none'; return; }
+      var h = '<svg viewBox="' + [v.x, v.y, v.w, v.h].join(' ') + '">';
+      this._hubs.forEach(function (x) { if (x.from) h += '<line x1="' + x.from.x + '" y1="' + x.from.y + '" x2="' + x.x + '" y2="' + x.y + '" stroke="' + M[x.m] + '" stroke-width="3" stroke-opacity=".45"/>'; });
+      Object.keys(this._mnodes).forEach(function (m) { var n = self._mnodes[m]; h += '<line x1="0" y1="0" x2="' + n.x + '" y2="' + n.y + '" stroke="' + M[m] + '" stroke-width="3" stroke-opacity=".45"/><circle cx="' + n.x + '" cy="' + n.y + '" r="' + n.r + '" fill="' + M[m] + '"/>'; });
+      this._hubs.forEach(function (x) { h += '<circle cx="' + x.x + '" cy="' + x.y + '" r="' + (x.outer + 4) + '" fill="' + M[x.m] + '" fill-opacity=".5"/>'; });
+      h += '<circle cx="0" cy="0" r="' + (this._sz.core * 1.1) + '" fill="' + M.core + '"/><rect class="view" id="miniView"/></svg>';
+      mini.innerHTML = h;
+      if (this._miniWired) return; this._miniWired = true;
+      var down = false;
+      function go(e) {
+        var sv = mini.querySelector('svg'); if (!sv) return; var p = sv.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; var q = p.matrixTransform(sv.getScreenCTM().inverse());
+        self._vb.x = q.x - self._vb.w / 2; self._vb.y = q.y - self._vb.h / 2; self._setVB();
+      }
+      mini.addEventListener('pointerdown', function (e) { e.stopPropagation(); down = true; try { mini.setPointerCapture(e.pointerId); } catch (err) { /* not capturable */ } go(e); });
+      mini.addEventListener('pointermove', function (e) { if (down) go(e); });
+      mini.addEventListener('pointerup', function () { down = false; });
+      mini.addEventListener('pointercancel', function () { down = false; });
+      mini.addEventListener('click', function (e) { e.stopPropagation(); });
+    }
+    _miniView() {
+      var mini = this._$('mini'), r = mini && mini.querySelector('#miniView'), v = this._view, a = this._vb0;
+      if (!r || !v || !a) return;
+      var tol = Math.max(a.w, a.h) * 0.03;
+      var all = v.x <= a.x + tol && v.y <= a.y + tol && v.x + v.w >= a.x + a.w - tol && v.y + v.h >= a.y + a.h - tol;
+      mini.style.display = all ? 'none' : 'block';
+      var x0 = Math.max(a.x, v.x), y0 = Math.max(a.y, v.y), x1 = Math.min(a.x + a.w, v.x + v.w), y1 = Math.min(a.y + a.h, v.y + v.h);
+      r.setAttribute('x', x0); r.setAttribute('y', y0); r.setAttribute('width', Math.max(0, x1 - x0)); r.setAttribute('height', Math.max(0, y1 - y0));
     }
     // narrow screens: taller map, starting zoomed in on Home Assistant so labels and dots are usable
     _fit() {
@@ -948,11 +1029,11 @@
       var k = this._k || 1, pad = 2 / k, obst = this._obst || [], placed = [];
       this._dk = k;
       function box(e) { var b; try { b = e.getBBox(); } catch (err) { return null; } return b && b.width ? { x0: b.x - pad, y0: b.y - pad, x1: b.x + b.width + pad, y1: b.y + b.height + pad } : null; }
-      function free(r) {
+      function free(r, inner) {
         if (!r) return false;
         for (var i = 0; i < obst.length; i++) {
-          var o = obst[i], dx = o.x - Math.max(r.x0, Math.min(o.x, r.x1)), dy = o.y - Math.max(r.y0, Math.min(o.y, r.y1));
-          if (dx * dx + dy * dy < o.r * o.r) return false;
+          var o = obst[i], rr = inner ? (o.hr || o.r) : o.r, dx = o.x - Math.max(r.x0, Math.min(o.x, r.x1)), dy = o.y - Math.max(r.y0, Math.min(o.y, r.y1));
+          if (dx * dx + dy * dy < rr * rr) return false;
         }
         for (var j = 0; j < placed.length; j++) { var p = placed[j]; if (r.x0 < p.x1 && r.x1 > p.x0 && r.y0 < p.y1 && r.y1 > p.y0) return false; }
         return true;
@@ -987,6 +1068,29 @@
           var b = box(E.e); if (free(b)) r = b;
         });
         if (r) placed.push(r); else E.e.style.display = 'none';
+      });
+      // Semantic zoom: once neighbouring dots are far enough apart on screen, the devices in view get their names,
+      // pointing away from their hub. A name that would touch a dot, a node or another label is left out.
+      var v = this._view, Z = this._sz, self = this, devs = this._devs || [];
+      var on = this._cfg.device_labels !== false && v && k >= this._dlMin();
+      var seen = on ? devs.filter(function (d) { return d.x != null && d.vis !== false && d.x > v.x && d.x < v.x + v.w && d.y > v.y && d.y < v.y + v.h; }) : [];
+      if (seen.length > 260) seen = [];
+      this._dlOn = seen.length > 0;
+      devs.forEach(function (d) { if (d.lab) d.lab.style.display = 'none'; });
+      seen.forEach(function (d) { placed.push({ x0: d.x - Z.dev, y0: d.y - Z.dev, x1: d.x + Z.dev, y1: d.y + Z.dev, d: d }); });
+      seen.forEach(function (d) {
+        if (!d.lab) { d.lab = document.createElementNS(NS, 'text'); d.lab.setAttribute('class', 'dl'); d.lab.textContent = d.n.length > 22 ? d.n.slice(0, 21) + '…' : d.n; self._gL.appendChild(d.lab); }
+        var right = d.x >= d.hub.x, r = null, me = placed.filter(function (p) { return p.d === d; })[0];
+        d.lab.style.display = '';
+        [right, !right].forEach(function (rt) {
+          if (r) return;
+          d.lab.setAttribute('text-anchor', rt ? 'start' : 'end'); d.lab.setAttribute('x', d.x + (rt ? 1 : -1) * (Z.dev + 4 / k)); d.lab.setAttribute('y', d.y);
+          var b = box(d.lab); if (!b) return;
+          me.x0 = me.x1 = 1e9; // its own dot is not an obstacle
+          if (free(b, true)) r = b;
+          me.x0 = d.x - Z.dev; me.x1 = d.x + Z.dev;
+        });
+        if (r) placed.push(r); else d.lab.style.display = 'none';
       });
     }
     _zoom(f, cx, cy) {
@@ -1224,6 +1328,113 @@
     }
     _reset() { if (!this._S) return; this._S.sel = null; this._clear(); this._list(); }
   }
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Visual editor. Plain inputs, no Home Assistant components, so it does not depend on what the frontend has loaded.
+  // A value equal to its default is removed from the configuration, to keep the YAML short.
+  var ED = {
+    en: { general: 'General', title: 'Title', language: 'Language', auto: 'Automatic', sort: 'Order of the lists', byArea: 'By area', byName: 'By name',
+      show_panel: 'Side panel', animations: 'Animations', minimap: 'Overview map when the whole map is not in view', device_labels: 'Device names when zoomed in',
+      colors: 'Colours', cloud: 'Internet', local: 'Local network', radio: 'Local radio', core: 'Home Assistant', offline: 'Offline', away: 'Off the network', reset: 'Default',
+      lines: 'Lines', lcloud: 'Internet links', llocal: 'Cable links', lradio: 'Radio links', lwifi: 'Wi-Fi links', solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted', width: 'Line width',
+      sizes: 'Bubble sizes', score: 'Home Assistant', snetwork: 'Network nodes (router, coordinator, internet)', shub: 'Hubs and integrations', sdevice: 'Devices',
+      content: 'What is shown', group_small: 'Group integrations with this many devices or fewer', show_trackers: 'Devices that only have a device tracker', show_mesh: 'Zigbee mesh routes',
+      mqtt_entities: 'MQTT entities without a device', exclude_integrations: 'Hidden integrations (domains, separated by commas)', router_name: 'Name of the local network node',
+      coordinator_name: 'Name of the radio coordinator', demo: 'Demo installation', none: 'None (my installation)', yaml: 'names, overrides, exclude_devices and z2m_base_topic are edited in YAML.' },
+    es: { general: 'General', title: 'Título', language: 'Idioma', auto: 'Automático', sort: 'Orden de las listas', byArea: 'Por pieza', byName: 'Por nombre',
+      show_panel: 'Panel lateral', animations: 'Animaciones', minimap: 'Mini-mapa cuando no se ve el mapa completo', device_labels: 'Nombres de los equipos al acercar',
+      colors: 'Colores', cloud: 'Internet', local: 'Red local', radio: 'Radio local', core: 'Home Assistant', offline: 'Sin conexión', away: 'Fuera de la red', reset: 'Por defecto',
+      lines: 'Líneas', lcloud: 'Enlaces por internet', llocal: 'Enlaces por cable', lradio: 'Enlaces por radio', lwifi: 'Enlaces Wi-Fi', solid: 'Continua', dashed: 'Segmentada', dotted: 'Punteada', width: 'Grosor de línea',
+      sizes: 'Tamaño de las burbujas', score: 'Home Assistant', snetwork: 'Nodos de red (router, coordinador, internet)', shub: 'Hubs e integraciones', sdevice: 'Equipos',
+      content: 'Qué se muestra', group_small: 'Agrupar integraciones con esta cantidad de equipos o menos', show_trackers: 'Equipos que solo tienen device tracker', show_mesh: 'Rutas de la malla Zigbee',
+      mqtt_entities: 'Entidades MQTT sin dispositivo', exclude_integrations: 'Integraciones ocultas (dominios, separados por comas)', router_name: 'Nombre del nodo de red local',
+      coordinator_name: 'Nombre del coordinador de radio', demo: 'Instalación de demostración', none: 'Ninguna (mi instalación)', yaml: 'names, overrides, exclude_devices y z2m_base_topic se editan en YAML.' }
+  };
+  var LINE = ['solid', 'dashed', 'dotted'];
+  var FIELDS = [
+    { sec: 'general' }, { p: 'title', k: 'text' }, { p: 'language', k: 'select', o: [['', 'auto'], ['en', 'English'], ['es', 'Español']], d: '' },
+    { p: 'sort', k: 'select', o: [['area', 'byArea'], ['name', 'byName']], d: 'area' }, { p: 'show_panel', k: 'bool', d: true }, { p: 'animations', k: 'bool', d: true },
+    { p: 'minimap', k: 'bool', d: true }, { p: 'device_labels', k: 'bool', d: true },
+    { sec: 'colors' }, { p: 'colors.cloud', k: 'color', d: '#7c5cff', l: 'cloud' }, { p: 'colors.local', k: 'color', d: '#0b8a77', l: 'local' }, { p: 'colors.radio', k: 'color', d: '#b86e00', l: 'radio' },
+    { p: 'colors.core', k: 'color', d: '#03a9f4', l: 'core' }, { p: 'colors.offline', k: 'color', d: '#db4437', l: 'offline' }, { p: 'colors.away', k: 'color', d: '#a86400', l: 'away' },
+    { sec: 'lines' }, { p: 'lines.cloud', k: 'select', o: LINE, d: 'dashed', l: 'lcloud' }, { p: 'lines.local', k: 'select', o: LINE, d: 'solid', l: 'llocal' },
+    { p: 'lines.wifi', k: 'select', o: LINE, d: 'dotted', l: 'lwifi' }, { p: 'lines.radio', k: 'select', o: LINE, d: 'solid', l: 'lradio' }, { p: 'lines.width', k: 'range', min: 0.5, max: 6, step: 0.5, d: 2, l: 'width' },
+    { sec: 'sizes' }, { p: 'sizes.core', k: 'range', min: 20, max: 80, step: 1, d: 56, l: 'score' }, { p: 'sizes.network', k: 'range', min: 16, max: 40, step: 1, d: 28, l: 'snetwork' },
+    { p: 'sizes.hub', k: 'range', min: 14, max: 34, step: 1, d: 22, l: 'shub' }, { p: 'sizes.device', k: 'range', min: 3, max: 9, step: 0.2, d: 6.2, l: 'sdevice' },
+    { sec: 'content' }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'mqtt_entities', k: 'bool', d: true },
+    { p: 'exclude_integrations', k: 'list' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
+    { p: 'demo', k: 'select', o: [['', 'none'], ['unifi', 'UniFi'], ['fritz', 'FRITZ!Box'], ['large', '350']], d: '' }
+  ];
+  var ECSS = ':host{display:block}details{border:1px solid var(--divider-color,rgba(0,0,0,.12));border-radius:10px;margin:0 0 10px;padding:0 12px}' +
+    'summary{cursor:pointer;font-weight:600;padding:11px 0;color:var(--primary-text-color)}details[open] summary{border-bottom:1px solid var(--divider-color,rgba(0,0,0,.12));margin-bottom:6px}' +
+    '.row{display:flex;align-items:center;gap:10px;padding:7px 0;color:var(--primary-text-color);font-size:14px}.row>span:first-child{flex:1 1 auto;min-width:0}' +
+    'input[type=text],input[type=number],select{font:inherit;font-size:14px;padding:6px 8px;border-radius:8px;border:1px solid var(--divider-color,rgba(0,0,0,.25));background:var(--card-background-color,#fff);color:var(--primary-text-color);min-width:0;width:170px;box-sizing:border-box}' +
+    'input[type=number]{width:80px}input[type=range]{width:140px}input[type=color]{width:42px;height:30px;padding:0;border:1px solid var(--divider-color,rgba(0,0,0,.25));border-radius:8px;background:none}' +
+    'input[type=checkbox]{width:18px;height:18px}output{width:34px;text-align:right;font-variant-numeric:tabular-nums;color:var(--secondary-text-color)}' +
+    'button{font:inherit;font-size:12px;padding:4px 8px;border-radius:8px;border:1px solid var(--divider-color,rgba(0,0,0,.25));background:none;color:var(--secondary-text-color);cursor:pointer}' +
+    'button[disabled]{opacity:.35;cursor:default}p{font-size:12px;color:var(--secondary-text-color);margin:4px 0 12px}' +
+    '@media (max-width:480px){.row{flex-wrap:wrap}.row>span:first-child{flex-basis:100%}}';
+  class ConnectionMapCardEditor extends HTMLElement {
+    setConfig(c) { this._c = JSON.parse(JSON.stringify(c || {})); this._sync(); }
+    set hass(h) { var first = !this._hass; this._hass = h; if (first) this._sync(); }
+    _t(k) { var l = String((this._c && this._c.language) || (this._hass && this._hass.language) || 'en').slice(0, 2); return (ED[l] || ED.en)[k] || ED.en[k] || k; }
+    _get(p) { var o = this._c; p.split('.').forEach(function (k) { o = o == null ? undefined : o[k]; }); return o; }
+    _set(p, v) {
+      var ks = p.split('.'), c = JSON.parse(JSON.stringify(this._c));
+      if (ks.length === 1) { if (v === undefined) delete c[ks[0]]; else c[ks[0]] = v; }
+      else { var o = Object.assign({}, c[ks[0]]); if (v === undefined) delete o[ks[1]]; else o[ks[1]] = v; if (Object.keys(o).length) c[ks[0]] = o; else delete c[ks[0]]; }
+      if (ks[0] === 'sizes') delete c.core_size; // the old switch is replaced by the size itself
+      this._c = c;
+      this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: c }, bubbles: true, composed: true }));
+      this._sync();
+    }
+    _build() {
+      var self = this, t = this._t.bind(this), root = this.attachShadow({ mode: 'open' }), html = '<style>' + ECSS + '</style>', open = false;
+      FIELDS.forEach(function (f, i) {
+        if (f.sec) { html += (open ? '</details>' : '') + '<details' + (f.sec === 'general' ? ' open' : '') + '><summary>' + esc(t(f.sec)) + '</summary>'; open = true; return; }
+        var id = 'f' + i, lab = esc(t(f.l || f.p)), c = '';
+        if (f.k === 'bool') c = '<input type="checkbox" id="' + id + '">';
+        else if (f.k === 'select') c = '<select id="' + id + '">' + f.o.map(function (o) { var v = Array.isArray(o) ? o[0] : o, n = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(v) + '">' + esc(ED.en[n] ? t(n) : n) + '</option>'; }).join('') + '</select>';
+        else if (f.k === 'color') c = '<input type="color" id="' + id + '"><button id="' + id + 'r">' + esc(t('reset')) + '</button>';
+        else if (f.k === 'range') c = '<input type="range" id="' + id + '" min="' + f.min + '" max="' + f.max + '" step="' + f.step + '"><output id="' + id + 'o"></output><button id="' + id + 'r">' + esc(t('reset')) + '</button>';
+        else if (f.k === 'number') c = '<input type="number" id="' + id + '" min="' + f.min + '" max="' + f.max + '">';
+        else c = '<input type="text" id="' + id + '">';
+        html += '<label class="row"><span>' + lab + '</span>' + c + '</label>';
+      });
+      root.innerHTML = html + '</details><p>' + esc(t('yaml')) + '</p>';
+      FIELDS.forEach(function (f, i) {
+        if (f.sec) return; var e = root.getElementById('f' + i), r = root.getElementById('f' + i + 'r');
+        function val() {
+          if (f.k === 'bool') return e.checked === f.d ? undefined : e.checked;
+          if (f.k === 'list') { var a = e.value.split(',').map(function (x) { return x.trim(); }).filter(Boolean); return a.length ? a : undefined; }
+          if (f.k === 'range' || f.k === 'number') { var n = parseFloat(e.value); return isNaN(n) || n === f.d ? undefined : n; }
+          if (f.k === 'color') return e.value;
+          return e.value === '' || e.value === f.d ? undefined : e.value;
+        }
+        e.addEventListener(f.k === 'text' || f.k === 'list' ? 'change' : 'input', function () { self._set(f.p, val()); });
+        if (r) r.addEventListener('click', function (ev) { ev.preventDefault(); self._set(f.p, undefined); });
+      });
+      this._built = true;
+    }
+    // show the configuration in the inputs; the one being edited is left alone
+    _sync() {
+      if (!this._c || !this._hass) return; if (!this._built) this._build();
+      var self = this, root = this.shadowRoot, act = root.activeElement;
+      FIELDS.forEach(function (f, i) {
+        if (f.sec) return; var e = root.getElementById('f' + i), r = root.getElementById('f' + i + 'r'), o = root.getElementById('f' + i + 'o'), v = self._get(f.p);
+        if (f.p === 'sizes.core' && v === undefined && self._c.core_size === 'compact') v = 28;
+        if (r) r.disabled = v === undefined;
+        if (e !== act) {
+          if (f.k === 'bool') e.checked = v === undefined ? f.d : !!v;
+          else if (f.k === 'list') e.value = Array.isArray(v) ? v.join(', ') : '';
+          else if (f.k === 'color') e.value = /^#[0-9a-f]{6}$/i.test(String(v)) ? v : f.d;
+          else e.value = v === undefined || v === null ? (f.d === undefined ? '' : f.d) : v;
+        }
+        if (o) o.textContent = e.value;
+      });
+    }
+  }
+  if (!customElements.get('connection-map-card-editor')) customElements.define('connection-map-card-editor', ConnectionMapCardEditor);
 
   if (!customElements.get('connection-map-card')) customElements.define('connection-map-card', ConnectionMapCard);
   window.customCards = window.customCards || [];

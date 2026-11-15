@@ -20,6 +20,9 @@ Most network maps show one protocol at a time. This card draws all of them in on
 - **Live status.** Offline devices (all entities `unavailable`) are outlined in red and listed in the side panel. Devices that your router reports as disconnected get a dashed amber ring (off the network: powered off or sleeping).
 - **Motion.** Small dots travel along every link towards Home Assistant, devices pop in when the map loads, and the selected path speeds up. It respects the system's reduced-motion setting and can be turned off with `animations: false`.
 - **Hover to follow a path.** Point at a device, a hub or a network node and it grows, its whole path to Home Assistant stays bright and the rest of the map fades (it is never hidden, so you keep the context). A tooltip shows the name, area and integration. The side panel is linked to the map: pointing at a row highlights that device or hub. It works with the keyboard too (Tab and Enter).
+- **More detail as you zoom in.** Once the dots are far enough apart on screen, the devices in view show their names next to them.
+- **Overview map.** When part of the map is outside the view (because of the zoom, or on a phone), a small overview appears in the corner with the visible part marked. Click or drag on it to move. It disappears when the whole map fits.
+- **Visual editor.** Colours, line styles and width, the size of each level of bubbles and what is shown can be changed from the card editor, with a live preview.
 - **Click to explore.** Tap a device to see its full path, for example `Bedroom lamp → Hue Bridge → Philips Hue → Local network → Home Assistant`, and open its device page.
 - **Filter and search** by connection type, area, name or model, or show only offline devices.
 - **Zoom and pan** with the mouse wheel, by dragging, or with the buttons. Labels keep the same size on screen at any zoom level. A label is never drawn over a node or over another label: it moves to a free side of its node, and if there is no room at the current zoom it is hidden until you zoom in.
@@ -76,13 +79,17 @@ views:
 | `exclude_devices` | list | `[]` | Device IDs to hide. An entity ID hides an MQTT entity that has no device. |
 | `show_trackers` | boolean | `false` | Show devices that only have `device_tracker` entities (for example, every phone and laptop your router reports). |
 | `sort` | string | `area` | Order of the device lists: `area` (by area, then name) or `name` (alphabetical). The list of a hub also has a button to switch between the two. |
-| `core_size` | string | `large` | `compact` draws Home Assistant the same size as the network nodes; the version and host details stay in the side panel. |
+| `core_size` | string | `large` | `compact` is a shortcut for `sizes.core: 28`. |
 | `mqtt_entities` | boolean | `true` | Show MQTT entities that have no device (entities written by hand in YAML without a `device` block), one dot per entity. |
 | `show_panel` | boolean | `true` | Show the side panel with the summary and details. |
 | `animations` | boolean | `true` | Animated data flow, pop-in and hover effects. |
 | `language` | string | HA language | Force the card language: `en` or `es`. |
 | `names` | map | `{}` | Rename integrations or hubs, by integration domain or by the name shown. Example: `hisense_ac_plugin: Air conditioners`. |
-| `colors` | map | | Override the colors: `cloud`, `local`, `radio`. |
+| `colors` | map | | Override the colors: `cloud`, `local`, `radio`, `core` (Home Assistant), `offline`, `away`. |
+| `lines` | map | | Line style per kind of link, each `solid`, `dashed` or `dotted`: `cloud` (default `dashed`), `local` (cable, `solid`), `wifi` (`dotted`), `radio` (`solid`). `width` sets the thickness (default `2`). |
+| `sizes` | map | | Radius of each level of bubbles: `core` (Home Assistant, default `56`), `network` (router, coordinator, internet: `28`), `hub` (hubs and integrations: `22`), `device` (`6.2`). Below 48 the centre only says "HA". |
+| `minimap` | boolean | `true` | Show the overview map while part of the map is outside the view. |
+| `device_labels` | boolean | `true` | Show device names when zoomed in far enough. |
 | `show_mesh` | boolean | `true` | Load the Zigbee network map (Zigbee2MQTT or ZHA) to show routers/repeaters and link quality. |
 | `demo` | string | | Draw a synthetic installation instead of yours: `unifi`, `fritz` or `large` (about 350 devices). Useful to try the card or to report layout issues. |
 | `z2m_base_topic` | string | `zigbee2mqtt` | Zigbee2MQTT MQTT base topic. |
@@ -98,7 +105,15 @@ exclude_integrations:
   - mobile_app
 colors:
   cloud: "#8b5cf6"
+lines:
+  local: dashed
+  width: 3
+sizes:
+  core: 40
+  device: 7
 ```
+
+All of these, except `names`, `overrides`, `exclude_devices` and `z2m_base_topic`, can also be set from the visual editor of the card.
 
 ## How devices are classified
 
