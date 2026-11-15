@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.3.0';
+  var VERSION = '0.4.0';
 
   var STR = {
     en: {
@@ -30,7 +30,8 @@
       infraRadio: 'Radio devices talk to this coordinator, directly or through a router (repeater).', coreDesc: 'The machine that runs Home Assistant.',
       meshNote: 'Zigbee routes come from the Zigbee2MQTT network map.', status2: 'Status',
       network: 'Network', wired: 'Ethernet', wifi: 'Wi-Fi', ip: 'IP address', cable: 'Cable', connectedHere: 'Connected to this node',
-      routerDesc: 'Access point / mesh node of your network.', backhaul: 'Link to main router'
+      routerDesc: 'Access point / mesh node of your network.', backhaul: 'Link to main router',
+      away: 'Off the network', awayLong: 'Not connected to the network right now (off or sleeping)'
     },
     es: {
       title: 'Mapa de conexiones', loading: 'Cargando equipos…', cloud: 'Internet', local: 'Red local', radio: 'Radio local',
@@ -51,7 +52,8 @@
       infraRadio: 'Los equipos por radio le hablan a este coordinador, directo o a través de un router (repetidor).', coreDesc: 'La máquina donde corre Home Assistant.',
       meshNote: 'Las rutas Zigbee vienen del mapa de red de Zigbee2MQTT.', status2: 'Estado',
       network: 'Red', wired: 'Cable (Ethernet)', wifi: 'Wi-Fi', ip: 'Dirección IP', cable: 'Cable', connectedHere: 'Conectados a este nodo',
-      routerDesc: 'Punto de acceso / nodo de la red.', backhaul: 'Enlace al router principal'
+      routerDesc: 'Punto de acceso / nodo de la red.', backhaul: 'Enlace al router principal',
+      away: 'Fuera de la red', awayLong: 'No está conectado a la red ahora (apagado o en reposo)'
     }
   };
 
@@ -75,7 +77,7 @@
   function deg(a) { return a * Math.PI / 180; }
 
   var CSS = [
-    ':host{--cm-cloud:#7c5cff;--cm-local:#0f9f8a;--cm-radio:#e08a00;--cm-core:var(--primary-color,#03a9f4);--cm-bad:var(--error-color,#db4437);',
+    ':host{--cm-cloud:#7c5cff;--cm-local:#0f9f8a;--cm-radio:#e08a00;--cm-core:var(--primary-color,#03a9f4);--cm-bad:var(--error-color,#db4437);--cm-away:#d08700;',
     '--cm-ink:var(--primary-text-color,#212121);--cm-muted:var(--secondary-text-color,#727272);--cm-line:var(--divider-color,rgba(0,0,0,.12));',
     '--cm-bg:var(--ha-card-background,var(--card-background-color,#fff));--cm-faint:var(--secondary-background-color,rgba(127,127,127,.12));display:block}',
     'ha-card{overflow:hidden}',
@@ -116,6 +118,19 @@
     '.edge{stroke-width:2;fill:none;stroke-opacity:.55}.edge.hot{stroke-width:4;stroke-opacity:.9}',
     '.spoke{stroke:var(--cm-line);stroke-width:1}.spoke.meshl{stroke:var(--cm-radio);stroke-dasharray:3 2;stroke-opacity:.8}',
     '.edge.wifi{stroke-dasharray:1 6;stroke-linecap:round;stroke-width:3}',
+    // motion: data flowing towards Home Assistant, devices popping in, offline / off-network rings breathing
+    '.flow{fill:none;stroke-width:2.4;stroke-dasharray:2 18;stroke-linecap:round;opacity:.85;pointer-events:none;animation:cmflow 1.8s linear infinite}',
+    '.edge.hot+.flow{stroke-width:3.6;animation-duration:.7s;opacity:1}.edge.dim+.flow{opacity:.08}',
+    '@keyframes cmflow{from{stroke-dashoffset:0}to{stroke-dashoffset:40}}',
+    '.spoke.meshl{animation:cmmesh 1s linear infinite}@keyframes cmmesh{to{stroke-dashoffset:10}}',
+    '.enter{animation:cmpop .55s cubic-bezier(.2,.8,.3,1.35) backwards;transform-box:fill-box;transform-origin:center}',
+    '@keyframes cmpop{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}',
+    '.dev circle{transition:transform .15s ease;transform-box:fill-box;transform-origin:center}.dev:hover circle{transform:scale(1.45)}',
+    '.hub .disc{transition:stroke-width .15s ease}.hub:hover .disc{stroke-width:4.5}',
+    '.dev.offline circle:last-of-type{animation:cmblink 2.4s ease-in-out infinite}@keyframes cmblink{50%{stroke-opacity:.25}}',
+    '.dev.away circle:last-of-type{fill:var(--cm-bg)!important;stroke:var(--cm-away);stroke-width:2.2;stroke-dasharray:2.5 2}',
+    '.still .flow{display:none}.still *{animation:none!important;transition:none!important}',
+    '@media (prefers-reduced-motion:reduce){.flow{display:none}.enter,.spoke.meshl,.dev circle{animation:none!important;transition:none!important}}',
     '.elbl{font-size:10px;fill:var(--cm-muted);paint-order:stroke;stroke:var(--cm-bg);stroke-width:3px;stroke-linejoin:round}',
     '.dev{cursor:pointer}.dev circle{stroke:var(--cm-bg);stroke-width:1.5}',
     '.dev.offline circle{fill:var(--cm-bg)!important;stroke:var(--cm-bad);stroke-width:2.2}',
@@ -133,7 +148,7 @@
     setConfig(config) {
       this._cfg = Object.assign({
         title: null, group_small: 1, exclude_integrations: [], exclude_devices: [], show_trackers: false,
-        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}
+        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true
       }, config || {});
       if (this._root) this._built = false;
     }
@@ -154,7 +169,7 @@
       this._root = this.attachShadow({ mode: 'open' });
       var c = this._cfg.colors || {};
       var vars = (c.cloud ? '--cm-cloud:' + c.cloud + ';' : '') + (c.local ? '--cm-local:' + c.local + ';' : '') + (c.radio ? '--cm-radio:' + c.radio + ';' : '');
-      this._root.innerHTML = '<style>' + CSS + '</style><ha-card style="' + vars + '"><div class="wrap"><div class="head"><h1 id="title"></h1><div class="stats" id="stats"></div></div>' +
+      this._root.innerHTML = '<style>' + CSS + '</style><ha-card class="' + (this._cfg.animations === false ? 'still' : '') + '" style="' + vars + '"><div class="wrap"><div class="head"><h1 id="title"></h1><div class="stats" id="stats"></div></div>' +
         '<div class="tools"><input id="q" type="search"><select id="area"></select><button class="btn" id="offBtn" aria-pressed="false"></button></div>' +
         '<div class="main" id="main"><div class="map" id="map"><svg id="svg" viewBox="0 0 1000 700" role="img"></svg><div class="tip" id="tip"></div>' +
         '<div class="legend" id="legend"></div><div class="zoom"><button class="btn" id="zin">+</button><button class="btn" id="zout">−</button><button class="btn" id="zfit">⤢</button></div></div>' +
@@ -387,6 +402,7 @@
       (this._devs || []).concat(this._routers || []).forEach(function (d) {
         var st = d.ents.map(function (e) { return S[e] ? S[e].state : 'unavailable'; });
         d.off = st.length > 0 && st.every(function (s) { return s === 'unavailable'; });
+        d.away = !d.off && !!d.trk && !!S[d.trk] && S[d.trk].state === 'not_home';
       });
     }
 
@@ -467,6 +483,7 @@
       this._$('offBtn').textContent = t('onlyOffline');
       this._$('legend').innerHTML = ['cloud', 'local', 'radio'].map(function (m) { return '<span><i style="background:' + M[m] + '"></i>' + esc(t(m)) + '</span>'; }).join('') +
         '<span><i style="border:2px solid var(--cm-bad)"></i>' + esc(t('offline')) + '</span>' +
+        '<span><i style="border:2px dashed var(--cm-away)"></i>' + esc(t('away')) + '</span>' +
         '<span><svg width="22" height="6"><line x1="1" y1="3" x2="21" y2="3" stroke="var(--cm-local)" stroke-width="2"/></svg>' + esc(t('cable')) + '</span>' +
         '<span><svg width="22" height="6"><line x1="2" y1="3" x2="21" y2="3" stroke="var(--cm-local)" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 6"/></svg>' + esc(t('wifi')) + '</span>';
       this._$('zin').title = t('zoomIn'); this._$('zout').title = t('zoomOut'); this._$('zfit').title = t('fit');
@@ -479,14 +496,19 @@
       var core = { x: 0, y: 0 };
       function lbl(x1, y1, x2, y2, txt) { if (!txt) return; var e = el('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 4, 'text-anchor': 'middle', 'class': 'elbl' }, gE); e.textContent = txt; }
       function short(c) { return c ? (c.wired ? t('cable') : (c.iface ? c.iface.replace(/\s*GHz/i, ' GHz') : t('wifi'))) : ''; }
+      // a moving dash on top of every link: data flowing towards Home Assistant (x1 is always the side closer to the centre)
+      var first = !this._entered, anim = this._cfg.animations !== false;
+      function flow(x1, y1, x2, y2, col) { if (anim) el('line', { x1: x1, y1: y1, x2: x2, y2: y2, 'class': 'flow', stroke: col }, gE); }
       Object.keys(this._mnodes).forEach(function (m) {
         var n = self._mnodes[m], c = m === 'local' ? self._conn(self._haTrk) : null;
         n.edge = el('line', { x1: 0, y1: 0, x2: n.x, y2: n.y, 'class': 'edge' + (c && !c.wired ? ' wifi' : ''), stroke: M[m], 'stroke-dasharray': m === 'cloud' ? '6 6' : '' }, gE);
+        flow(0, 0, n.x, n.y, M[m]);
         if (c) lbl(0, 0, n.x, n.y, short(c));
       });
       Object.keys(this._rnodes || {}).forEach(function (k) {
         var n = self._rnodes[k]; if (!n.router) return; var p = self._mnodes.local, c = self._conn(n.router.trk);
         n.edge = el('line', { x1: p.x, y1: p.y, x2: n.x, y2: n.y, 'class': 'edge' + (c && !c.wired ? ' wifi' : ''), stroke: M.local }, gE);
+        flow(p.x, p.y, n.x, n.y, M.local);
         if (c) lbl(p.x, p.y, n.x, n.y, short(c));
       });
       this._hubs.forEach(function (h) {
@@ -494,17 +516,18 @@
         if (h.m === 'local') { c = self._hubConn(h); if (c && c.via && self._rnodes[c.via]) n = self._rnodes[c.via]; }
         h.from = n;
         h.edge = el('line', { x1: n.x, y1: n.y, x2: h.x, y2: h.y, 'class': 'edge' + (c && !c.wired ? ' wifi' : ''), stroke: M[h.m], 'stroke-dasharray': h.m === 'cloud' ? '6 6' : '' }, gE);
+        flow(n.x, n.y, h.x, h.y, M[h.m]);
         if (c && h.trk) lbl(n.x, n.y, h.x, h.y, short(c));
       });
-      this._devs.forEach(function (d) {
+      this._devs.forEach(function (d, i) {
         var from = d.meshParent && d.meshParent.x != null ? d.meshParent : d.hub;
         d.spoke = el('line', { x1: from.x, y1: from.y, x2: d.x, y2: d.y, 'class': 'spoke' + (d.meshParent ? ' meshl' : '') }, gS);
-        var g = el('g', { 'class': 'dev', tabindex: 0, role: 'button', 'aria-label': d.n }, gD);
+        var g = el('g', { 'class': 'dev' + (first ? ' enter' : ''), tabindex: 0, role: 'button', 'aria-label': d.n, style: first ? 'animation-delay:' + Math.min(1100, 250 + i * 6) + 'ms' : '' }, gD);
         if (d.router) el('circle', { cx: d.x, cy: d.y, r: 10, fill: 'none', stroke: M[d.hub.m], 'stroke-width': 1.6, 'class': 'rring' }, g);
         el('circle', { cx: d.x, cy: d.y, r: 6.2, fill: M[d.hub.m] }, g); d.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selDev(d); });
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selDev(d); });
-        g.addEventListener('pointerenter', function () { self._tip(d.x, d.y, d.n + (d.off ? ' · ' + t('offline') : '')); });
+        g.addEventListener('pointerenter', function () { self._tip(d.x, d.y, d.n + (d.off ? ' · ' + t('offline') : d.away ? ' · ' + t('away') : '')); });
         g.addEventListener('pointerleave', function () { self._$('tip').style.display = 'none'; });
       });
       // core
@@ -538,8 +561,8 @@
         var tl = el('text', { x: n.x, y: n.y + oy, 'text-anchor': 'middle', 'class': 'lbl', style: 'font-size:11.5px' }, g); tl.textContent = r.n;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selRouter(r); });
       });
-      this._hubs.forEach(function (h) {
-        var g = el('g', { 'class': 'hub', tabindex: 0, role: 'button', 'aria-label': h.n }, gH);
+      this._hubs.forEach(function (h, i) {
+        var g = el('g', { 'class': 'hub' + (first ? ' enter' : ''), tabindex: 0, role: 'button', 'aria-label': h.n, style: first ? 'animation-delay:' + (80 + i * 45) + 'ms' : '' }, gH);
         el('circle', { cx: h.x, cy: h.y, r: 22, 'class': 'disc', stroke: M[h.m] }, g);
         var c = el('text', { x: h.x, y: h.y + 5, 'text-anchor': 'middle', style: 'font-size:13px;font-weight:700;fill:' + M[h.m] }, g); c.textContent = h.dv.length;
         var below = Math.sin(deg(h.ac)) > -0.35;
@@ -551,6 +574,7 @@
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selHub(h); });
       });
       this._setVB();
+      this._entered = true;
       this._wire();
       this._filters();
       this._marks();
@@ -607,7 +631,7 @@
     _marks() {
       if (!this._devs || !this._S) return;
       var t = this._t.bind(this);
-      this._devs.forEach(function (d) { if (d.g) d.g.classList.toggle('offline', !!d.off); });
+      this._devs.forEach(function (d) { if (d.g) { d.g.classList.toggle('offline', !!d.off); d.g.classList.toggle('away', !!d.away); } });
       var ob = this._$('offStat'), n = this._devs.filter(function (d) { return d.off; }).length;
       if (ob) ob.innerHTML = '<i style="border:2px solid var(--cm-bad)"></i>' + esc(t('offline')) + ' <b class="off">' + n + '</b>';
       this._apply();
@@ -622,7 +646,7 @@
 
     _item(d) {
       var M = this._M, t = this._t.bind(this);
-      return '<button class="item' + (this._S.sel === d ? ' sel' : '') + '" data-id="' + esc(d.id) + '"><i style="' + (d.off ? 'border:2px solid var(--cm-bad)' : 'background:' + M[d.hub.m]) + '"></i><span class="nm">' + esc(d.n) + '</span><small class="' + (d.off ? 'off' : '') + '">' + (d.off ? esc(t('offline')) : esc(d.a || d.hub.n)) + '</small></button>';
+      return '<button class="item' + (this._S.sel === d ? ' sel' : '') + '" data-id="' + esc(d.id) + '"><i style="' + (d.off ? 'border:2px solid var(--cm-bad)' : d.away ? 'border:2px dashed var(--cm-away)' : 'background:' + M[d.hub.m]) + '"></i><span class="nm">' + esc(d.n) + '</span><small class="' + (d.off ? 'off' : '') + '" style="' + (d.away ? 'color:var(--cm-away)' : '') + '">' + (d.off ? esc(t('offline')) : d.away ? esc(t('away')) : esc(d.a || d.hub.n)) + '</small></button>';
     }
     _bind() {
       var self = this, p = this._$('panel');
@@ -733,7 +757,7 @@
       this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M[h.m] + '">' + esc(t(h.m)) + '</div><h2>' + esc(d.n) + '</h2><dl class="kv">' +
         (d.mo ? '<dt>' + esc(t('model')) + '</dt><dd>' + esc(d.mo) + '</dd>' : '') + (d.a ? '<dt>' + esc(t('area')) + '</dt><dd>' + esc(d.a) + '</dd>' : '') +
         '<dt>' + esc(t('integration')) + '</dt><dd>' + esc(this._intName(d.p)) + '</dd>' +
-        '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '">' + esc(d.off ? t('offline') : t('online')) + '</dd>' +
+        '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '" style="' + (d.away ? 'color:var(--cm-away);font-weight:600' : '') + '">' + esc(d.off ? t('offline') : d.away ? t('awayLong') : t('online')) + '</dd>' +
         (d.router != null && d.ieee ? '<dt>' + esc(t('role')) + '</dt><dd>' + esc(d.router ? t('roleRouter') : t('roleEnd')) + '</dd>' : '') +
         (d.ieee && this._mesh ? '<dt>' + esc(t('connectedTo')) + '</dt><dd>' + esc(d.meshParent ? d.meshParent.n : (this._coord || t('coordinator'))) + '</dd>' : '') +
         (d.lqi != null ? '<dt>' + esc(t('signal')) + '</dt><dd>' + d.lqi + ' / 255</dd>' : '') +
