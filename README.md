@@ -15,6 +15,7 @@ Most network maps show one protocol at a time. This card draws all of them in on
 - **Wi-Fi or cable.** With a router integration that reports its clients (Huawei Mesh Router, UniFi, FRITZ!Box) every hub and device is attached to the access point it actually uses, with a solid line for Ethernet and a dotted line for Wi-Fi (2.4 / 5 / 6 GHz). Even Home Assistant's own link is shown. See [router support](#router-support).
 - **Zigbee mesh (Zigbee2MQTT and ZHA).** The card reads the Zigbee network map and shows which router (repeater) each device goes through, with its link quality (LQI).
 - **Coordinator details.** The radio node shows the real adapter (for example *Connect ZBT-1* or *Sonoff Zigbee 3.0 USB Dongle Plus*), its stack and firmware, read from Zigbee2MQTT or ZHA.
+- **Dots never collide.** A device with children of its own (a mesh router, a power strip) sits on a ring with its children on the next ring out, inside its own slice of the circle.
 - **Links never cross.** Two links never cross each other, and a link never runs over a bubble that is not one of its ends. The layout is built for that and checks itself: an access point that has no clean place is left off the map (its hubs hang from the router, and the router's panel still lists it).
 - **Uses the free space.** When there is only one group (for example a home with nothing but its local network), that group's node sits at the centre of the map with its hubs all around it, and Home Assistant moves to the side. Access points without hubs of their own are placed in whatever free space is left.
 - **Nothing is left out silently.** If an access point or a label is not drawn for lack of room, a warning under the map says how many, with a shortcut to the router's panel or to zoom in.
@@ -89,6 +90,8 @@ views:
 | `recent_hours` | number | `24` | How long a battery device that stopped answering counts as *seen recently* (yellow) before it is shown as offline (red). `0` turns it off. The time is taken from when its entities became unavailable, so after a Home Assistant restart it counts from the restart. |
 | `layout` | string | `detailed` | `detailed` draws every device as a dot; `compact` draws one bubble per hub or integration. The ◎ button on the map switches between them without changing the configuration. |
 | `show_export` | boolean | `true` | Show the button that saves the map as an image. |
+| `entities_without_device` | boolean | `true` | Draw the entities of device integrations that have no device. |
+| `devices_without_entities` | boolean | `true` | Draw the devices that have no entities. |
 | `merge_duplicates` | boolean | `true` | Draw a device that is set up through several integrations as a single dot. |
 | `show_panel` | boolean | `true` | Show the side panel with the summary and details. |
 | `animations` | boolean | `true` | Animated data flow, pop-in and hover effects. |
@@ -141,6 +144,10 @@ A parent that is just another device of the same integration, such as a power st
 **One device, several integrations.** A TV set up through its own integration and through the companion app, or a phone known to two integrations, has several entries in Home Assistant's device registry. The card draws them as one dot, and its panel says what else it is set up as. Two entries are taken as the same device when the router knows them by the same address, or when one of them is the companion app and has the same name as the other. Turn it off with `merge_duplicates: false`.
 
 **MQTT entities without a device**, the ones written by hand in YAML without a `device` block, are drawn as one dot each in the MQTT group. Tapping one opens the entity instead of a device page.
+
+**Other integrations without devices.** Some integrations give their entities no device at all (Obihai, several custom ones). For an integration that talks to devices or hubs, each thing you can operate (light, switch, lock, cover, …) is drawn as a dot, and its plain sensors as one dot for the integration. Helpers, services and system integrations are left out. This needs an admin user, because it relies on the list of integrations.
+
+**Devices without entities**, such as a remote that only sends events or a lock its integration cannot control, are drawn in their integration's group. The card cannot know their status, so they are never shown as offline.
 
 **Mobile devices** are the phones, tablets and watches that run the Home Assistant companion app. At home they are shown on the access point they use. When the app reports mobile data, or your router reports the device as away, the path becomes `Device → Mobile devices → Mobile data → Internet → Home Assistant`. The card cannot tell which remote access method the device uses (Home Assistant Cloud, a VPN such as Tailscale, or an exposed port), so it only says *Internet*.
 

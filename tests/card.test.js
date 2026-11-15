@@ -242,3 +242,46 @@ test('in a big home, radios and phones keep their own group, and Z-Wave does not
   assert.deepEqual(await H.linkProblems(page), []);
   await page.close();
 });
+
+test('devices without entities and entities without a device are on the map', async () => {
+  const page = await H.newPage(browser);
+  const mount = (config) => page.evaluate(async (config) => {
+    const devices = {}, entities = {}, states = {};
+    const dev = (id, name, domain, o = {}) => { devices[id] = { id, name, via_device_id: o.via || null, entry_type: o.service ? 'service' : null, connections: [], identifiers: [[domain, id]], disabled_by: null, area_id: null }; };
+    const ent = (eid, device_id, platform, name) => { entities[eid] = { entity_id: eid, device_id, platform }; states[eid] = { entity_id: eid, state: 'on', attributes: { friendly_name: name || eid } }; };
+    // Lutron: a bridge, two dimmers with entities and two Pico remotes that only send events
+    dev('bridge', 'Caseta Bridge', 'lutron_caseta'); ent('sensor.bridge', 'bridge', 'lutron_caseta');
+    for (const n of ['Hall dimmer', 'Porch dimmer']) { dev(n, n, 'lutron_caseta', { via: 'bridge' }); ent('light.' + n.replace(' ', '_'), n, 'lutron_caseta'); }
+    for (const n of ['Hall Pico', 'Bedroom Pico']) dev(n, n, 'lutron_caseta', { via: 'bridge' });
+    // Tuya: a plug with entities and a lock the integration creates nothing for
+    dev('plug', 'Tuya plug', 'tuya'); ent('switch.tuya_plug', 'plug', 'tuya'); dev('lock', 'Front door lock', 'tuya');
+    // a two-outlet plug whose own entry has no entities, next to enough plugs of the same integration
+    dev('ep40', 'Patio EP40', 'tplink'); for (const n of ['Patio left', 'Patio right']) { dev(n, n, 'tplink', { via: 'ep40' }); ent('switch.' + n.replace(' ', '_'), n, 'tplink'); }
+    for (let i = 0; i < 4; i++) { dev('kp' + i, 'Plug ' + i, 'tplink'); ent('switch.kp' + i, 'kp' + i, 'tplink'); }
+    // integrations that give their entities no device: an ATA box with sensors only, lights from a custom integration
+    for (const n of ['status', 'reboot_cause', 'last_caller']) ent('sensor.obihai_' + n, null, 'obihai');
+    ent('light.daybetter_strip', null, 'daybetter', 'Desk strip'); ent('light.daybetter_bulb', null, 'daybetter', 'Reading bulb'); ent('sensor.daybetter_rssi', null, 'daybetter');
+    // not devices: a helper, the sun, a service
+    ent('input_boolean.guests', null, 'input_boolean'); ent('sun.sun', null, 'sun'); ent('sensor.steps', null, 'google_health'); dev('room', 'Living room', 'hue', { service: true });
+    const man = [['lutron_caseta', 'Lutron Caséta', 'hub'], ['tuya', 'Tuya', 'hub', 'cloud_push'], ['tplink', 'TP-Link Smart Home', 'hub'], ['obihai', 'Obihai', 'device'], ['daybetter', 'DayBetter'], ['input_boolean', 'Toggle', 'helper'], ['sun', 'Sun', 'service'], ['google_health', 'Google Health', 'service', 'cloud_polling'], ['hue', 'Philips Hue', 'hub']]
+      .map((m) => ({ domain: m[0], name: m[1], integration_type: m[2], iot_class: m[3] || 'local_push' }));
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig(Object.assign({ animations: false, group_small: 0 }, config)); host.appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+    const by = (n) => c._devs.find((d) => d.n === n), path = (n) => by(n) && c._pathOf(by(n)).join(' > ');
+    return { names: c._devs.map((d) => d.n).sort(), pico: path('Hall Pico'), lock: by('Front door lock') && [by('Front door lock').hub.n, by('Front door lock').bare, by('Front door lock').off],
+      ep40: path('Patio left'), obihai: by('Obihai') && by('Obihai').mo, daybetter: c._devs.filter((d) => d.p === 'daybetter').map((d) => d.n + (d.mo ? ' (' + d.mo + ')' : '')).sort() };
+  }, config);
+  const r = await mount({});
+  assert.equal(r.pico, 'Hall Pico > Caseta Bridge > Lutron Caséta > Local network > Home Assistant');
+  assert.deepEqual(r.lock, ['Tuya', true, false], 'drawn in its integration, and never reported offline: there is nothing to tell');
+  assert.equal(r.ep40, 'Patio left > Patio EP40 > TP-Link Smart Home > Local network > Home Assistant');
+  assert.equal(r.obihai, '3 entities without a device');
+  assert.deepEqual(r.daybetter, ['DayBetter (1 entities without a device)', 'Desk strip', 'Reading bulb']);
+  for (const n of ['guests', 'sun', 'steps', 'Living room', 'Google Health', 'Sun', 'Toggle']) assert.ok(!r.names.some((x) => x.includes(n)), n + ' is not a device');
+  assert.deepEqual(await H.linkProblems(page), []);
+  const off = await mount({ devices_without_entities: false, entities_without_device: false });
+  for (const n of ['Hall Pico', 'Front door lock', 'Obihai', 'Desk strip']) assert.ok(!off.names.includes(n), n + ' is hidden when the options are off');
+  await page.close();
+});

@@ -36,7 +36,7 @@
       noRoomName1: '1 label is hidden at this zoom: there is no room for it.', noRoomName: 'labels are hidden at this zoom: there is no room for them.', noRoomZoom: 'Zoom in to see them', notDrawn: 'Not drawn',
       layoutBtn: 'Switch between the detailed and the compact map', exportBtn: 'Save the map as an image', exportAnon: 'Image without names', exportFull: 'Image with names',
       exportHint: 'Without names, hubs, routers and devices are numbered: safe to share.',
-      alsoAs: 'Also set up as',
+      alsoAs: 'Also set up as', noEntities: 'No entities in Home Assistant', nEntities: 'entities without a device', openIntegration: 'Open integration',
       recent: 'Seen recently', recentLong: 'Not answering now. Battery device, last seen', ago: '{t} ago', recentNow: 'Seen recently',
       bluetooth: 'Bluetooth', btDesc: 'Bluetooth devices: Home Assistant hears them directly or through a Bluetooth proxy.', btProxy: 'Bluetooth proxy', btAdapter: 'Bluetooth adapter', btSignal: 'Signal (RSSI)',
       btHeard: 'Devices that this Bluetooth receiver hears best right now.', threadDesc: 'Matter devices on the Thread mesh. They reach Home Assistant through a Thread border router.', mqttManual: 'MQTT entity without a device'
@@ -66,7 +66,7 @@
       noRoomName1: '1 etiqueta está oculta con este zoom: no hay espacio para ella.', noRoomName: 'etiquetas están ocultas con este zoom: no hay espacio para ellas.', noRoomZoom: 'Acerca el mapa para verlas', notDrawn: 'No dibujado',
       layoutBtn: 'Cambiar entre el mapa detallado y el compacto', exportBtn: 'Guardar el mapa como imagen', exportAnon: 'Imagen sin nombres', exportFull: 'Imagen con nombres',
       exportHint: 'Sin nombres, los hubs, routers y equipos van numerados: se puede compartir.',
-      alsoAs: 'También configurado como',
+      alsoAs: 'También configurado como', noEntities: 'Sin entidades en Home Assistant', nEntities: 'entidades sin dispositivo', openIntegration: 'Abrir integración',
       recent: 'Visto hace poco', recentLong: 'No responde ahora. Equipo a batería, visto por última vez', ago: 'hace {t}', recentNow: 'Vistos hace poco',
       bluetooth: 'Bluetooth', btDesc: 'Equipos Bluetooth: Home Assistant los escucha directo o a través de un proxy Bluetooth.', btProxy: 'Proxy Bluetooth', btAdapter: 'Adaptador Bluetooth', btSignal: 'Señal (RSSI)',
       btHeard: 'Equipos que este receptor Bluetooth escucha mejor en este momento.', threadDesc: 'Equipos Matter en la malla Thread. Llegan a Home Assistant a través de un border router Thread.', mqttManual: 'Entidad MQTT sin dispositivo'
@@ -340,7 +340,7 @@
     setConfig(config) {
       this._cfg = Object.assign({
         title: null, group_small: 1, exclude_integrations: [], exclude_devices: [], show_trackers: false,
-        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', mqtt_entities: true, merge_duplicates: true, recent_hours: 24, layout: 'detailed', show_export: true
+        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', mqtt_entities: true, entities_without_device: true, devices_without_entities: true, merge_duplicates: true, recent_hours: 24, layout: 'detailed', show_export: true
       }, config || {});
       // look-only options are applied by drawing again; anything else needs the model to be rebuilt
       var LOOK = ['title', 'colors', 'lines', 'sizes', 'core_size', 'minimap', 'device_labels', 'animations', 'show_panel', 'layout', 'show_export'];
@@ -634,6 +634,7 @@
         var c = {}; list.forEach(function (e) { if (e.platform) c[e.platform] = (c[e.platform] || 0) + 1; });
         return Object.keys(c).sort(function (a, b) { return c[b] - c[a]; })[0];
       }
+      function platOf(id) { return primary(byDev[id] || []) || (((devices[id] || {}).identifiers || [])[0] || [])[0] || ''; }
       function isHubDevice(v) { return v && !v.disabled_by && ((children[v.id] || 0) >= 2 || (byDev[v.id] || []).length <= 5); }
       var hubs = {}, devs = [], routers = [], coords = [];
       this._z2mBridge = null;
@@ -681,7 +682,7 @@
         if (!x.ents.length) x.ents = es.map(function (e) { return e.entity_id; });
         var ie = (d.identifiers || []).map(function (i) { return String(i[1] || ''); }).filter(function (s) { return s.indexOf('zigbee2mqtt_0x') === 0; })[0];
         x.ieee = ie ? ie.slice(12) : null;
-        x.trk = x.ieee ? null : findTrk(d); x.trkSure = !!x.trk && findTrk.sure; x.also = [];
+        x.trk = x.ieee ? null : findTrk(d); x.trkSure = !!x.trk && findTrk.sure; x.also = []; x.bare = !es.length;
         // the companion app reports how the phone is connected (Android: network_type, iOS: connection_type)
         if (p === 'mobile_app') x.net = (es.filter(function (e) { return /^sensor\..*_(network|connection)_type$/.test(e.entity_id); })[0] || {}).entity_id || null;
         // battery devices sleep between reports: see _status
@@ -700,14 +701,19 @@
         var d = devices[id];
         if (d.disabled_by || cfg.exclude_devices.indexOf(id) >= 0) return;
         if (d.entry_type === 'service' && d.via_device_id) return; // virtual rooms/zones/groups exposed by a hub
-        var es = byDev[id] || []; if (!es.length) return;
-        var p = primary(es); if (!p) return;
+        var es = byDev[id] || [], p = primary(es), bare = false;
+        if (!p) {
+          // No entities (the integration creates none for it, or they are all disabled): a remote that only sends events,
+          // a lock the integration cannot control. It is still a device of that integration.
+          p = platOf(id); bare = true;
+          if (es.length || !p || cfg.devices_without_entities === false || d.entry_type === 'service' || p === 'bluetooth') return;
+        }
         var nm = (d.name_by_user || d.name || id).trim();
         if (COORD_INTS.indexOf(p) >= 0) { coords.push(nm.replace(/\s*\([^)]*\)\s*$/, '').replace(/^Home Assistant\s+/, '')); return; }
         if (p === 'mqtt' && /zigbee2mqtt/i.test(d.manufacturer || '')) self._z2mBridge = d;
         var doms = es.map(function (e) { return e.entity_id.split('.')[0]; });
-        if (doms.every(function (x) { return x === 'update'; })) return;
-        if (!cfg.show_trackers && p !== 'mobile_app' && doms.every(function (x) { return x === 'device_tracker' || x === 'update'; })) return;
+        if (!bare && doms.every(function (x) { return x === 'update'; })) return;
+        if (!bare && !cfg.show_trackers && p !== 'mobile_app' && doms.every(function (x) { return x === 'device_tracker' || x === 'update'; })) return;
         if (SKIP.indexOf(p) >= 0 || cfg.exclude_integrations.indexOf(p) >= 0) return;
         // Netgear registers every client as a device of its own: only the router and the satellites that clients name as
         // their access point are network nodes; the rest are plain clients
@@ -785,26 +791,40 @@
         });
       }
       // MQTT entities configured by hand without a device block have no device: draw each one as its own dot.
-      if (cfg.mqtt_entities !== false && cfg.exclude_integrations.indexOf('mqtt') < 0) {
-        var src = this._src || {}, loose = {};
-        Object.keys(entities).forEach(function (eid) { if (entities[eid].platform === 'mqtt' && !entities[eid].device_id) loose[eid] = 1; });
-        Object.keys(src).forEach(function (eid) { if (src[eid] && src[eid].domain === 'mqtt' && !(entities[eid] && entities[eid].device_id)) loose[eid] = 1; });
-        Object.keys(loose).sort().forEach(function (eid) {
-          var e = entities[eid] || {}, st = H.states[eid], xid = 'entity:' + eid;
-          if (e.hidden || (!st && !entities[eid]) || cfg.exclude_devices.indexOf(xid) >= 0 || cfg.exclude_devices.indexOf(eid) >= 0) return;
-          var med = self._medium('mqtt'), hub = hubFor('int:mqtt:' + med, self._intName('mqtt'), med, 'int', 'mqtt');
-          hub.sub = self._intName('mqtt');
-          var x = { id: xid, entity: eid, n: String((st && st.attributes && st.attributes.friendly_name) || e.name || eid).trim(), mo: t('mqttManual'),
-            a: e.area_id && areas[e.area_id] ? areas[e.area_id].name : '', p: 'mqtt', hub: hub, ents: [eid], ieee: null, trk: null };
-          hub.dv.push(x); devs.push(x);
-        });
-      }
+      // The same goes for any integration that talks to devices or hubs but gives its entities no device (Obihai, some
+      // custom integrations): each thing you can operate is a dot, and its plain sensors are one dot for the integration.
+      var src = this._src || {}, loose = {}, ACT = ['light', 'switch', 'cover', 'climate', 'fan', 'lock', 'media_player', 'vacuum', 'camera', 'humidifier', 'water_heater', 'siren', 'valve', 'alarm_control_panel', 'remote', 'lawn_mower'];
+      var wants = function (plat) {
+        if (!plat || cfg.exclude_integrations.indexOf(plat) >= 0) return false;
+        if (plat === 'mqtt') return cfg.mqtt_entities !== false;
+        var m = self._man[plat]; // needs the integration list (admin); "hub" is what an integration is when it does not say
+        return cfg.entities_without_device !== false && !!m && ['device', 'hub'].indexOf(m.integration_type || 'hub') >= 0 && SKIP.indexOf(plat) < 0 && ROUTER_INTS.indexOf(plat) < 0 && COORD_INTS.indexOf(plat) < 0 && plat !== 'mobile_app';
+      };
+      Object.keys(entities).forEach(function (eid) { var e = entities[eid]; if (!e.device_id && wants(e.platform)) loose[eid] = e.platform; });
+      Object.keys(src).forEach(function (eid) { if (!loose[eid] && src[eid] && !(entities[eid] && (entities[eid].device_id || entities[eid].platform)) && wants(src[eid].domain)) loose[eid] = src[eid].domain; });
+      var rest = {};
+      Object.keys(loose).sort().forEach(function (eid) {
+        var e = entities[eid] || {}, st = H.states[eid], plat = loose[eid];
+        if (e.hidden || (!st && !entities[eid]) || cfg.exclude_devices.indexOf('entity:' + eid) >= 0 || cfg.exclude_devices.indexOf(eid) >= 0) return;
+        if (plat !== 'mqtt' && ACT.indexOf(eid.split('.')[0]) < 0) { (rest[plat] = rest[plat] || []).push(eid); return; }
+        var med = self._medium(plat), hub = hubFor('int:' + plat + ':' + med, self._intName(plat), med, 'int', plat);
+        hub.sub = self._intName(plat);
+        var x = { id: 'entity:' + eid, entity: eid, n: String((st && st.attributes && st.attributes.friendly_name) || e.name || eid).trim(), mo: plat === 'mqtt' ? t('mqttManual') : '',
+          a: e.area_id && areas[e.area_id] ? areas[e.area_id].name : '', p: plat, hub: hub, ents: [eid], ieee: null, trk: null };
+        hub.dv.push(x); devs.push(x);
+      });
+      Object.keys(rest).sort().forEach(function (plat) {
+        var med = self._medium(plat), hub = hubFor('int:' + plat + ':' + med, self._intName(plat), med, 'int', plat), list = rest[plat];
+        hub.sub = self._intName(plat);
+        var x = { id: 'entities:' + plat, integration: plat, entity: list.length === 1 ? list[0] : null, n: self._intName(plat), mo: list.length + ' ' + t('nEntities'), a: '', p: plat, hub: hub, ents: list, ieee: null, trk: null };
+        hub.dv.push(x); devs.push(x);
+      });
       // A parent that is just another device of the same integration (a power strip and its outlets) is not a bridge.
       // When the integration has at least as many devices of its own, the parent and its children are drawn inside the integration's group.
       Object.keys(hubs).forEach(function (k) {
         var h = hubs[k]; if (h.kind !== 'hub') return;
         var es = byDev[h.devId] || [], g = hubs['int:' + h.p + ':' + h.m];
-        if (!g || primary(es) !== h.p || g.dv.length < h.dv.length) return;
+        if (!g || platOf(h.devId) !== h.p || g.dv.length < h.dv.length) return;
         var par = mk(h.devId, devices[h.devId], es, h.p, g); par.router = true;
         h.dv.forEach(function (d) { d.hub = g; d.meshParent = par; g.dv.push(d); });
         delete hubs[k];
@@ -866,27 +886,35 @@
         // devices that reach the hub through a mesh router are drawn next to that router
         // small meshes are drawn as a tree (children next to their router); big ones stay on rings, ordered by router
         h.tree = h.dv.length <= 30;
-        var top = h.tree ? h.dv.filter(function (d) { return !d.meshParent || h.dv.indexOf(d.meshParent) < 0; })
-          : h.dv.slice().sort(function (x, y) { var px = x.meshParent ? x.meshParent.n : (x.router ? x.n : ''), py = y.meshParent ? y.meshParent.n : (y.router ? y.n : ''); return px === py ? (x.router ? -1 : 0) - (y.router ? -1 : 0) : (px < py ? -1 : 1); });
-        var i = 0, ring = 0; h.outer = r0 - 4;
-        while (i < top.length) {
-          var rad = r0 + ring * sp, cap = Math.floor(2 * Math.PI * rad / sp), n = Math.min(cap, top.length - i);
-          top.slice(i, i + n).forEach(function (d, k) { var a = -Math.PI / 2 + (k / n) * 2 * Math.PI + ring * 0.2; d.ang = a; d.rx = rad * Math.cos(a); d.ry = rad * Math.sin(a); });
-          i += n; ring++; h.outer = rad;
-        }
-        var level = top, guard = 0;
-        while (level.length && guard++ < 6) {
-          var next = [];
-          level.forEach(function (p) {
-            var kids = h.dv.filter(function (d) { return d.meshParent === p && d.rx == null; });
-            kids.forEach(function (d, k) {
-              var a = p.ang + (k - (kids.length - 1) / 2) * 0.6; d.ang = a;
-              d.rx = p.rx + sp * 1.45 * Math.cos(a); d.ry = p.ry + sp * 1.45 * Math.sin(a);
-              h.outer = Math.max(h.outer, Math.sqrt(d.rx * d.rx + d.ry * d.ry));
-            });
-            next = next.concat(kids);
-          });
-          level = next;
+        if (h.tree) {
+          // Tree: a device with children (a mesh router, a power strip) sits on a ring and its children on the next ring
+          // out, inside the slice of the circle that belongs to it. Every dot has its own place, so dots never collide,
+          // and the lines of one family never cross those of another.
+          var kids = {}, used = {}, tops = [];
+          var grow = function (d, depth) { kids[d.id] = depth >= 8 ? [] : h.dv.filter(function (c) { return c.meshParent === d && !used[c.id]; }); kids[d.id].forEach(function (c) { used[c.id] = 1; }); kids[d.id].forEach(function (c) { grow(c, depth + 1); }); };
+          h.dv.forEach(function (d) { if (!d.meshParent || h.dv.indexOf(d.meshParent) < 0) { used[d.id] = 1; tops.push(d); } });
+          tops.forEach(function (d) { grow(d, 0); });
+          h.dv.forEach(function (d) { if (!used[d.id]) { used[d.id] = 1; tops.push(d); grow(d, 0); } }); // a loop of parents: start it somewhere
+          var rb = r0, need = function (d, L) { var own = sp / (rb + L * sp), sum = 0; kids[d.id].forEach(function (c) { sum += need(c, L + 1); }); return Math.max(own, sum); };
+          var total = 0, it = 0;
+          do { total = 0; tops.forEach(function (d) { total += need(d, 0); }); if (total > 2 * Math.PI) rb *= total / (2 * Math.PI) * 1.02; } while (total > 2 * Math.PI && it++ < 12);
+          var scale = Math.max(1, 2 * Math.PI / total), deep = 0;
+          var place = function (d, L, a0, slot) {
+            var a = a0 + slot / 2, rad = rb + L * sp; d.ang = a; d.rx = rad * Math.cos(a); d.ry = rad * Math.sin(a); deep = Math.max(deep, L);
+            var sum = 0; kids[d.id].forEach(function (c) { sum += need(c, L + 1); });
+            var cur = a - sum / 2; kids[d.id].forEach(function (c) { var w = need(c, L + 1); place(c, L + 1, cur, w); cur += w; });
+          };
+          var a1 = -Math.PI / 2 - (tops.length ? need(tops[0], 0) * scale / 2 : 0);
+          tops.forEach(function (d) { var w = need(d, 0) * scale; place(d, 0, a1, w); a1 += w; });
+          h.outer = rb + deep * sp;
+        } else {
+          var top = h.dv.slice().sort(function (x, y) { var px = x.meshParent ? x.meshParent.n : (x.router ? x.n : ''), py = y.meshParent ? y.meshParent.n : (y.router ? y.n : ''); return px === py ? (x.router ? -1 : 0) - (y.router ? -1 : 0) : (px < py ? -1 : 1); });
+          var i = 0, ring = 0; h.outer = r0 - 4;
+          while (i < top.length) {
+            var rad = r0 + ring * sp, cap = Math.floor(2 * Math.PI * rad / sp), n = Math.min(cap, top.length - i);
+            top.slice(i, i + n).forEach(function (d, k) { var a = -Math.PI / 2 + (k / n) * 2 * Math.PI + ring * 0.2; d.ang = a; d.rx = rad * Math.cos(a); d.ry = rad * Math.sin(a); });
+            i += n; ring++; h.outer = rad;
+          }
         }
         h.dv.forEach(function (d) { if (d.rx == null) { d.ang = Math.PI / 2; d.rx = 0; d.ry = h.outer + sp; h.outer += sp; } });
         h.w = h.outer * 2 + 70;
@@ -1642,7 +1670,7 @@
         '<dt>' + esc(t('integration')) + '</dt><dd>' + esc(this._intName(d.p)) + '</dd>' +
         (d.also && d.also.length ? '<dt>' + esc(t('alsoAs')) + '</dt><dd>' + esc(d.also.map(function (o) { return o.as; }).filter(function (v, i, l) { return l.indexOf(v) === i; }).join(', ')) + '</dd>' : '') +
         (d.entity ? '<dt>' + esc(t('entity')) + '</dt><dd style="word-break:break-all">' + esc(d.entity) + '</dd>' : '') +
-        '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away);font-weight:600' : '') + '">' + esc(d.off ? t('offline') : d.recent ? t('recentLong') + ' ' + this._ago(d.seen) : d.remote ? t('remoteLong') : d.away ? t('awayLong') : t('online')) + '</dd>' +
+        '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away);font-weight:600' : '') + '">' + esc(d.bare ? t('noEntities') : d.off ? t('offline') : d.recent ? t('recentLong') + ' ' + this._ago(d.seen) : d.remote ? t('remoteLong') : d.away ? t('awayLong') : t('online')) + '</dd>' +
         (d.meshParent && !d.ieee ? '<dt>' + esc(t('parentDev')) + '</dt><dd>' + esc(d.meshParent.n) + '</dd>' : '') +
         (d.router != null && d.ieee ? '<dt>' + esc(t('role')) + '</dt><dd>' + esc(d.router ? t('roleRouter') : t('roleEnd')) + '</dd>' : '') +
         (d.ieee && this._mesh ? '<dt>' + esc(t('connectedTo')) + '</dt><dd>' + esc(d.meshParent ? d.meshParent.n : (this._coord || t('coordinator'))) + '</dd>' : '') +
@@ -1653,12 +1681,12 @@
           return '<dt>' + esc(t('network')) + '</dt><dd>' + esc((own ? '' : h.n + ' → ') + [c.via, self._ifaceText(c)].filter(Boolean).join(' · ')) + '</dd>' + (own && c.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(c.ip) + '</dd>' : '');
         })() + '</dl>' +
         '<div class="eyebrow" style="color:var(--cm-muted)">' + esc(t('path')) + '</div>' + this._route(this._pathOf(d)) +
-        '<button class="btn" id="open">' + esc(t(d.entity ? 'openEntity' : 'open')) + '</button><button class="btn" id="hubb">' + esc(t('seeAll')) + ' ' + esc(h.n) + '</button><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
+        '<button class="btn" id="open">' + esc(t(d.entity ? 'openEntity' : d.integration ? 'openIntegration' : 'open')) + '</button><button class="btn" id="hubb">' + esc(t('seeAll')) + ' ' + esc(h.n) + '</button><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
       this._bind();
       this._$('panel').querySelector('#open').onclick = function () {
         if (self._hass.demo) return;
         if (d.entity) { self.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: d.entity }, bubbles: true, composed: true })); return; }
-        history.pushState(null, '', '/config/devices/device/' + d.id);
+        history.pushState(null, '', d.integration ? '/config/integrations/integration/' + d.integration : '/config/devices/device/' + d.id);
         window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
       };
       this._$('panel').querySelector('#hubb').onclick = function () { self._selHub(h); };
@@ -1691,7 +1719,7 @@
       lines: 'Lines', lcloud: 'Internet links', llocal: 'Cable links', lradio: 'Radio links', lwifi: 'Wi-Fi links', solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted', width: 'Line width',
       sizes: 'Bubble sizes', score: 'Home Assistant', snetwork: 'Network nodes (router, coordinator, internet)', shub: 'Hubs and integrations', sdevice: 'Devices',
       content: 'What is shown', group_small: 'Group integrations with this many devices or fewer', show_trackers: 'Devices that only have a device tracker', show_mesh: 'Zigbee mesh routes',
-      mqtt_entities: 'MQTT entities without a device', merge_duplicates: 'Draw a device set up through several integrations as one', recent_hours: 'Hours a silent battery device counts as seen recently (0: never)', exclude_integrations: 'Hidden integrations (domains, separated by commas)', router_name: 'Name of the local network node',
+      mqtt_entities: 'MQTT entities without a device', merge_duplicates: 'Draw a device set up through several integrations as one', entities_without_device: 'Entities of device integrations that have no device', devices_without_entities: 'Devices that have no entities', recent_hours: 'Hours a silent battery device counts as seen recently (0: never)', exclude_integrations: 'Hidden integrations (domains, separated by commas)', router_name: 'Name of the local network node',
       coordinator_name: 'Name of the radio coordinator', demo: 'Demo installation', none: 'None (my installation)', yaml: 'names, overrides, exclude_devices and z2m_base_topic are edited in YAML.' },
     es: { general: 'General', title: 'Título', language: 'Idioma', auto: 'Automático', sort: 'Orden de las listas', byArea: 'Por pieza', byName: 'Por nombre',
       layout: 'Mapa', detailed: 'Detallado: cada equipo es un punto', compact: 'Compacto: una burbuja por hub', show_export: 'Botón para guardar el mapa como imagen', show_panel: 'Panel lateral', animations: 'Animaciones', minimap: 'Mini-mapa cuando no se ve el mapa completo', device_labels: 'Nombres de los equipos al acercar',
@@ -1699,7 +1727,7 @@
       lines: 'Líneas', lcloud: 'Enlaces por internet', llocal: 'Enlaces por cable', lradio: 'Enlaces por radio', lwifi: 'Enlaces Wi-Fi', solid: 'Continua', dashed: 'Segmentada', dotted: 'Punteada', width: 'Grosor de línea',
       sizes: 'Tamaño de las burbujas', score: 'Home Assistant', snetwork: 'Nodos de red (router, coordinador, internet)', shub: 'Hubs e integraciones', sdevice: 'Equipos',
       content: 'Qué se muestra', group_small: 'Agrupar integraciones con esta cantidad de equipos o menos', show_trackers: 'Equipos que solo tienen device tracker', show_mesh: 'Rutas de la malla Zigbee',
-      mqtt_entities: 'Entidades MQTT sin dispositivo', merge_duplicates: 'Dibujar como uno solo un equipo configurado en varias integraciones', recent_hours: 'Horas en que un equipo a batería sin respuesta cuenta como visto hace poco (0: nunca)', exclude_integrations: 'Integraciones ocultas (dominios, separados por comas)', router_name: 'Nombre del nodo de red local',
+      mqtt_entities: 'Entidades MQTT sin dispositivo', merge_duplicates: 'Dibujar como uno solo un equipo configurado en varias integraciones', entities_without_device: 'Entidades sin dispositivo de integraciones de equipos', devices_without_entities: 'Dispositivos que no tienen entidades', recent_hours: 'Horas en que un equipo a batería sin respuesta cuenta como visto hace poco (0: nunca)', exclude_integrations: 'Integraciones ocultas (dominios, separados por comas)', router_name: 'Nombre del nodo de red local',
       coordinator_name: 'Nombre del coordinador de radio', demo: 'Instalación de demostración', none: 'Ninguna (mi instalación)', yaml: 'names, overrides, exclude_devices y z2m_base_topic se editan en YAML.' }
   };
   var LINE = ['solid', 'dashed', 'dotted'];
@@ -1713,7 +1741,7 @@
     { p: 'lines.wifi', k: 'select', o: LINE, d: 'dotted', l: 'lwifi' }, { p: 'lines.radio', k: 'select', o: LINE, d: 'solid', l: 'lradio' }, { p: 'lines.width', k: 'range', min: 0.5, max: 6, step: 0.5, d: 2, l: 'width' },
     { sec: 'sizes' }, { p: 'sizes.core', k: 'range', min: 20, max: 80, step: 1, d: 56, l: 'score' }, { p: 'sizes.network', k: 'range', min: 16, max: 40, step: 1, d: 28, l: 'snetwork' },
     { p: 'sizes.hub', k: 'range', min: 14, max: 34, step: 1, d: 22, l: 'shub' }, { p: 'sizes.device', k: 'range', min: 3, max: 9, step: 0.2, d: 6.2, l: 'sdevice' },
-    { sec: 'content' }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'mqtt_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'bool', d: true }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
+    { sec: 'content' }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'mqtt_entities', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'bool', d: true }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
     { p: 'exclude_integrations', k: 'list' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
     { p: 'demo', k: 'select', o: [['', 'none'], ['unifi', 'UniFi'], ['fritz', 'FRITZ!Box'], ['large', '350']], d: '' }
   ];
