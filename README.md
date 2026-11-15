@@ -8,8 +8,11 @@ Most network maps show one protocol at a time. This card draws all of them in on
 
 - **Zero configuration.** Hubs and bridges are detected from the device registry (`via_device`), and each integration is placed in the cloud or local group from its `iot_class`.
 - **Your real infrastructure.** Routers and access points from router integrations (UniFi, FRITZ!Box, Huawei, TP-Link Omada, ASUSWRT, …) become the local network node, the Zigbee coordinator (Connect ZBT-1, SkyConnect, Yellow, …) becomes the radio node, and the centre shows the host (Home Assistant OS version, virtual machine or bare metal).
-- **Wi-Fi or cable.** With a router integration that reports its clients (Huawei Mesh Router, UniFi, FRITZ!Box, …) every hub and device is attached to the access point it actually uses, with a solid line for Ethernet and a dotted line for Wi-Fi (2.4 / 5 GHz). Even Home Assistant's own link is shown.
-- **Zigbee mesh (Zigbee2MQTT).** The card asks Zigbee2MQTT for its network map and shows which router (repeater) each device goes through, with its link quality (LQI).
+- **Wi-Fi or cable.** With a router integration that reports its clients (Huawei Mesh Router, UniFi, FRITZ!Box) every hub and device is attached to the access point it actually uses, with a solid line for Ethernet and a dotted line for Wi-Fi (2.4 / 5 / 6 GHz). Even Home Assistant's own link is shown. See [router support](#router-support).
+- **Zigbee mesh (Zigbee2MQTT and ZHA).** The card reads the Zigbee network map and shows which router (repeater) each device goes through, with its link quality (LQI).
+- **Coordinator details.** The radio node shows the real adapter (for example *Connect ZBT-1* or *Sonoff Zigbee 3.0 USB Dongle Plus*), its stack and firmware, read from Zigbee2MQTT or ZHA.
+- **Scales to big homes.** Large hubs are drawn as rings instead of trees, tiny integrations are grouped automatically when there are many, and access points sit next to the hubs they serve.
+- **Demo mode.** `demo: unifi`, `demo: fritz` or `demo: large` draws a synthetic installation, so you can see what the card does with hardware you don't have.
 - **Live status.** Offline devices (all entities `unavailable`) are outlined in red and listed in the side panel. Devices that your router reports as disconnected get a dashed amber ring (off the network: powered off or sleeping).
 - **Motion.** Small dots travel along every link towards Home Assistant, devices pop in when the map loads, and the selected path speeds up. It respects the system's reduced-motion setting and can be turned off with `animations: false`.
 - **Click to explore.** Tap a device to see its full path, for example `Bedroom lamp → Hue Bridge → Philips Hue → Local network → Home Assistant`, and open its device page.
@@ -60,7 +63,8 @@ views:
 | `language` | string | HA language | Force the card language: `en` or `es`. |
 | `names` | map | `{}` | Rename integrations or hubs, by integration domain or by the name shown. Example: `hisense_ac_plugin: Air conditioners`. |
 | `colors` | map | | Override the colors: `cloud`, `local`, `radio`. |
-| `show_mesh` | boolean | `true` | Load the Zigbee2MQTT network map to show routers/repeaters and link quality. |
+| `show_mesh` | boolean | `true` | Load the Zigbee network map (Zigbee2MQTT or ZHA) to show routers/repeaters and link quality. |
+| `demo` | string | | Draw a synthetic installation instead of yours: `unifi`, `fritz` or `large` (about 350 devices). Useful to try the card or to report layout issues. |
 | `z2m_base_topic` | string | `zigbee2mqtt` | Zigbee2MQTT MQTT base topic. |
 | `router_name` | string | | Override the name shown for the local network node. |
 | `coordinator_name` | string | | Override the name shown for the radio coordinator node. |
@@ -91,10 +95,21 @@ Helpers and system integrations (template, group, Supervisor, Sun, Backup, HACS 
 ### Network infrastructure
 
 - **Router / Wi-Fi:** devices from router integrations are not drawn as dots. They become the local network node, and its panel lists every mesh node with its status.
-- **Clients:** the router's `device_tracker` entities tell which access point each client uses (`connected_via`) and how (`interface_type`: LAN, 2.4 GHz, 5 GHz). Devices are matched to trackers by MAC address, by the IP in their configuration URL, or by name. Extra mesh nodes are drawn next to the main router, and a cloud device that is on your Wi-Fi shows that hop in its path too.
-- **Coordinator:** a Connect ZBT-1 / SkyConnect / Yellow radio becomes the radio node.
+- **Clients:** the router's `device_tracker` entities tell which access point each client uses and how (cable or Wi-Fi band). Devices are matched to trackers by MAC address, by the IP in their configuration URL, or by name. Extra access points are drawn between the main router and the hubs they serve, and a cloud device that is on your Wi-Fi shows that hop in its path too.
+- **Coordinator:** a Connect ZBT-1 / SkyConnect / Yellow radio becomes the radio node. Otherwise the adapter is named from Zigbee2MQTT's `bridge/info` (serial port or network coordinator) or from the ZHA coordinator's manufacturer and model.
 - **Host:** on Home Assistant OS / Supervised installs the centre shows the OS version and whether it runs in a virtual machine (VirtualBox, Proxmox/KVM, Hyper-V, …) or on bare metal.
-- **Zigbee mesh:** for Zigbee2MQTT the card requests the network map over MQTT (it publishes to `<base_topic>/bridge/request/networkmap`). Devices behind a router are drawn next to that router with a dashed orange line, and routers get an outer ring. Building the map can take a few seconds on large networks.
+- **Zigbee mesh:** for Zigbee2MQTT the card requests the network map over MQTT (it publishes to `<base_topic>/bridge/request/networkmap`); for ZHA it reads each device's neighbour table. Devices behind a router are drawn next to that router with a dashed orange line, and routers get an outer ring. Hubs with more than 30 devices keep the ring layout, ordered by router. Building the map can take a few seconds on large networks.
+
+### Router support
+
+The card reads the attributes that router integrations put on their `device_tracker` entities. Only Huawei has been tested on real hardware; the others follow the integrations' source code and the demo mode. Reports from people with this hardware are very welcome.
+
+| Integration | Access point per client | Cable / Wi-Fi | Band | Status |
+| --- | --- | --- | --- | --- |
+| Huawei Mesh Router (HACS) | `connected_via` | `interface_type` | yes | Tested |
+| UniFi Network | `ap_mac` → AP device | wired clients have no `essid` | `radio` (ng / na / 6e) | Untested on real hardware |
+| AVM FRITZ!Box Tools | `connected_to` | `connection_type` (LAN / WLAN) | no | Untested on real hardware |
+| TP-Link Omada, ASUSWRT, OpenWrt (luci / ubus), Nmap, Ping | — | — | — | Routers and APs appear in the local node; clients are not linked to an AP because these integrations don't report it |
 
 Host details and the Zigbee mesh need an admin user; for other users the card simply skips them.
 
