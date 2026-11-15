@@ -37,6 +37,7 @@
       layoutBtn: 'Switch between the detailed and the compact map', exportBtn: 'Save the map as an image', exportAnon: 'Image without names', exportFull: 'Image with names',
       exportHint: 'Without names, hubs, routers and devices are numbered: safe to share.',
       bridgeItself: 'The bridge itself', areaTip: 'devices in this area. Click to show only this area.',
+      threadBr: 'Thread border router',
       alsoAs: 'Also set up as', noEntities: 'No entities in Home Assistant', nEntities: 'entities without a device', openIntegration: 'Open integration',
       recent: 'Seen recently', recentLong: 'Not answering now. Battery device, last seen', ago: '{t} ago', recentNow: 'Seen recently',
       bluetooth: 'Bluetooth', btDesc: 'Bluetooth devices: Home Assistant hears them directly or through a Bluetooth proxy.', btProxy: 'Bluetooth proxy', btAdapter: 'Bluetooth adapter', btSignal: 'Signal (RSSI)',
@@ -68,6 +69,7 @@
       layoutBtn: 'Cambiar entre el mapa detallado y el compacto', exportBtn: 'Guardar el mapa como imagen', exportAnon: 'Imagen sin nombres', exportFull: 'Imagen con nombres',
       exportHint: 'Sin nombres, los hubs, routers y equipos van numerados: se puede compartir.',
       bridgeItself: 'El puente mismo', areaTip: 'equipos en esta pieza. Clic para ver solo esta pieza.',
+      threadBr: 'Router de borde Thread',
       alsoAs: 'También configurado como', noEntities: 'Sin entidades en Home Assistant', nEntities: 'entidades sin dispositivo', openIntegration: 'Abrir integración',
       recent: 'Visto hace poco', recentLong: 'No responde ahora. Equipo a batería, visto por última vez', ago: 'hace {t}', recentNow: 'Vistos hace poco',
       bluetooth: 'Bluetooth', btDesc: 'Equipos Bluetooth: Home Assistant los escucha directo o a través de un proxy Bluetooth.', btProxy: 'Proxy Bluetooth', btAdapter: 'Adaptador Bluetooth', btSignal: 'Señal (RSSI)',
@@ -444,7 +446,7 @@
       if (await this._radioInfo()) { if (this._S && this._S.sel && !this._S.sel.core) this._S.sel = null; this._model(); this._render(); }
       var base = this._cfg.z2m_base_topic || 'zigbee2mqtt', mesh = this._cfg.show_mesh !== false, changed = false;
       if (this._z2mBridge) {
-        try { this._z2mInfo(await this._mqttOnce(base + '/bridge/info', null, 5000)); changed = true; } catch (e) { /* retained bridge/info not available */ }
+        try { this._z2mInfo(await this._mqttOnce(base + '/bridge/info', null, 5000)); changed = true; if (this._S && this._S.sel && !this._S.sel.core) this._S.sel = null; this._model(); } catch (e) { /* retained bridge/info not available */ }
         if (mesh) { try { var nm = await this._mqttOnce(base + '/bridge/response/networkmap', { topic: base + '/bridge/request/networkmap', payload: JSON.stringify({ type: 'raw', routes: false }) }, 45000); this._applyMesh(nm.data && nm.data.value); changed = true; } catch (e) { /* no answer */ } }
       }
       if (mesh && this._hasZha) {
@@ -503,7 +505,6 @@
       var c = info.coordinator || {}, meta = c.meta || {}, port = ((info.config || {}).serial || {}).port || '';
       var fw = meta.revision || [meta.major, meta.minor, meta.patch].filter(function (x) { return x != null; }).join('.');
       this._coordInfo = { type: c.type || '', fw: fw ? String(fw) : '', port: port, name: adapterName(port) };
-      if (!this._coordFromDev && !this._cfg.coordinator_name && (this._coordInfo.name || c.type)) this._coord = this._coordInfo.name || c.type;
     }
     // ZHA: every device lists its neighbours with their relationship (Parent / Child / Sibling) and LQI
     _applyZhaMesh(list) {
@@ -667,6 +668,24 @@
         if (k === 'ap' && H.states[eid] && /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test(H.states[eid].state)) ngAps[H.states[eid].state.toLowerCase().replace(/-/g, ':')] = 1;
       });
       this._hasZha = Object.keys(entities).some(function (k) { return entities[k].platform === 'zha'; });
+      // A Connect ZBT / SkyConnect stick is a Zigbee coordinator or a Thread border router, depending on its firmware,
+      // and the device registry does not say which. It is taken as the Thread border router when OpenThread Border
+      // Router is set up and no Zigbee stack can be using the stick: there is no Zigbee at all, or Zigbee2MQTT says
+      // (through its bridge info) that its adapter is another one, and there is no ZHA. Otherwise it is the coordinator.
+      var stick = null, hasZ2m = false;
+      Object.keys(devices).forEach(function (k) {
+        var d = devices[k]; if (d.disabled_by) return;
+        if (/zigbee2mqtt/i.test(d.manufacturer || '') && (byDev[k] || []).some(function (e) { return e.platform === 'mqtt'; })) hasZ2m = true;
+        if (!stick && COORD_INTS.indexOf(primary(byDev[k] || []) || ((d.identifiers || [])[0] || [])[0]) >= 0) stick = String(d.name_by_user || d.name || '').trim().replace(/\s*\([^)]*\)\s*$/, '').replace(/^Home Assistant\s+/, '');
+      });
+      var ad = this._coordInfo && this._coordInfo.port ? this._coordInfo : null, net = ad && /^(?:tcp|socket):\/\/([^:/]+)/i.exec(ad.port);
+      var z2mOnStick = !ad ? null : net ? false : /zbt|skyconnect|sky_connect|nabu.?casa|yellow/i.test(ad.port) ? true : null;
+      var otbr = ((H.config && H.config.components) || []).indexOf('otbr') >= 0;
+      var stickZigbee = !!stick && (this._hasZha || (hasZ2m ? z2mOnStick !== false : !otbr)); // Zigbee2MQTT on another adapter: not its coordinator either way
+      this._otbr = stick && otbr && !stickZigbee ? stick : null;
+      // a network coordinator (SLZB-06 and the like) is named after the device Home Assistant knows at that address
+      var netName = '';
+      if (net) Object.keys(devices).forEach(function (k) { var u = devices[k].configuration_url, h = ''; try { h = u ? new URL(u).hostname : ''; } catch (e) { h = ''; } if (!netName && h === net[1]) netName = String(devices[k].model || devices[k].name_by_user || devices[k].name || '').trim(); });
       function slug(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
       function findTrk(dev) {
         if (!dev || !trk.length || dev.entry_type === 'service') return null;
@@ -762,7 +781,8 @@
           } else hub = hubFor('bt', t('bluetooth'), 'radio', 'other', null);
           hub.bt = hub.own = true;
         } else if (p === 'matter' && medium === 'local' && self._matter && self._matter[id] && self._matter[id].net === 'thread') {
-          hub = hubFor('thread', 'Thread', 'radio', 'other', null); hub.thread = hub.own = true; hub.sub = self._matter[id].name || hub.sub || '';
+          hub = hubFor('thread', self._otbr || 'Thread', 'radio', 'other', null); hub.thread = hub.own = true; hub.net = self._matter[id].name || hub.net || '';
+          hub.otbr = !!self._otbr; hub.sub = hub.otbr ? t('threadBr') + (hub.net ? ' · ' + hub.net : '') : hub.net;
         } else {
           hub = hubFor('int:' + p + ':' + medium, self._intName(p), medium, 'int', p);
           hub.sub = self._intName(p);
@@ -850,8 +870,8 @@
       this._routers = routers;
       this._router = routers.filter(function (r) { return /primary|main|principal|gateway|router|udm|dream|ucg|usg|fritz!?\s?box|box/i.test(r.n); })[0] || routers[0] || null;
       if (this._router && cfg.router_name) this._router.n = cfg.router_name;
-      this._coord = cfg.coordinator_name || coords[0] || null;
-      this._coordFromDev = !!coords[0];
+      this._coord = cfg.coordinator_name || (stickZigbee && coords[0]) || netName || (ad && (ad.name || ad.type)) || null;
+      this._coordFromDev = stickZigbee && !!coords[0];
       // Merge small integration groups into one "other" node per medium.
       var small = Math.max(0, cfg.group_small | 0);
       // big installations: fold more tiny integrations together so the map stays readable
@@ -1273,7 +1293,7 @@
         }
         var below = Math.sin(deg(h.ac)) > -0.35;
         tlabel(g, h.x, h.y, h.outer + Z.dev + 1, below, h.n.length > 26 ? h.n.slice(0, 25) + '…' : h.n, h.kind === 'hub' || (h.own && !h.plain) ? h.sub : '', false, 2 + i / 1000, h.kind === 'hub' || h.rx ? 'Hub ' + (++anon.hub) : '');
-        if (h.thread && h.sub) g.lastChild.lastChild.setAttribute('data-anon', ''); // the Thread network's name is the home's own
+        if (h.thread && h.sub) g.lastChild.lastChild.setAttribute('data-anon', h.otbr ? t('threadBr') : ''); // the Thread network's name is the home's own
         obst.push({ x: h.x, y: h.y, r: h.outer + Z.dev + 1, hr: Z.hub + 2 });
         h.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selHub(h); });
@@ -1624,7 +1644,7 @@
       var t = this._t.bind(this), r = [d.n], m = d.hub.m;
       if (d.hub.own && !d.hub.plain) {
         r.push(d.via || this._intName(d.p));
-        if (d.hub.thread) r.push('Thread' + (d.hub.sub ? ' (' + d.hub.sub + ')' : ''));
+        if (d.hub.thread) r.push(d.hub.otbr ? d.hub.n + ' (' + t('threadBr') + ')' : 'Thread' + (d.hub.net ? ' (' + d.hub.net + ')' : ''));
         else if (d.hub.rx) {
           r.push(d.hub.n + ' (' + d.hub.sub + ')');
           var pc = this._conn(d.hub.trk), ph = this._ifaceText(pc); // a proxy is itself on the network

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A Connect ZBT / SkyConnect stick was always taken as the Zigbee coordinator. It is now the Thread border router when OpenThread Border Router is set up and no Zigbee stack uses the stick (Zigbee2MQTT reports another adapter, or there is no Zigbee): the Thread group is named after it, and Zigbee hangs from its real coordinator.
+- A network Zigbee coordinator (SLZB-06 and the like) is named after the device Home Assistant knows at its address, instead of "Network coordinator (IP)".
+
 ## 0.7.2 — 2026-11-15
 
 Three additions that came out of the reports on 0.7.1.

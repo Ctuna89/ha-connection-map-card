@@ -352,3 +352,46 @@ test('a bridge is listed as a device of its own, and can be offline', async () =
   assert.ok(r.red);
   await page.close();
 });
+
+test('a Connect stick is the Zigbee coordinator or the Thread border router, depending on what uses it', async () => {
+  const page = await H.newPage(browser);
+  const mount = (o) => page.evaluate(async (o) => {
+    const devices = {}, entities = {}, states = {}, matter = {}; let n = 0;
+    const dev = (name, dom, x = {}) => { const id = 'd' + (++n); devices[id] = Object.assign({ id, name, via_device_id: null, connections: [], identifiers: [[dom, id]], disabled_by: null, area_id: null }, x.reg || {}, { via_device_id: x.via || null });
+      for (let k = 0; k < (x.ents || 1); k++) { const e = 'sensor.e' + n + '_' + k; entities[e] = { entity_id: e, device_id: id, platform: dom }; states[e] = { entity_id: e, state: 'on', attributes: {} }; } return id; };
+    dev('Home Assistant Connect ZBT-2', 'homeassistant_connect_zbt2');
+    if (o.zigbee) { const br = dev('Zigbee2MQTT Bridge', 'mqtt', { ents: 3, reg: { manufacturer: 'Zigbee2MQTT' } }); for (let i = 0; i < 4; i++) dev('Zigbee ' + i, 'mqtt', { via: br }); }
+    dev('SLZB-06', 'smlight', { reg: { model: 'SLZB-06', configuration_url: 'http://10.0.0.5' } });
+    for (const t of ['Eve door', 'Eve motion']) matter[dev(t, 'matter')] = { network_type: 'thread', network_name: 'ha-thread-9d7d', node_type: 'sleepy_end_device' };
+    const man = [['mqtt', 'MQTT'], ['matter', 'Matter'], ['smlight', 'SMLIGHT']].map((m) => ({ domain: m[0], name: m[1], iot_class: 'local_push' }));
+    const info = { coordinator: { type: 'EZSP v13', meta: { revision: '7.4.4' } }, config: { serial: { port: o.port } } };
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false, show_mesh: false, group_small: 0 }); host.appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1', components: o.otbr ? ['otbr', 'mqtt', 'matter'] : ['mqtt', 'matter'] }, callService: async () => {},
+      connection: { subscribeMessage: async (cb, msg) => { if (msg.trigger && /bridge\/info$/.test(msg.trigger.topic)) setTimeout(() => cb({ variables: { trigger: { payload: JSON.stringify(info) } } }), 30); return () => {}; } },
+      callWS: async (m) => { if (m.type === 'manifest/list') return man; if (m.type === 'matter/node_diagnostics' && matter[m.device_id]) return matter[m.device_id]; throw new Error('not in test'); } };
+    for (let i = 0; i < 200 && !(c._built && c._matter && (!o.zigbee || c._coordInfo)); i++) await new Promise((r) => setTimeout(r, 25));
+    await new Promise((r) => setTimeout(r, 120));
+    const by = (name) => c._devs.find((d) => d.n === name), th = c._hubs.find((h) => h.thread);
+    return { radio: c._mname('radio'), thread: [th.n, th.sub], threadPath: c._pathOf(by('Eve door')).join(' > '), zigbeePath: by('Zigbee 0') && c._pathOf(by('Zigbee 0')).join(' > ') };
+  }, o);
+  // the reported home: OTBR on the stick, Zigbee2MQTT on a network coordinator
+  let r = await mount({ otbr: true, zigbee: true, port: 'tcp://10.0.0.5:6638' });
+  assert.equal(r.radio, 'SLZB-06');
+  assert.deepEqual(r.thread, ['Connect ZBT-2', 'Thread border router · ha-thread-9d7d']);
+  assert.equal(r.threadPath, 'Eve door > Matter > Connect ZBT-2 (Thread border router) > Home Assistant');
+  assert.equal(r.zigbeePath, 'Zigbee 0 > SLZB-06 > Zigbee2MQTT Bridge > Home Assistant');
+  assert.deepEqual(await H.linkProblems(page), []);
+  // Zigbee2MQTT on the stick itself: it is the coordinator, whatever else is set up
+  r = await mount({ otbr: true, zigbee: true, port: '/dev/serial/by-id/usb-Nabu_Casa_ZBT-2_abc123-if00' });
+  assert.equal(r.radio, 'Connect ZBT-2');
+  assert.deepEqual(r.thread, ['Thread', 'ha-thread-9d7d']);
+  // no Zigbee at all, and OTBR set up: the stick can only be the border router
+  r = await mount({ otbr: true, zigbee: false });
+  assert.deepEqual(r.thread, ['Connect ZBT-2', 'Thread border router · ha-thread-9d7d']);
+  // without OTBR, Zigbee2MQTT on the network coordinator: the stick is not the coordinator, and nothing says it does Thread
+  r = await mount({ otbr: false, zigbee: true, port: 'tcp://10.0.0.5:6638' });
+  assert.equal(r.radio, 'SLZB-06');
+  assert.deepEqual(r.thread, ['Thread', 'ha-thread-9d7d']);
+  await page.close();
+});
