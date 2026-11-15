@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.3 — 2026-11-15
+
+### Fixed
+
+- A Connect ZBT / SkyConnect stick was always taken as the Zigbee coordinator. The same stick can run Thread instead, and the device registry does not say which. It is now drawn as the **Thread border router** when OpenThread Border Router is set up and no Zigbee stack uses the stick (Zigbee2MQTT reports another adapter, or there is no Zigbee at all): the Thread group is named after it, and Zigbee hangs from its real coordinator.
+- A network Zigbee coordinator (SLZB-06 and the like) is named after the device Home Assistant knows at its address, instead of "Network coordinator (IP)".
+- When Zigbee2MQTT reports an adapter other than the stick, the stick is no longer shown as its coordinator, with or without Thread.
+- A bridge could be shown as offline, with a red ring, when its own entities had no state at all (disabled entities). Offline now means its entities report unavailable; the same rule applies to every device.
+- `group_by_area` did nothing in a group that had a power strip in it (TP-Link). Its single devices are grouped by area now, and each strip keeps its outlets next to it.
+
+### Limits
+
+- With ZHA and OpenThread Border Router both set up, the card cannot tell what the stick does and keeps it as the Zigbee coordinator. `coordinator_name` corrects the name by hand.
+- Knowing which adapter Zigbee2MQTT uses needs an admin user.
+
+### Not verified on real hardware
+
+Built from a report of a home with a Connect ZBT-2 running OpenThread Border Router, Zigbee2MQTT on an SLZB-06 and Z-Wave on a Connect ZWA-2, and tested with a simulated copy of it. Not run on that installation yet.
+
 ## 0.7.2 — 2026-11-15
 
 Three additions that came out of the reports on 0.7.1.
