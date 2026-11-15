@@ -634,6 +634,17 @@
         var c = {}; list.forEach(function (e) { if (e.platform) c[e.platform] = (c[e.platform] || 0) + 1; });
         return Object.keys(c).sort(function (a, b) { return c[b] - c[a]; })[0];
       }
+      // Z-Wave: Home Assistant does not link the nodes to their controller, but every node is identified as
+      // "<network>-<node>" and the controller is node 1. With that, the controller (the USB stick, a Connect ZWA-2) is
+      // drawn as the hub of its network, the way a Zigbee2MQTT bridge or a Hue Bridge is.
+      var zwHome = {}, zwCtrl = {}, zwNodes = {};
+      Object.keys(devices).forEach(function (k) {
+        (devices[k].identifiers || []).forEach(function (i) {
+          var m = i[0] === 'zwave_js' && /^(\d+)-(\d+)$/.exec(String(i[1])); if (!m || devices[k].disabled_by) return;
+          zwHome[k] = m[1]; zwNodes[m[1]] = (zwNodes[m[1]] || 0) + 1; if (m[2] === '1') zwCtrl[m[1]] = devices[k];
+        });
+      });
+      function zwHub(id) { var c = zwCtrl[zwHome[id]]; return c && zwNodes[zwHome[id]] > 1 ? c : null; }
       function platOf(id) { return primary(byDev[id] || []) || (((devices[id] || {}).identifiers || [])[0] || [])[0] || ''; }
       function isHubDevice(v) { return v && !v.disabled_by && ((children[v.id] || 0) >= 2 || (byDev[v.id] || []).length <= 5); }
       var hubs = {}, devs = [], routers = [], coords = [];
@@ -720,18 +731,20 @@
         if (p === 'netgear' && d.via_device_id && !(d.connections || []).some(function (c) { return c[0] === 'mac' && ngAps[String(c[1]).toLowerCase()]; })) { if (!cfg.show_trackers) return; }
         else if (ROUTER_INTS.indexOf(p) >= 0) { routers.push({ id: id, n: nm, p: p, ents: es.map(function (e) { return e.entity_id; }) }); return; }
         if ((children[id] || 0) > 0 && isHubDevice(d)) return; // the hub itself is drawn as a hub node
+        if (zwHub(id) === d) return; // so is a Z-Wave controller with nodes of its own
         var v = d.via_device_id ? devices[d.via_device_id] : null;
         if (v && ROUTER_INTS.indexOf(primary(byDev[v.id] || [])) >= 0) v = null; // "via the router" is the network, not a hub
+        var zw = !v && zwHub(id); if (zw) v = zw;
         var medium = self._medium(p);
         if (p === 'mqtt' && v && /zigbee2mqtt/i.test((v.manufacturer || '') + ' ' + (v.name || ''))) medium = 'radio';
         // integrations that report their own connection mode (e.g. Bambu Lab: "Bambu Cloud" vs local MQTT)
         var cm = es.filter(function (e) { return /_mqtt_connection_mode$/.test(e.entity_id); })[0];
         if (cm && /cloud/i.test((H.states[cm.entity_id] || {}).state || '')) medium = 'cloud';
         var hub, rssi = null;
-        if (v && isHubDevice(v)) {
+        if (v && (zw || isHubDevice(v))) {
           var vp = primary(byDev[v.id] || []) || p;
           if (medium !== 'radio') medium = self._medium(vp);
-          hub = hubFor('dev:' + v.id, (v.name_by_user || v.name || 'Hub'), medium, 'hub', p);
+          hub = hubFor('dev:' + v.id, (v.name_by_user || (zw ? String(v.name || '').replace(/^Home Assistant\s+/, '') : v.name) || 'Hub'), medium, 'hub', p);
           hub.devId = v.id; hub.sub = self._intName(p); if (!hub.trk) hub.trk = findTrk(v);
         } else if (medium === 'local' && !((cfg.overrides || {})[p]) && isBt(d)) {
           // registered by its Bluetooth address and not by a network one: it is a radio device, whatever its integration says.

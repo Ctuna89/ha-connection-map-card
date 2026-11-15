@@ -285,3 +285,33 @@ test('devices without entities and entities without a device are on the map', as
   for (const n of ['Hall Pico', 'Front door lock', 'Obihai', 'Desk strip']) assert.ok(!off.names.includes(n), n + ' is hidden when the options are off');
   await page.close();
 });
+
+test('a Z-Wave controller is the hub of its network, linked straight to Home Assistant', async () => {
+  const page = await H.newPage(browser);
+  const r = await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {}; let n = 0;
+    const dev = (name, dom, ident, o = {}) => { const id = 'd' + (++n); devices[id] = { id, name, via_device_id: o.via || null, connections: [], identifiers: ident || [[dom, id]], disabled_by: null, area_id: null };
+      for (let k = 0; k < (o.ents || 1); k++) { const e = 'sensor.e' + n + '_' + k; entities[e] = { entity_id: e, device_id: id, platform: dom }; states[e] = { entity_id: e, state: 'on', attributes: {} }; } return id; };
+    // Z-Wave: the controller is node 1 of the network; nodes are not linked to it in the registry
+    dev('Home Assistant Connect ZWA-2', 'zwave_js', [['zwave_js', '3912345678-1'], ['zwave_js', '3912345678-1-1121:1:1']], { ents: 8 });
+    dev('001.Smoke Detector', 'zwave_js', [['zwave_js', '3912345678-7'], ['zwave_js', '3912345678-7-312:3:11']]);
+    dev('Garage lock', 'zwave_js', [['zwave_js', '3912345678-12']]);
+    // Zigbee next to it, with its own coordinator stick
+    const br = dev('Zigbee2MQTT Bridge', 'mqtt', null, { ents: 3 }); devices[br].manufacturer = 'Zigbee2MQTT'; for (let i = 0; i < 4; i++) dev('Zigbee ' + i, 'mqtt', null, { via: br });
+    dev('Home Assistant Connect ZBT-2', 'homeassistant_connect_zbt2');
+    const man = [['zwave_js', 'Z-Wave'], ['mqtt', 'MQTT']].map((m) => ({ domain: m[0], name: m[1], iot_class: 'local_push' }));
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false }); document.getElementById('host').appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((res) => setTimeout(res, 25));
+    const by = (name) => c._devs.find((d) => d.n === name), z = c._hubs.find((h) => h.n === 'Connect ZWA-2');
+    return { hub: z && { sub: z.sub, kind: z.kind, devs: z.dv.map((d) => d.n).sort(), direct: z.direct }, asDot: !!by('Home Assistant Connect ZWA-2'),
+      path: c._pathOf(by('001.Smoke Detector')).join(' > '), zigbee: c._pathOf(by('Zigbee 0')).join(' > '), radioNode: c._mname('radio') };
+  });
+  assert.deepEqual(r.hub, { sub: 'Z-Wave', kind: 'hub', devs: ['001.Smoke Detector', 'Garage lock'], direct: true });
+  assert.equal(r.asDot, false, 'the controller is the hub, not one more dot');
+  assert.equal(r.path, '001.Smoke Detector > Connect ZWA-2 > Home Assistant');
+  assert.equal(r.zigbee, 'Zigbee 0 > Connect ZBT-2 > Zigbee2MQTT Bridge > Home Assistant');
+  assert.equal(r.radioNode, 'Connect ZBT-2');
+  assert.deepEqual(await H.linkProblems(page), []);
+  await page.close();
+});

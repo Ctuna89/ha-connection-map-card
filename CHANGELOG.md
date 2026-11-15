@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Z-Wave controller.** The controller of a Z-Wave network (a USB stick, a Connect ZWA-2) is drawn as the hub of its nodes, named after the adapter, the way a Zigbee2MQTT bridge or a Hue Bridge is. Before, it was one more dot in the Z-Wave group.
+
 ## 0.7.1 — 2026-11-15
 
 Fixes from the reports that followed 0.7.0, most of them from one very thorough comparison of a real installation against the map.
