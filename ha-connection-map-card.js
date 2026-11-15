@@ -809,8 +809,54 @@
       var present = order.filter(function (m) { return groups[m].length; }), gap = 18, avail = 360 - gap * present.length;
       var spans = {}; present.forEach(function (m) { spans[m] = Math.max(55, avail * groups[m].w / W); });
       var tot = present.reduce(function (s, m) { return s + spans[m]; }, 0);
-      present.forEach(function (m) { spans[m] = spans[m] * avail / tot; });
-      var start = -90 - (spans.cloud || 0) / 2, mnodes = {};
+      present.forEach(function (m) { spans[m] = Math.min(240, spans[m] * avail / tot); });
+      gap = (360 - present.reduce(function (s, m) { return s + spans[m]; }, 0)) / present.length; // room left over becomes space between sectors
+      var start, mnodes, rn, loc, banned = {}, again = true, pass = 0, lonely = [], core = { x: 0, y: 0 }, self = this;
+      var allAps = (this._routers || []).filter(function (r) { return r !== me._router; }).slice(0, 6).map(function (r) { return r.n; });
+      var radioMixed = !!this._coord && hubs.some(function (x) { return x.m === 'radio' && !x.own; });
+      // Rule: two links never cross, and a link never runs over a bubble that is not one of its ends.
+      // The sectors are laid out for that, and every access point is then checked against it. One that has no clean place
+      // is dropped from the map (its hubs hang from the router, where a fan of links cannot cross) and the layout is redone.
+      function hit(a, b, c, d) { // do the segments a-b and c-d cross? (sharing an end is not crossing)
+        if (a === c || a === d || b === c || b === d) return false;
+        function w(p, q, r) { return (r.y - p.y) * (q.x - p.x) - (q.y - p.y) * (r.x - p.x); }
+        return w(a, b, c) * w(a, b, d) < 0 && w(c, d, a) * w(c, d, b) < 0;
+      }
+      function over(a, b, o, r) { // does the segment a-b run over the disc (o, r)?
+        if (a === o || b === o) return false;
+        var dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((o.x - a.x) * dx + (o.y - a.y) * dy) / L));
+        var px = o.x - a.x - t * dx, py = o.y - a.y - t * dy; return px * px + py * py < r * r;
+      }
+      function links() {
+        var E = []; Object.keys(mnodes).forEach(function (k) { E.push([core, mnodes[k]]); });
+        Object.keys(rn).forEach(function (k) { if (rn[k].router) E.push([loc, rn[k]]); });
+        hubs.forEach(function (h) { E.push([h.from, h]); });
+        return E;
+      }
+      function discs() {
+        var D = [[core, Z.core * 1.25]]; Object.keys(mnodes).forEach(function (k) { D.push([mnodes[k], mnodes[k].r + 3]); });
+        Object.keys(rn).forEach(function (k) { if (rn[k].router) D.push([rn[k], rn[k].r + 3]); });
+        hubs.forEach(function (h) { D.push([h, h.outer + Z.dev + 1]); });
+        return D;
+      }
+      function problems(mine) { // problems caused by a set of links (all of them when none is given)
+        var E = links(), D = discs(), n = 0;
+        (mine || E).forEach(function (e) {
+          E.forEach(function (f) { if (f !== e && !(e[0] === f[0] && e[1] === f[1]) && hit(e[0], e[1], f[0], f[1])) n++; });
+          D.forEach(function (d) { if (over(e[0], e[1], d[0], d[1])) n++; });
+        });
+        return n;
+      }
+      function around(node) { // problems caused by a node being where it is: its own links, other links running over it, bubbles touching it
+        var n = problems(links().filter(function (e) { return e[0] === node || e[1] === node; }));
+        links().forEach(function (e) { if (over(e[0], e[1], node, node.r + 3)) n++; });
+        discs().forEach(function (d) { if (d[0] !== node && Math.sqrt((d[0].x - node.x) * (d[0].x - node.x) + (d[0].y - node.y) * (d[0].y - node.y)) < d[1] + node.r + 4) n++; });
+        return n;
+      }
+      while (again && pass++ < 8) {
+      again = false; start = -90 - (spans.cloud || 0) / 2; mnodes = {}; lonely = [];
+      var apNames = allAps.filter(function (k) { return !banned[k]; });
+      hubs.forEach(function (h) { h.ap = ''; });
       present.forEach(function (m) {
         var span = spans[m], g = groups[m];
         var maxOuter = g.reduce(function (s, h) { return Math.max(s, h.outer); }, 0);
@@ -819,10 +865,15 @@
         var a = start + (span - totalDeg * scale) / 2, mid = start + span / 2;
         // centre the heaviest hubs in the sector, smaller ones towards the edges
         var arranged = [];
-        if (m === 'local' && me._routers && me._routers.length > 1) {
-          // keep hubs that use the same access point next to each other (the AP is then placed among them)
-          var apOf = function (h) { var c = me._hubConn(h); return c && c.via ? c.via : ''; };
-          arranged = g.slice().sort(function (x, y) { var kx = apOf(x), ky = apOf(y); return kx === ky ? y.dv.length - x.dv.length : (kx < ky ? -1 : 1); });
+        if (m === 'local' && apNames.length) {
+          // Hubs on the main router go in the middle of the sector, in front of the router. The hubs of each access point
+          // stay together and go to the sides, so a link from the router never runs across an access point's hubs.
+          var by = {}, centred = function (l) { var o = []; l.forEach(function (h, i) { if (i % 2) o.push(h); else o.unshift(h); }); return o; };
+          g.forEach(function (h) { var c = me._hubConn(h); h.ap = c && c.via && apNames.indexOf(c.via) >= 0 ? c.via : ''; (by[h.ap] = by[h.ap] || []).push(h); });
+          var left = [], right = [];
+          Object.keys(by).filter(function (k) { return k; }).sort(function (x, y) { return by[y].length - by[x].length || (x < y ? -1 : 1); })
+            .forEach(function (k, i) { if (i % 2) right = right.concat(centred(by[k])); else left = centred(by[k]).concat(left); });
+          arranged = left.concat(centred(by[''] || []), right);
         } else { g.forEach(function (h, i) { if (h.own) return; if (i % 2) arranged.push(h); else arranged.unshift(h); }); g.forEach(function (h) { if (h.own) arranged.push(h); }); }
         arranged.forEach(function (h) {
           var aw = h.w / R * 180 / Math.PI * scale;
@@ -837,23 +888,43 @@
         if (m === 'radio' && me._coord && ownH.length && reg.length) {
           mid = Math.min(reg.reduce(function (s2, h) { return s2 + h.ac; }, 0) / reg.length, Math.min.apply(null, ownH.map(function (h) { return h.ac; })) - 18);
         }
-        mnodes[m] = { m: m, x: C.x + dist * Math.cos(deg(mid)), y: C.y + dist * Math.sin(deg(mid)), r: Z.net, ac: mid };
+        var g0 = m === 'local' && apNames.length ? arranged.filter(function (h) { return !h.ap; }) : [];
+        if (g0.length) mid = (g0[0].ac + g0[g0.length - 1].ac) / 2; // the router sits in front of its own hubs
+        mnodes[m] = { m: m, x: C.x + dist * Math.cos(deg(mid)), y: C.y + dist * Math.sin(deg(mid)), r: Z.net, ac: mid, lo: start, hi: start + span };
         start += span + gap;
       });
-      this._mnodes = mnodes;
-      // extra mesh nodes / access points sit next to the main router
-      var self = this; this._rnodes = {};
-      if (this._router && mnodes.local) {
-        this._rnodes[this._router.n] = mnodes.local;
-        (this._routers || []).filter(function (r) { return r !== self._router; }).slice(0, 6).forEach(function (r, i) {
-          var hs = hubs.filter(function (h) { if (h.m !== 'local') return false; var c = self._hubConn(h); return c && c.via === r.n; });
-          var a = hs.length ? hs.reduce(function (s, h) { return s + h.ac; }, 0) / hs.length : mnodes.local.ac + (i % 2 ? -1 : 1) * (44 + Math.floor(i / 2) * 20);
-          // sit between the main router and its hubs, clear of the hubs' device rings
-          var rad = dist + 75; hs.forEach(function (h) { rad = Math.min(rad, Math.sqrt(h.x * h.x + h.y * h.y) - h.outer - 34); });
-          rad = Math.max(rad, dist + 35);
-          self._rnodes[r.n] = { x: rad * Math.cos(deg(a)), y: rad * Math.sin(deg(a)), r: Z.net * 0.72, ac: a, router: r };
-        });
+      loc = mnodes.local; rn = {};
+      if (this._router && loc) rn[this._router.n] = loc;
+      hubs.forEach(function (h) { h.direct = !!(h.own && radioMixed); h.from = h.direct ? core : mnodes[h.m]; });
+      var apR = Z.net * 0.72, ring = dist + 75;
+      hubs.forEach(function (h) { if (h.ap) ring = Math.min(ring, Math.sqrt(h.x * h.x + h.y * h.y) - h.outer - 34); });
+      ring = Math.max(ring, dist + Z.net + apR + 12);
+      if (loc) (this._routers || []).forEach(function (r) {
+        if (allAps.indexOf(r.n) < 0) return;
+        var hs = hubs.filter(function (h) { return h.ap === r.n; }), node = { r: apR, router: r };
+        if (!hs.length) { lonely.push(node); return; }
+        // all access points on one ring, each in front of its own hubs
+        var a = hs.reduce(function (s2, h) { return s2 + h.ac; }, 0) / hs.length;
+        node.ac = a; node.x = ring * Math.cos(deg(a)); node.y = ring * Math.sin(deg(a)); rn[r.n] = node;
+        hs.forEach(function (h) { h.from = node; });
+        if (around(node) !== 0) { banned[r.n] = 1; again = true; }
+      });
       }
+      // Access points without hubs of their own are drawn only where there is a clean place: the gaps next to the local
+      // sector first, then beside the router. Otherwise they stay off the map; the router's panel lists them all anyway.
+      lonely.forEach(function (node) {
+        var cand = [], ia = loc.ac + 180, q = Z.net + apR + 16, ok = false;
+        [loc.lo - gap / 2, loc.hi + gap / 2].forEach(function (a) { [ring, ring - 40].forEach(function (rad) { cand.push([rad * Math.cos(deg(a)), rad * Math.sin(deg(a)), a]); }); });
+        [40, -40, 75, -75].forEach(function (o) { cand.push([loc.x + q * Math.cos(deg(ia + o)), loc.y + q * Math.sin(deg(ia + o)), loc.ac]); });
+        rn[node.router.n] = node;
+        cand.forEach(function (c) { if (ok) return; node.x = c[0]; node.y = c[1]; node.ac = c[2]; ok = around(node) === 0; });
+        if (!ok) delete rn[node.router.n];
+      });
+      // last line of defence: whatever still crosses is attached one level up, where it cannot cross
+      if (problems()) { hubs.forEach(function (h) { if (h.from.router) { h.from = loc; h.ap = ''; } }); Object.keys(rn).forEach(function (k) { if (rn[k].router) delete rn[k]; }); }
+      if (problems()) { hubs.forEach(function (h) { if (h.direct) { h.direct = false; h.from = mnodes[h.m]; } }); }
+      this._mnodes = mnodes; this._rnodes = rn;
+      this._linkProblems = problems();
       var minX = -110, minY = -110, maxX = 110, maxY = 110;
       hubs.forEach(function (h) { var p = h.outer + 70; minX = Math.min(minX, h.x - p - 40); maxX = Math.max(maxX, h.x + p + 40); minY = Math.min(minY, h.y - p); maxY = Math.max(maxY, h.y + p); });
       this._vb0 = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
@@ -923,10 +994,8 @@
       });
       this._hubs.forEach(function (h) {
         var n = self._mnodes[h.m], c = null;
-        h.direct = !!(h.own && self._coord && self._hubs.some(function (x) { return x.m === 'radio' && !x.own; }));
-        if (h.direct) n = { x: 0, y: 0 };
-        if (h.m === 'local') { c = self._hubConn(h); if (c && c.via && self._rnodes[c.via]) n = self._rnodes[c.via]; }
-        h.from = n;
+        if (h.m === 'local') c = self._hubConn(h);
+        n = h.from;
         h.edge = el('line', { x1: n.x, y1: n.y, x2: h.x, y2: h.y, 'class': 'edge l-' + h.m + (c && c.wifi ? ' wifi' : ''), stroke: M[h.m] }, gE);
         flow(n.x, n.y, h.x, h.y, M[h.m]);
         if (c && h.trk) lbl(n.x, n.y, h.x, h.y, short(c));
