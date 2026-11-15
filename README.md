@@ -10,7 +10,8 @@ Most network maps show one protocol at a time. This card draws all of them in on
 - **Your real infrastructure.** Routers and access points from router integrations (UniFi, FRITZ!Box, Huawei, TP-Link Omada, ASUSWRT, …) become the local network node, the Zigbee coordinator (Connect ZBT-1, SkyConnect, Yellow, …) becomes the radio node, and the centre shows the host (Home Assistant OS version, virtual machine or bare metal).
 - **Wi-Fi or cable.** With a router integration that reports its clients (Huawei Mesh Router, UniFi, FRITZ!Box, …) every hub and device is attached to the access point it actually uses, with a solid line for Ethernet and a dotted line for Wi-Fi (2.4 / 5 GHz). Even Home Assistant's own link is shown.
 - **Zigbee mesh (Zigbee2MQTT).** The card asks Zigbee2MQTT for its network map and shows which router (repeater) each device goes through, with its link quality (LQI).
-- **Live status.** Offline devices (all entities `unavailable`) are outlined in red and listed in the side panel.
+- **Live status.** Offline devices (all entities `unavailable`) are outlined in red and listed in the side panel. Devices that your router reports as disconnected get a dashed amber ring (off the network: powered off or sleeping).
+- **Motion.** Small dots travel along every link towards Home Assistant, devices pop in when the map loads, and the selected path speeds up. It respects the system's reduced-motion setting and can be turned off with `animations: false`.
 - **Click to explore.** Tap a device to see its full path, for example `Bedroom lamp → Hue Bridge → Philips Hue → Local network → Home Assistant`, and open its device page.
 - **Filter and search** by connection type, area, name or model, or show only offline devices.
 - **Zoom and pan** with the mouse wheel, by dragging, or with the buttons.
@@ -54,6 +55,7 @@ views:
 | `exclude_devices` | list | `[]` | Device IDs to hide. |
 | `show_trackers` | boolean | `false` | Show devices that only have `device_tracker` entities (for example, every phone and laptop your router reports). |
 | `show_panel` | boolean | `true` | Show the side panel with the summary and details. |
+| `animations` | boolean | `true` | Animated data flow, pop-in and hover effects. |
 | `colors` | map | | Override the colors: `cloud`, `local`, `radio`. |
 | `show_mesh` | boolean | `true` | Load the Zigbee2MQTT network map to show routers/repeaters and link quality. |
 | `z2m_base_topic` | string | `zigbee2mqtt` | Zigbee2MQTT MQTT base topic. |
