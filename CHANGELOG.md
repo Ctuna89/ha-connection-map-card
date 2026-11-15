@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.2 — 2026-11-15
+
+Three additions that came out of the reports on 0.7.1.
+
+### Added
+
+- **Z-Wave controller.** The controller of a Z-Wave network (a USB stick, a Connect ZWA-2) is drawn as the hub of its nodes, named after the adapter, the way a Zigbee2MQTT bridge or a Hue Bridge is. Before, it was one more dot in the Z-Wave group. The controller is recognised as node 1 of the network.
+- **The bridge itself.** The panel of a hub lists the bridge as a device of its own, with its model and a link to its device page. A bridge whose own entities are all unavailable is shown as offline, with a red ring.
+- **Group by area** (`group_by_area`, off by default): inside each hub, the devices of an area with more than one device hang from a small area node, hub → area → devices. Clicking the node filters the map to that area. A Zigbee mesh keeps its own shape instead. With this on, a hub with many areas takes more room on the map, and an area name is only drawn where it fits.
+
+### Confirmed on real hardware
+
+A user checked 0.7.1 against their installation: the TP-Link EP40 and its outlets, Lutron Pico remotes, Tuya locks, Obihai and a custom integration without devices all show up as intended.
+
+### Not verified on real hardware
+
+The three additions above were tested with simulated installations. The Z-Wave controller was built from a report of a Connect ZWA-2 that is node 1 of its network, but not run on it yet.
+
 ## 0.7.1 — 2026-11-15
 
 Fixes from the reports that followed 0.7.0, most of them from one very thorough comparison of a real installation against the map.

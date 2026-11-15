@@ -285,3 +285,70 @@ test('devices without entities and entities without a device are on the map', as
   for (const n of ['Hall Pico', 'Front door lock', 'Obihai', 'Desk strip']) assert.ok(!off.names.includes(n), n + ' is hidden when the options are off');
   await page.close();
 });
+
+test('a Z-Wave controller is the hub of its network, linked straight to Home Assistant', async () => {
+  const page = await H.newPage(browser);
+  const r = await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {}; let n = 0;
+    const dev = (name, dom, ident, o = {}) => { const id = 'd' + (++n); devices[id] = { id, name, via_device_id: o.via || null, connections: [], identifiers: ident || [[dom, id]], disabled_by: null, area_id: null };
+      for (let k = 0; k < (o.ents || 1); k++) { const e = 'sensor.e' + n + '_' + k; entities[e] = { entity_id: e, device_id: id, platform: dom }; states[e] = { entity_id: e, state: 'on', attributes: {} }; } return id; };
+    // Z-Wave: the controller is node 1 of the network; nodes are not linked to it in the registry
+    dev('Home Assistant Connect ZWA-2', 'zwave_js', [['zwave_js', '3912345678-1'], ['zwave_js', '3912345678-1-1121:1:1']], { ents: 8 });
+    dev('001.Smoke Detector', 'zwave_js', [['zwave_js', '3912345678-7'], ['zwave_js', '3912345678-7-312:3:11']]);
+    dev('Garage lock', 'zwave_js', [['zwave_js', '3912345678-12']]);
+    // Zigbee next to it, with its own coordinator stick
+    const br = dev('Zigbee2MQTT Bridge', 'mqtt', null, { ents: 3 }); devices[br].manufacturer = 'Zigbee2MQTT'; for (let i = 0; i < 4; i++) dev('Zigbee ' + i, 'mqtt', null, { via: br });
+    dev('Home Assistant Connect ZBT-2', 'homeassistant_connect_zbt2');
+    const man = [['zwave_js', 'Z-Wave'], ['mqtt', 'MQTT']].map((m) => ({ domain: m[0], name: m[1], iot_class: 'local_push' }));
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false }); document.getElementById('host').appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((res) => setTimeout(res, 25));
+    const by = (name) => c._devs.find((d) => d.n === name), z = c._hubs.find((h) => h.n === 'Connect ZWA-2');
+    return { hub: z && { sub: z.sub, kind: z.kind, devs: z.dv.map((d) => d.n).sort(), direct: z.direct }, asDot: !!by('Home Assistant Connect ZWA-2'),
+      path: c._pathOf(by('001.Smoke Detector')).join(' > '), zigbee: c._pathOf(by('Zigbee 0')).join(' > '), radioNode: c._mname('radio') };
+  });
+  assert.deepEqual(r.hub, { sub: 'Z-Wave', kind: 'hub', devs: ['001.Smoke Detector', 'Garage lock'], direct: true });
+  assert.equal(r.asDot, false, 'the controller is the hub, not one more dot');
+  assert.equal(r.path, '001.Smoke Detector > Connect ZWA-2 > Home Assistant');
+  assert.equal(r.zigbee, 'Zigbee 0 > Connect ZBT-2 > Zigbee2MQTT Bridge > Home Assistant');
+  assert.equal(r.radioNode, 'Connect ZBT-2');
+  assert.deepEqual(await H.linkProblems(page), []);
+  await page.close();
+});
+
+test('group_by_area: hub -> area -> devices, for areas with more than one device', async () => {
+  for (const demo of ['unifi', 'large']) {
+    const page = await H.newPage(browser);
+    await H.mountDemo(page, { demo, group_by_area: true });
+    assert.deepEqual(await H.linkProblems(page), [], demo);
+    assert.deepEqual(await H.labelProblems(page), [], demo);
+    await page.evaluate(() => { const h = window.card._hubs.find((x) => x.n === 'Hue Bridge'); window.card._zoom(0.4, h.x, h.y); });
+    assert.deepEqual(await H.labelProblems(page), [], demo + ', zoomed in on the Hue hub');
+    const r = await page.evaluate(() => { const c = window.card, h = c._hubs.find((x) => x.n === 'Hue Bridge'), z = c._hubs.find((x) => x.m === 'radio' && x.dv.some((d) => d.meshParent));
+      const sizes = {}; h.dv.forEach((d) => { if (d.a) sizes[d.a] = (sizes[d.a] || 0) + 1; });
+      return { areas: h.areas.map((a) => a.n + ':' + a.list.length).sort(), expected: Object.keys(sizes).filter((a) => sizes[a] > 1).map((a) => a + ':' + sizes[a]).sort(),
+        inArea: h.dv.filter((d) => d.parentNode).length, total: h.dv.length, mesh: z ? z.areas.length : 0, shown: c._alabs.filter((a) => a.lab.style.display !== 'none').length }; });
+    assert.ok(r.areas.length > 0); assert.deepEqual(r.areas, r.expected);
+    assert.equal(r.mesh, 0, 'a Zigbee mesh keeps its own shape');
+    assert.ok(r.shown > 0, 'area names are on the map');
+    // clicking an area node filters the map to that area
+    const picked = await page.evaluate(() => { const c = window.card, ar = c._hubs.find((x) => x.n === 'Hue Bridge').areas[0];
+      [...c.shadowRoot.querySelectorAll('svg g[role=button]')].find((g) => g.getAttribute('aria-label') === ar.n && g.querySelector('.anode')).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      return [ar.n, c._S.area, c.shadowRoot.getElementById('area').value]; });
+    assert.deepEqual(picked, [picked[0], picked[0], picked[0]]);
+    await page.close();
+  }
+});
+
+test('a bridge is listed as a device of its own, and can be offline', async () => {
+  const page = await H.newPage(browser);
+  await H.mountDemo(page, { demo: 'unifi' }, { settle: false });
+  const r = await page.evaluate(() => { const c = window.card, h = c._hubs.find((x) => x.n === 'Hue Bridge'); c._selHub(h);
+    const row = c.shadowRoot.querySelector('#hubdev'), before = row.innerText.replace(/\n+/g, ' | ');
+    h.ents.forEach((e) => { c._hass.states[e].state = 'unavailable'; }); c._status(); c._marks(); c._selHub(h);
+    return { before, after: c.shadowRoot.querySelector('#hubdev').innerText.replace(/\n+/g, ' | '), red: h.g.classList.contains('offline') }; });
+  assert.equal(r.before, 'Hue Bridge · Signify · BSB002 | The bridge itself');
+  assert.equal(r.after, 'Hue Bridge · Signify · BSB002 | Offline');
+  assert.ok(r.red);
+  await page.close();
+});

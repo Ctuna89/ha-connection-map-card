@@ -29,6 +29,7 @@ Most network maps show one protocol at a time. This card draws all of them in on
 - **Visual editor.** Colours, line styles and width, the size of each level of bubbles and what is shown can be changed from the card editor, with a live preview.
 - **Compact map.** For big homes, `layout: compact` (or the ◎ button on the map) draws one bubble per hub or integration with its number of devices, and a red counter for the ones that are offline. The devices are in the side panel.
 - **Save as an image.** The ⤓ button saves what is on screen as a PNG, with or without names. Without names, hubs, routers, access points and devices are numbered and the version, host and Thread network name are left out, so the image can be posted anywhere.
+- **Group by area.** Optionally, the devices of a hub are grouped by area: 35 Hue lights become dining room, living room, bedroom…, each with its lights.
 - **Click to explore.** Tap a device to see its full path, for example `Bedroom lamp → Hue Bridge → Philips Hue → Local network → Home Assistant`, and open its device page.
 - **Filter and search** by connection type, area, name or model, or show only offline devices.
 - **Zoom and pan** with the mouse wheel, by dragging, or with the buttons. Labels keep the same size on screen at any zoom level. A label is never drawn over a node or over another label: it moves to a free side of its node, and if there is no room at the current zoom it is hidden until you zoom in.
@@ -84,6 +85,7 @@ views:
 | `exclude_integrations` | list | `[]` | Integration domains to hide, for example `[mobile_app, bambu_lab]`. |
 | `exclude_devices` | list | `[]` | Device IDs to hide. An entity ID hides an MQTT entity that has no device. |
 | `show_trackers` | boolean | `false` | Show devices that only have `device_tracker` entities (for example, every phone and laptop your router reports). |
+| `group_by_area` | boolean | `false` | Inside each hub, hang the devices of an area with more than one device from a small area node (hub → area → devices). Clicking the node filters the map to that area. Hubs with a Zigbee mesh keep the mesh instead. |
 | `sort` | string | `area` | Order of the device lists: `area` (by area, then name) or `name` (alphabetical). The list of a hub also has a button to switch between the two. |
 | `core_size` | string | `large` | `compact` is a shortcut for `sizes.core: 28`. |
 | `mqtt_entities` | boolean | `true` | Show MQTT entities that have no device (entities written by hand in YAML without a `device` block), one dot per entity. |
@@ -157,6 +159,7 @@ Helpers and system integrations (template, group, Supervisor, Sun, Backup, HACS 
 
 - **Router / Wi-Fi:** devices from router integrations are not drawn as dots. They become the local network node, and its panel lists every mesh node with its status.
 - **Clients:** the router's `device_tracker` entities tell which access point each client uses and how (cable or Wi-Fi band). Devices are matched to trackers by MAC address, by the IP in their configuration URL, or by name. Extra access points are drawn between the main router and the hubs they serve (hubs on the main router go in the middle of the local sector, each access point's hubs to the sides), and a cloud device that is on your Wi-Fi shows that hop in its path too.
+- **Z-Wave controller:** the controller of a Z-Wave network (node 1: a USB stick, a Connect ZWA-2) is drawn as the hub of its nodes and linked straight to Home Assistant. It does not go through the Zigbee coordinator.
 - **Coordinator:** a Connect ZBT-1 / SkyConnect / Yellow radio becomes the radio node. Otherwise the adapter is named from Zigbee2MQTT's `bridge/info` (serial port or network coordinator) or from the ZHA coordinator's manufacturer and model.
 - **Host:** on Home Assistant OS / Supervised installs the centre shows the OS version and whether it runs in a virtual machine (VirtualBox, Proxmox/KVM, Hyper-V, …) or on bare metal.
 - **Zigbee mesh:** for Zigbee2MQTT the card requests the network map over MQTT (it publishes to `<base_topic>/bridge/request/networkmap`); for ZHA it reads each device's neighbour table. Devices behind a router are drawn next to that router with a dashed orange line, and routers get an outer ring. Hubs with more than 30 devices keep the ring layout, ordered by router. Building the map can take a few seconds on large networks.
