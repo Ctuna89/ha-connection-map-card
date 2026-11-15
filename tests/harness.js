@@ -90,6 +90,11 @@ function linkProblems(page) {
       const a = drawn[i]; if (Math.hypot(a.x - a.hub.x, a.y - a.hub.y) < Z.hub + Z.dev - 0.5) out.push('dot on its hub: ' + a.n);
       for (let j = i + 1; j < drawn.length; j++) if (Math.hypot(a.x - drawn[j].x, a.y - drawn[j].y) < 2 * Z.dev - 0.5) out.push('dots overlap: ' + a.n + ' × ' + drawn[j].n);
     }
+    // Rule 4: a group's own link reaches its bubble without running over its dots or crossing their lines.
+    c._hubs.forEach((h) => { const e = { a: h.from || core, b: h };
+      drawn.forEach((d) => { if (d.hub !== h) return; const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y, t = Math.max(0, Math.min(1, ((d.x - e.a.x) * dx + (d.y - e.a.y) * dy) / (dx * dx + dy * dy)));
+        if (Math.hypot(d.x - e.a.x - t * dx, d.y - e.a.y - t * dy) < Z.dev) out.push('link over a dot of its own group: ' + h.n + ' over ' + d.n); });
+      S.forEach((sp) => { if (sp.hub === h && sp.a !== h && X(e, sp)) out.push('link crosses a line of its own group: ' + h.n + ' × ' + sp.n); }); });
     if (c._linkProblems) out.push('the card itself reports ' + c._linkProblems + ' link problems');
     return out;
   });

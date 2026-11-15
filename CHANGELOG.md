@@ -7,6 +7,7 @@
 - **Devices without entities** are drawn: a remote that only sends events (Lutron Pico), a lock its integration cannot control (Tuya). Their panel says they have no entities, and they are never reported offline (`devices_without_entities`).
 - **Entities without a device**, for any integration that talks to devices or hubs and not only MQTT: each thing you can operate (light, switch, lock, …) is a dot, and the integration's plain sensors are one dot. Needs an admin user, since it relies on the integration list (`entities_without_device`).
 - New rule, checked by the tests: **dots never sit on top of each other**.
+- New rule, checked by the tests: **a group's own link reaches its bubble without running over its dots**. Every group keeps a free lane, turned towards its link.
 
 ### Fixed
 

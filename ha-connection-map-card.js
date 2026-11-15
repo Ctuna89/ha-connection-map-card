@@ -895,24 +895,27 @@
           h.dv.forEach(function (d) { if (!d.meshParent || h.dv.indexOf(d.meshParent) < 0) { used[d.id] = 1; tops.push(d); } });
           tops.forEach(function (d) { grow(d, 0); });
           h.dv.forEach(function (d) { if (!used[d.id]) { used[d.id] = 1; tops.push(d); grow(d, 0); } }); // a loop of parents: start it somewhere
+          var lane = Z.dev * 2 + 7; // width of the free lane, in map units
           var rb = r0, need = function (d, L) { var own = sp / (rb + L * sp), sum = 0; kids[d.id].forEach(function (c) { sum += need(c, L + 1); }); return Math.max(own, sum); };
           var total = 0, it = 0;
-          do { total = 0; tops.forEach(function (d) { total += need(d, 0); }); if (total > 2 * Math.PI) rb *= total / (2 * Math.PI) * 1.02; } while (total > 2 * Math.PI && it++ < 12);
-          var scale = Math.max(1, 2 * Math.PI / total), deep = 0;
+          var room = 2 * Math.PI;
+          do { total = 0; tops.forEach(function (d) { total += need(d, 0); }); room = 2 * Math.PI - lane / rb; if (total > room) rb *= total / room * 1.02; } while (total > room && it++ < 12);
+          room = 2 * Math.PI - lane / rb;
+          var scale = Math.max(1, room / total), deep = 0;
           var place = function (d, L, a0, slot) {
             var a = a0 + slot / 2, rad = rb + L * sp; d.ang = a; d.rx = rad * Math.cos(a); d.ry = rad * Math.sin(a); deep = Math.max(deep, L);
             var sum = 0; kids[d.id].forEach(function (c) { sum += need(c, L + 1); });
             var cur = a - sum / 2; kids[d.id].forEach(function (c) { var w = need(c, L + 1); place(c, L + 1, cur, w); cur += w; });
           };
-          var a1 = -Math.PI / 2 - (tops.length ? need(tops[0], 0) * scale / 2 : 0);
+          var a1 = lane / rb / 2; // the lane is centred on angle 0
           tops.forEach(function (d) { var w = need(d, 0) * scale; place(d, 0, a1, w); a1 += w; });
           h.outer = rb + deep * sp;
         } else {
           var top = h.dv.slice().sort(function (x, y) { var px = x.meshParent ? x.meshParent.n : (x.router ? x.n : ''), py = y.meshParent ? y.meshParent.n : (y.router ? y.n : ''); return px === py ? (x.router ? -1 : 0) - (y.router ? -1 : 0) : (px < py ? -1 : 1); });
           var i = 0, ring = 0; h.outer = r0 - 4;
           while (i < top.length) {
-            var rad = r0 + ring * sp, cap = Math.floor(2 * Math.PI * rad / sp), n = Math.min(cap, top.length - i);
-            top.slice(i, i + n).forEach(function (d, k) { var a = -Math.PI / 2 + (k / n) * 2 * Math.PI + ring * 0.2; d.ang = a; d.rx = rad * Math.cos(a); d.ry = rad * Math.sin(a); });
+            var rad = r0 + ring * sp, lane2 = (Z.dev * 2 + 7) / rad, cap = Math.max(1, Math.floor((2 * Math.PI - lane2) * rad / sp)), n = Math.min(cap, top.length - i);
+            top.slice(i, i + n).forEach(function (d, k) { var a = lane2 / 2 + ((k + 0.5) / n) * (2 * Math.PI - lane2); d.ang = a; d.rx = rad * Math.cos(a); d.ry = rad * Math.sin(a); });
             i += n; ring++; h.outer = rad;
           }
         }
@@ -1060,6 +1063,12 @@
       // last line of defence: whatever still crosses is attached one level up, where it cannot cross
       if (problems()) { hubs.forEach(function (h) { if (h.from.router) { h.from = loc; h.ap = ''; } }); Object.keys(rn).forEach(function (k) { if (rn[k].router) delete rn[k]; }); }
       if (problems()) { hubs.forEach(function (h) { if (h.direct) { h.direct = false; h.from = mnodes[h.m]; } }); }
+      // every group was laid out with a free lane at angle 0: turn it so the lane points at the group's own link,
+      // which then reaches the bubble without running over its dots or their lines
+      if (!compact) hubs.forEach(function (h) {
+        var th = Math.atan2(h.from.y - h.y, h.from.x - h.x), co = Math.cos(th), si = Math.sin(th);
+        h.dv.forEach(function (d) { var x = d.rx, y = d.ry; d.rx = x * co - y * si; d.ry = x * si + y * co; d.ang = (d.ang || 0) + th; d.x = h.x + d.rx; d.y = h.y + d.ry; });
+      });
       this._mnodes = mnodes; this._rnodes = rn;
       // routers and access points that exist but are not on the map (no clean place, or more than the map draws)
       this._offMap = loc ? (this._routers || []).filter(function (r) { return r !== me._router && !rn[r.n]; }).map(function (r) { return r.n; }) : [];
