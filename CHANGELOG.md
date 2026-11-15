@@ -5,6 +5,9 @@
 ### Fixed
 
 - A device set up through several integrations was drawn once per integration, for example an Android TV through its own integration and through the companion app, or a phone known to two integrations. They are now one dot, and the panel says what else the device is set up as (`merge_duplicates`).
+- In a home with many integrations, small groups are folded into "Other ..." to keep the map readable. That also swallowed Z-Wave (shown as "Other radio devices") and the phones (lost inside "Other local devices"). Radio integrations and mobile devices now always keep their own group.
+- A phone whose companion app only has its device tracker enabled was not drawn at all.
+- The path of a Z-Wave, EnOcean or 433 MHz device no longer goes through the Zigbee coordinator, and those groups link straight to Home Assistant when the radio node is a Zigbee coordinator.
 
 ## 0.7.0 — 2026-11-15
 

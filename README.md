@@ -79,7 +79,7 @@ views:
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `title` | string | `Connection map` | Card title. |
-| `group_small` | number | `1` | Integrations with this many devices or fewer (and no hub) are grouped into "Other cloud services" / "Other local devices". Use `0` to never group. |
+| `group_small` | number | `1` | Integrations with this many devices or fewer (and no hub) are grouped into "Other cloud services" / "Other local devices". Use `0` to never group. Radio integrations (Z-Wave, Zigbee, …) and mobile devices are never grouped. With more than 18 integrations the card raises this to 2, and with more than 30 to 3, unless you set it yourself. |
 | `exclude_integrations` | list | `[]` | Integration domains to hide, for example `[mobile_app, bambu_lab]`. |
 | `exclude_devices` | list | `[]` | Device IDs to hide. An entity ID hides an MQTT entity that has no device. |
 | `show_trackers` | boolean | `false` | Show devices that only have `device_tracker` entities (for example, every phone and laptop your router reports). |

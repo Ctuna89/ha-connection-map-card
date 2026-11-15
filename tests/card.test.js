@@ -215,3 +215,30 @@ test('a device set up through several integrations is drawn once', async () => {
   assert.equal((await mount({ merge_duplicates: false })).names.length, 8);
   await page.close();
 });
+
+test('in a big home, radios and phones keep their own group, and Z-Wave does not go through the Zigbee coordinator', async () => {
+  const page = await H.newPage(browser);
+  const r = await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {}, man = []; let n = 0;
+    const dev = (name, platform, o = {}) => { const id = 'd' + (++n); devices[id] = { id, name, via_device_id: o.via || null, connections: [], identifiers: [], disabled_by: null, area_id: null };
+      (o.ents || ['sensor.e' + n]).forEach((e) => { entities[e] = { entity_id: e, device_id: id, platform }; states[e] = { entity_id: e, state: 'on', attributes: {} }; }); return id; };
+    const integ = (domain, name, iot) => man.push({ domain, name, iot_class: iot || 'local_push' });
+    for (let i = 0; i < 34; i++) { integ('loc' + i, 'Local ' + i); dev('Thing ' + i, 'loc' + i); dev('Thing ' + i + 'b', 'loc' + i); dev('Thing ' + i + 'c', 'loc' + i); dev('Thing ' + i + 'd', 'loc' + i); }
+    integ('zwave_js', 'Z-Wave'); dev('Z-Wave lock', 'zwave_js'); dev('Z-Wave dimmer', 'zwave_js');
+    integ('zha', 'Zigbee Home Automation'); const zc = dev('ZHA coordinator', 'zha'); dev('Zigbee plug', 'zha', { via: zc }); dev('Zigbee bulb', 'zha', { via: zc });
+    dev('Home Assistant SkyConnect', 'homeassistant_sky_connect');
+    integ('mobile_app', 'Mobile App'); dev('Pixel 9', 'mobile_app', { ents: ['sensor.pixel_a', 'sensor.pixel_b'] }); dev('iPhone', 'mobile_app', { ents: ['device_tracker.iphone'] }); // only its tracker is enabled
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false }); document.getElementById('host').appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((res) => setTimeout(res, 25));
+    const by = (name) => c._devs.find((d) => d.n === name);
+    return { groups: c._hubs.map((h) => h.n), zwave: c._pathOf(by('Z-Wave lock')).join(' > '), zigbee: c._pathOf(by('Zigbee plug')).join(' > '), phones: c._devs.filter((d) => d.p === 'mobile_app').map((d) => d.hub.n + ': ' + d.n).sort() };
+  });
+  assert.ok(r.groups.includes('Z-Wave'), 'Z-Wave has its own group');
+  assert.ok(!r.groups.includes('Other radio devices'));
+  assert.equal(r.zwave, 'Z-Wave lock > Z-Wave > Home Assistant');
+  assert.equal(r.zigbee, 'Zigbee plug > SkyConnect > ZHA coordinator > Home Assistant');
+  assert.deepEqual(r.phones, ['Mobile devices: Pixel 9', 'Mobile devices: iPhone']);
+  assert.deepEqual(await H.linkProblems(page), []);
+  await page.close();
+});
