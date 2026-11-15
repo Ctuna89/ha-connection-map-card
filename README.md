@@ -20,7 +20,7 @@ Most network maps show one protocol at a time. This card draws all of them in on
 - **Nothing is left out silently.** If an access point or a label is not drawn for lack of room, a warning under the map says how many, with a shortcut to the router's panel or to zoom in.
 - **Scales to big homes.** Large hubs are drawn as rings instead of trees, tiny integrations are grouped automatically when there are many, and access points sit next to the hubs they serve.
 - **Demo mode.** `demo: unifi`, `demo: fritz` or `demo: large` draws a synthetic installation, so you can see what the card does with hardware you don't have.
-- **Live status.** Offline devices (all entities `unavailable`) are outlined in red and listed in the side panel. Devices that your router reports as disconnected get a dashed amber ring (off the network: powered off or sleeping).
+- **Live status.** Offline devices (all entities `unavailable`) are outlined in red and listed in the side panel. A battery device that went silent a short while ago is probably asleep, so for 24 hours it is outlined in yellow as *seen recently*, with how long ago, instead of being reported as offline. Devices that your router reports as disconnected get a dashed amber ring (off the network: powered off or sleeping).
 - **Motion.** Small dots travel along every link towards Home Assistant, devices pop in when the map loads, and the selected path speeds up. It respects the system's reduced-motion setting and can be turned off with `animations: false`.
 - **Hover to follow a path.** Point at a device, a hub or a network node and it grows, its whole path to Home Assistant stays bright and the rest of the map fades (it is never hidden, so you keep the context). A tooltip shows the name, area and integration. The side panel is linked to the map: pointing at a row highlights that device or hub. It works with the keyboard too (Tab and Enter).
 - **More detail as you zoom in.** Once the dots are far enough apart on screen, the devices in view show their names next to them.
@@ -84,11 +84,12 @@ views:
 | `sort` | string | `area` | Order of the device lists: `area` (by area, then name) or `name` (alphabetical). The list of a hub also has a button to switch between the two. |
 | `core_size` | string | `large` | `compact` is a shortcut for `sizes.core: 28`. |
 | `mqtt_entities` | boolean | `true` | Show MQTT entities that have no device (entities written by hand in YAML without a `device` block), one dot per entity. |
+| `recent_hours` | number | `24` | How long a battery device that stopped answering counts as *seen recently* (yellow) before it is shown as offline (red). `0` turns it off. The time is taken from when its entities became unavailable, so after a Home Assistant restart it counts from the restart. |
 | `show_panel` | boolean | `true` | Show the side panel with the summary and details. |
 | `animations` | boolean | `true` | Animated data flow, pop-in and hover effects. |
 | `language` | string | HA language | Force the card language: `en` or `es`. |
 | `names` | map | `{}` | Rename integrations or hubs, by integration domain or by the name shown. Example: `hisense_ac_plugin: Air conditioners`. |
-| `colors` | map | | Override the colors: `cloud`, `local`, `radio`, `core` (Home Assistant), `offline`, `away`. |
+| `colors` | map | | Override the colors: `cloud`, `local`, `radio`, `core` (Home Assistant), `offline`, `recent`, `away`. |
 | `lines` | map | | Line style per kind of link, each `solid`, `dashed` or `dotted`: `cloud` (default `dashed`), `local` (cable, `solid`), `wifi` (`dotted`), `radio` (`solid`). `width` sets the thickness (default `2`). |
 | `sizes` | map | | Radius of each level of bubbles: `core` (Home Assistant, default `56`), `network` (router, coordinator, internet: `28`), `hub` (hubs and integrations: `22`), `device` (`6.2`). Below 48 the centre only says "HA". |
 | `minimap` | boolean | `true` | Show the overview map while part of the map is outside the view. |
@@ -163,7 +164,16 @@ The card reads the device and entity registries that the frontend already loads,
 
 ## Contributing
 
-Issues and pull requests are welcome. If a device ends up in the wrong group, open an issue with the integration name and, if possible, its `iot_class`.
+Issues and pull requests are welcome.
+
+The card is a single file with no build step. The tests load it in a headless browser, draw the demo installations and a few hundred random ones, and check the rules the map must keep: links never cross or run over another bubble, labels never overlap, and anything left off the map is announced.
+
+```bash
+npm install
+npx playwright install chromium
+npm test            # FUZZ=1000 npm test checks more random installations
+```
+ If a device ends up in the wrong group, open an issue with the integration name and, if possible, its `iot_class`.
 
 ## License
 

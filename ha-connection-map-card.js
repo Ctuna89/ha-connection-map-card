@@ -34,6 +34,7 @@
       away: 'Off the network', awayLong: 'Not connected to the network right now (off or sleeping)', mobile: 'Mobile devices', remote: 'Away · via internet', remoteLong: 'Away from your network: reaches Home Assistant over the internet', mobileData: 'Mobile data',
       sortName: 'Sort: name', sortArea: 'Sort: area', parentDev: 'Part of', entity: 'Entity', openEntity: 'Open entity', noRoomAp1: '1 access point is not drawn: there is no room for it without crossing links.', noRoomAp: 'access points are not drawn: there is no room for them without crossing links.', noRoomSee: 'See them in the router panel',
       noRoomName1: '1 label is hidden at this zoom: there is no room for it.', noRoomName: 'labels are hidden at this zoom: there is no room for them.', noRoomZoom: 'Zoom in to see them', notDrawn: 'Not drawn',
+      recent: 'Seen recently', recentLong: 'Not answering now. Battery device, last seen', ago: '{t} ago', recentNow: 'Seen recently',
       bluetooth: 'Bluetooth', btDesc: 'Bluetooth devices: Home Assistant hears them directly or through a Bluetooth proxy.', btProxy: 'Bluetooth proxy', btAdapter: 'Bluetooth adapter', btSignal: 'Signal (RSSI)',
       btHeard: 'Devices that this Bluetooth receiver hears best right now.', threadDesc: 'Matter devices on the Thread mesh. They reach Home Assistant through a Thread border router.', mqttManual: 'MQTT entity without a device'
     },
@@ -60,6 +61,7 @@
       away: 'Fuera de la red', awayLong: 'No está conectado a la red ahora (apagado o en reposo)', mobile: 'Dispositivos móviles', remote: 'Fuera de casa · vía internet', remoteLong: 'Fuera de tu red: llega a Home Assistant por internet', mobileData: 'Datos móviles',
       sortName: 'Orden: nombre', sortArea: 'Orden: pieza', parentDev: 'Parte de', entity: 'Entidad', openEntity: 'Abrir entidad', noRoomAp1: '1 punto de acceso no se dibuja: no hay espacio para él sin cruzar líneas.', noRoomAp: 'puntos de acceso no se dibujan: no hay espacio para ellos sin cruzar líneas.', noRoomSee: 'Verlos en el panel del router',
       noRoomName1: '1 etiqueta está oculta con este zoom: no hay espacio para ella.', noRoomName: 'etiquetas están ocultas con este zoom: no hay espacio para ellas.', noRoomZoom: 'Acerca el mapa para verlas', notDrawn: 'No dibujado',
+      recent: 'Visto hace poco', recentLong: 'No responde ahora. Equipo a batería, visto por última vez', ago: 'hace {t}', recentNow: 'Vistos hace poco',
       bluetooth: 'Bluetooth', btDesc: 'Equipos Bluetooth: Home Assistant los escucha directo o a través de un proxy Bluetooth.', btProxy: 'Proxy Bluetooth', btAdapter: 'Adaptador Bluetooth', btSignal: 'Señal (RSSI)',
       btHeard: 'Equipos que este receptor Bluetooth escucha mejor en este momento.', threadDesc: 'Equipos Matter en la malla Thread. Llegan a Home Assistant a través de un border router Thread.', mqttManual: 'Entidad MQTT sin dispositivo'
     }
@@ -113,8 +115,9 @@
       for (var k = 0; k < (o.ents || 1); k++) {
         var eid = (o.dom || 'sensor') + '.demo_' + seq + '_' + k;
         entities[eid] = { entity_id: eid, device_id: id, platform: o.p };
-        states[eid] = { entity_id: eid, state: o.off ? 'unavailable' : 'on', attributes: {} };
+        states[eid] = { entity_id: eid, state: o.off || o.rec ? 'unavailable' : 'on', attributes: {}, last_changed: new Date(Date.now() - (o.rec ? 3 : 90) * 3600000).toISOString() };
       }
+      if (o.rec || o.bat) { var be = 'sensor.demo_' + seq + '_battery'; entities[be] = { entity_id: be, device_id: id, platform: o.p }; states[be] = { entity_id: be, state: o.rec || o.off ? 'unavailable' : '87', attributes: { device_class: 'battery' }, last_changed: states[eid].last_changed }; }
       return id;
     }
     function trk(name, plat, attrs, home) {
@@ -196,7 +199,7 @@
       var zr = [];
       for (i = 0; i < 3; i++) { var rid = dev({ p: 'zha', n: 'Zigbee plug ' + (i + 1), mo: 'TS011F', via: co, a: A[i], dom: 'switch' }); zr.push('r' + i); zha.push({ ieee: 'r' + i, device_type: 'Router', device_reg_id: rid, lqi: 210 - i * 45, neighbors: [{ ieee: 'c0', device_type: 'Coordinator', relationship: 'Sibling', lqi: 210 - i * 45 }] }); }
       for (i = 0; i < 12; i++) {
-        var eid2 = dev({ p: 'zha', n: ['Motion', 'Door', 'Climate'][i % 3] + ' sensor ' + (i + 1), mo: 'Aqara', via: co, a: A[i % 8], dom: 'binary_sensor', off: i === 7 });
+        var eid2 = dev({ p: 'zha', n: ['Motion', 'Door', 'Climate'][i % 3] + ' sensor ' + (i + 1), mo: 'Aqara', via: co, a: A[i % 8], dom: 'binary_sensor', off: i === 7, rec: i === 3, bat: i === 7 });
         zha.push({ ieee: 'e' + i, device_type: 'EndDevice', device_reg_id: eid2, lqi: 100 + ((i * 37) % 140), neighbors: [] });
         var pz = i < 4 ? zha[0] : zha.filter(function (z) { return z.ieee === zr[i % 3]; })[0];
         pz.neighbors.push({ ieee: 'e' + i, device_type: 'EndDevice', relationship: 'Child', lqi: 90 + i * 9 });
@@ -238,7 +241,7 @@
   function deg(a) { return a * Math.PI / 180; }
 
   var CSS = [
-    ':host{--cm-cloud:#7c5cff;--cm-local:#0b8a77;--cm-radio:#b86e00;--cm-core:var(--primary-color,#03a9f4);--cm-bad:var(--error-color,#db4437);--cm-away:#a86400;',
+    ':host{--cm-cloud:#7c5cff;--cm-local:#0b8a77;--cm-radio:#b86e00;--cm-core:var(--primary-color,#03a9f4);--cm-bad:var(--error-color,#db4437);--cm-away:#a86400;--cm-recent:#d9a900;',
     '--cm-ink:var(--primary-text-color,#212121);--cm-muted:var(--secondary-text-color,#727272);--cm-line:var(--divider-color,rgba(0,0,0,.12));',
     '--cm-bg:var(--ha-card-background,var(--card-background-color,#fff));--cm-faint:var(--secondary-background-color,rgba(127,127,127,.12));display:block}',
     'ha-card{overflow:hidden}',
@@ -303,6 +306,7 @@
     '.foc .dev:not(.on),.foc .hub:not(.on),.foc .mnode:not(.on),.foc .elbl{opacity:.2}.foc .edge:not(.on),.foc .spoke:not(.on){opacity:.14}.foc .edge:not(.on)+.flow{opacity:.04}',
     '.foc .edge.on{stroke-opacity:.95}.foc .edge.on+.flow{opacity:.95;animation-duration:1.1s}.foc .spoke.on{stroke:var(--cm-muted);stroke-width:1.5}',
     '.dev.offline circle:last-of-type{animation:cmblink 2.4s ease-in-out infinite}@keyframes cmblink{50%{stroke-opacity:.25}}',
+    '.dev.recent circle:last-of-type{fill:var(--cm-bg)!important;stroke:var(--cm-recent);stroke-width:2.2}',
     '.dev.away circle:last-of-type{fill:var(--cm-bg)!important;stroke:var(--cm-away);stroke-width:2.2;stroke-dasharray:2.5 2}',
     '.still .flow{display:none}.still *{animation:none!important;transition:none!important}',
     '@media (prefers-reduced-motion:reduce){.flow{display:none}.enter,.spoke.meshl,.dev circle,.disc,.dev,.hub,.mnode,.edge,.spoke,.elbl{animation:none!important;transition:none!important}}',
@@ -326,7 +330,7 @@
     setConfig(config) {
       this._cfg = Object.assign({
         title: null, group_small: 1, exclude_integrations: [], exclude_devices: [], show_trackers: false,
-        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', mqtt_entities: true
+        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', mqtt_entities: true, recent_hours: 24
       }, config || {});
       // look-only options are applied by drawing again; anything else needs the model to be rebuilt
       var LOOK = ['title', 'colors', 'lines', 'sizes', 'core_size', 'minimap', 'device_labels', 'animations', 'show_panel'];
@@ -350,7 +354,7 @@
       var cfg = this._cfg, c = cfg.colors || {}, L = cfg.lines || {}, card = this._root.querySelector('ha-card');
       function col(v) { return /^[#a-z0-9(),.%\s-]+$/i.test(String(v || '')) ? String(v) : ''; }
       var vars = ''; ['cloud', 'local', 'radio', 'core'].forEach(function (k) { if (col(c[k])) vars += '--cm-' + k + ':' + col(c[k]) + ';'; });
-      if (col(c.offline)) vars += '--cm-bad:' + col(c.offline) + ';'; if (col(c.away)) vars += '--cm-away:' + col(c.away) + ';';
+      if (col(c.offline)) vars += '--cm-bad:' + col(c.offline) + ';'; if (col(c.away)) vars += '--cm-away:' + col(c.away) + ';'; if (col(c.recent)) vars += '--cm-recent:' + col(c.recent) + ';';
       card.setAttribute('style', vars); card.className = cfg.animations === false ? 'still' : '';
       var w = parseFloat(L.width); w = isNaN(w) ? 2 : Math.max(0.5, Math.min(6, w));
       function dash(st) { return st === 'dashed' ? 'stroke-dasharray:' + (w * 3) + ' ' + (w * 3) + ';stroke-linecap:butt;stroke-width:' + w : st === 'dotted' ? 'stroke-dasharray:1 ' + (w * 3) + ';stroke-linecap:round;stroke-width:' + (w * 1.5) : 'stroke-dasharray:none;stroke-width:' + w; }
@@ -655,6 +659,8 @@
         x.trk = x.ieee ? null : findTrk(d);
         // the companion app reports how the phone is connected (Android: network_type, iOS: connection_type)
         if (p === 'mobile_app') x.net = (es.filter(function (e) { return /^sensor\..*_(network|connection)_type$/.test(e.entity_id); })[0] || {}).entity_id || null;
+        // battery devices sleep between reports: see _status
+        x.battery = es.some(function (e) { var a = (H.states[e.entity_id] || {}).attributes || {}; return a.device_class === 'battery' || /_battery(_level)?$/.test(e.entity_id); });
         hub.dv.push(x); devs.push(x);
         return x;
       }
@@ -765,10 +771,17 @@
     }
 
     _status() {
-      var S = this._hass.states;
+      var S = this._hass.states, now = Date.now(), win = Math.max(0, parseFloat(this._cfg.recent_hours) || 0) * 3600000;
       (this._devs || []).concat(this._routers || []).forEach(function (d) {
         var st = d.ents.map(function (e) { return S[e] ? S[e].state : 'unavailable'; });
         d.off = st.length > 0 && st.every(function (s) { return s === 'unavailable'; });
+        // A battery device that stopped answering a short while ago is probably asleep, not gone: for a while it is
+        // "seen recently" (yellow) instead of offline (red). The time comes from when its entities became unavailable.
+        d.recent = false; d.seen = null;
+        if (d.off && d.battery && win > 0) {
+          var when = 0; d.ents.forEach(function (e) { var x = S[e] && Date.parse(S[e].last_changed); if (x && x > when) when = x; });
+          if (when && now - when < win) { d.recent = true; d.off = false; d.seen = when; }
+        }
         d.away = !d.off && !!d.trk && !!S[d.trk] && S[d.trk].state === 'not_home';
         // a phone or tablet on mobile data, or away from the home network, reaches Home Assistant over the internet
         d.cell = !d.off && !!d.net && !!S[d.net] && /cell|mobile/i.test(S[d.net].state);
@@ -971,6 +984,7 @@
       this._$('offBtn').textContent = t('onlyOffline');
       this._$('legend').innerHTML = ['cloud', 'local', 'radio'].map(function (m) { return '<span><i style="background:' + M[m] + '"></i>' + esc(t(m)) + '</span>'; }).join('') +
         '<span><i style="border:2px solid var(--cm-bad)"></i>' + esc(t('offline')) + '</span>' +
+        '<span><i style="border:2px solid var(--cm-recent)"></i>' + esc(t('recent')) + '</span>' +
         '<span><i style="border:2px dashed var(--cm-away)"></i>' + esc(t('away')) + '</span>' +
         '<span><svg width="26" height="8"><line x1="2" y1="4" x2="24" y2="4" stroke="var(--cm-local)" style="' + this._lineCss.cable + '"/></svg>' + esc(t('cable')) + '</span>' +
         '<span><svg width="26" height="8"><line x1="2" y1="4" x2="24" y2="4" stroke="var(--cm-local)" style="' + this._lineCss.wifi + '"/></svg>' + esc(t('wifi')) + '</span>';
@@ -1040,7 +1054,7 @@
         el('circle', { cx: d.x, cy: d.y, r: Z.dev, fill: M[d.hub.m] }, g); d.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selDev(d); });
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selDev(d); });
-        hov(g, d, d.x, d.y, function () { return [d.n, [d.off ? t('offline') : d.remote ? t('remote') : d.away ? t('away') : '', d.a, d.hub.kind === 'hub' ? d.hub.n : (d.via || self._intName(d.p))].filter(Boolean).join(' · ')]; });
+        hov(g, d, d.x, d.y, function () { return [d.n, [d.off ? t('offline') : d.recent ? t('recent') + ' · ' + self._ago(d.seen) : d.remote ? t('remote') : d.away ? t('away') : '', d.a, d.hub.kind === 'hub' ? d.hub.n : (d.via || self._intName(d.p))].filter(Boolean).join(' · ')]; });
       });
       // core
       var gc = el('g', { 'class': 'mnode', tabindex: 0, role: 'button', 'aria-label': 'Home Assistant' }, gN); this._coreG = gc;
@@ -1256,7 +1270,11 @@
       if (seen.length > 260) seen = [];
       this._dlOn = seen.length > 0;
       devs.forEach(function (d) { if (d.lab) d.lab.style.display = 'none'; });
-      seen.forEach(function (d) { placed.push({ x0: d.x - Z.dev, y0: d.y - Z.dev, x1: d.x + Z.dev, y1: d.y + Z.dev, d: d }); });
+      // every dot in or near the view is in the way of a name, whether it gets a name itself or not
+      if (seen.length) devs.forEach(function (d) {
+        if (d.x == null || d.x < v.x - 60 || d.x > v.x + v.w + 60 || d.y < v.y - 60 || d.y > v.y + v.h + 60) return;
+        var rr = d.router ? Z.dev + 4.6 : Z.dev + 0.8; placed.push({ x0: d.x - rr, y0: d.y - rr, x1: d.x + rr, y1: d.y + rr, d: d });
+      });
       seen.forEach(function (d) {
         if (!d.lab) { d.lab = document.createElementNS(NS, 'text'); d.lab.setAttribute('class', 'dl'); d.lab.textContent = d.n.length > 22 ? d.n.slice(0, 21) + '…' : d.n; self._gL.appendChild(d.lab); }
         var right = d.x >= d.hub.x, r = null, me = placed.filter(function (p) { return p.d === d; })[0];
@@ -1265,9 +1283,9 @@
           if (r) return;
           d.lab.setAttribute('text-anchor', rt ? 'start' : 'end'); d.lab.setAttribute('x', d.x + (rt ? 1 : -1) * (Z.dev + 4 / k)); d.lab.setAttribute('y', d.y);
           var b = box(d.lab); if (!b) return;
-          me.x0 = me.x1 = 1e9; // its own dot is not an obstacle
+          var mx0 = me.x0, mx1 = me.x1; me.x0 = me.x1 = 1e9; // its own dot is not an obstacle
           if (free(b, true)) r = b;
-          me.x0 = d.x - Z.dev; me.x1 = d.x + Z.dev;
+          me.x0 = mx0; me.x1 = mx1;
         });
         if (r) placed.push(r); else d.lab.style.display = 'none';
       });
@@ -1336,16 +1354,17 @@
       var areas = []; this._devs.forEach(function (d) { if (d.a && areas.indexOf(d.a) < 0) areas.push(d.a); }); areas.sort();
       this._$('area').innerHTML = '<option value="">' + esc(t('allAreas')) + '</option>' + areas.map(function (a) { return '<option>' + esc(a) + '</option>'; }).join('');
     }
+    _ago(ts) { var m = Math.max(1, Math.round((Date.now() - ts) / 60000)); return this._t('ago').replace('{t}', m < 90 ? m + ' min' : Math.round(m / 60) + ' h'); }
     _marks() {
       if (!this._devs || !this._S) return;
       var t = this._t.bind(this);
-      this._devs.forEach(function (d) { if (d.g) { d.g.classList.toggle('offline', !!d.off); d.g.classList.toggle('away', !!d.away); } });
+      this._devs.forEach(function (d) { if (d.g) { d.g.classList.toggle('offline', !!d.off); d.g.classList.toggle('recent', !!d.recent); d.g.classList.toggle('away', !!d.away && !d.recent); } });
       var ob = this._$('offStat'), n = this._devs.filter(function (d) { return d.off; }).length;
       if (ob) ob.innerHTML = '<i style="border:2px solid var(--cm-bad)"></i>' + esc(t('offline')) + ' <b class="off">' + n + '</b>';
       this._apply();
       if (!this._S.sel) this._list();
     }
-    _vis(d) { var S = this._S; return S.med[d.hub.m] && (!S.off || d.off) && (!S.area || d.a === S.area) && (!S.q || (d.n + ' ' + d.mo + ' ' + d.a + ' ' + d.hub.n + ' ' + (d.via || '')).toLowerCase().indexOf(S.q) >= 0); }
+    _vis(d) { var S = this._S; return S.med[d.hub.m] && (!S.off || d.off || d.recent) && (!S.area || d.a === S.area) && (!S.q || (d.n + ' ' + d.mo + ' ' + d.a + ' ' + d.hub.n + ' ' + (d.via || '')).toLowerCase().indexOf(S.q) >= 0); }
     _apply() {
       var self = this, S = this._S, f = S.q || S.area || S.off;
       this._devs.forEach(function (d) { d.vis = self._vis(d); if (d.g) { d.g.classList.toggle('dim', !d.vis); d.spoke.classList.toggle('dim', !d.vis); } });
@@ -1354,7 +1373,7 @@
 
     _item(d) {
       var M = this._M, t = this._t.bind(this);
-      return '<button class="item' + (this._S.sel === d ? ' sel' : '') + '" data-id="' + esc(d.id) + '"><i style="' + (d.off ? 'border:2px solid var(--cm-bad)' : d.away ? 'border:2px dashed var(--cm-away)' : 'background:' + M[d.hub.m]) + '"></i><span class="nm">' + esc(d.n) + '</span><small class="' + (d.off ? 'off' : '') + '" style="' + (d.away ? 'color:var(--cm-away)' : '') + '">' + (d.off ? esc(t('offline')) : d.remote ? esc(t('remote')) : d.away ? esc(t('away')) : esc(d.hub.kind === 'other' ? (d.via || d.a || d.hub.n) : (d.a || d.hub.n))) + '</small></button>';
+      return '<button class="item' + (this._S.sel === d ? ' sel' : '') + '" data-id="' + esc(d.id) + '"><i style="' + (d.off ? 'border:2px solid var(--cm-bad)' : d.recent ? 'border:2px solid var(--cm-recent)' : d.away ? 'border:2px dashed var(--cm-away)' : 'background:' + M[d.hub.m]) + '"></i><span class="nm">' + esc(d.n) + '</span><small class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away)' : '') + '">' + (d.off ? esc(t('offline')) : d.recent ? esc(this._ago(d.seen)) : d.remote ? esc(t('remote')) : d.away ? esc(t('away')) : esc(d.hub.kind === 'other' ? (d.via || d.a || d.hub.n) : (d.a || d.hub.n))) + '</small></button>';
     }
     _bind() {
       var self = this, p = this._$('panel');
@@ -1441,10 +1460,11 @@
       var html = '<div class="eyebrow" style="color:var(--cm-core)">' + esc(t('summary')) + '</div><h2>' + (f ? vis.length + ' ' + esc(t('found')) : this._devs.length + ' ' + esc(t('devices'))) + '</h2>';
       if (f) html += '<div class="list">' + (vis.map(function (d) { return self._item(d); }).join('') || '<p>' + esc(t('none')) + '</p>') + '</div>';
       else {
-        var offs = this._devs.filter(function (d) { return d.off; });
+        var offs = this._devs.filter(function (d) { return d.off; }), recs = this._devs.filter(function (d) { return d.recent; });
         html += '<p>' + esc(t('summaryText')) + '</p><div class="list">' + this._hubs.slice().sort(function (a, b) { return b.dv.length - a.dv.length; }).map(function (h) {
           return '<button class="item" data-hub="' + esc(h.key) + '"><i style="background:' + self._M[h.m] + '"></i><span class="nm">' + esc(h.n) + '</span><small>' + h.dv.length + '</small></button>';
-        }).join('') + '</div><div class="eyebrow off">' + esc(t('offlineNow')) + ' · ' + offs.length + '</div><div class="list">' + (offs.map(function (d) { return self._item(d); }).join('') || '<p>' + esc(t('allOnline')) + '</p>') + '</div>';
+        }).join('') + '</div><div class="eyebrow off">' + esc(t('offlineNow')) + ' · ' + offs.length + '</div><div class="list">' + (offs.map(function (d) { return self._item(d); }).join('') || '<p>' + esc(t('allOnline')) + '</p>') + '</div>' +
+          (recs.length ? '<div class="eyebrow" style="color:var(--cm-recent)">' + esc(t('recentNow')) + ' · ' + recs.length + '</div><div class="list">' + recs.map(function (d) { return self._item(d); }).join('') + '</div>' : '');
       }
       this._$('panel').innerHTML = html; this._bind();
     }
@@ -1490,7 +1510,7 @@
         (d.mo ? '<dt>' + esc(t('model')) + '</dt><dd>' + esc(d.mo) + '</dd>' : '') + (d.a ? '<dt>' + esc(t('area')) + '</dt><dd>' + esc(d.a) + '</dd>' : '') +
         '<dt>' + esc(t('integration')) + '</dt><dd>' + esc(this._intName(d.p)) + '</dd>' +
         (d.entity ? '<dt>' + esc(t('entity')) + '</dt><dd style="word-break:break-all">' + esc(d.entity) + '</dd>' : '') +
-        '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '" style="' + (d.away ? 'color:var(--cm-away);font-weight:600' : '') + '">' + esc(d.off ? t('offline') : d.remote ? t('remoteLong') : d.away ? t('awayLong') : t('online')) + '</dd>' +
+        '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away);font-weight:600' : '') + '">' + esc(d.off ? t('offline') : d.recent ? t('recentLong') + ' ' + this._ago(d.seen) : d.remote ? t('remoteLong') : d.away ? t('awayLong') : t('online')) + '</dd>' +
         (d.meshParent && !d.ieee ? '<dt>' + esc(t('parentDev')) + '</dt><dd>' + esc(d.meshParent.n) + '</dd>' : '') +
         (d.router != null && d.ieee ? '<dt>' + esc(t('role')) + '</dt><dd>' + esc(d.router ? t('roleRouter') : t('roleEnd')) + '</dd>' : '') +
         (d.ieee && this._mesh ? '<dt>' + esc(t('connectedTo')) + '</dt><dd>' + esc(d.meshParent ? d.meshParent.n : (this._coord || t('coordinator'))) + '</dd>' : '') +
@@ -1535,19 +1555,19 @@
   var ED = {
     en: { general: 'General', title: 'Title', language: 'Language', auto: 'Automatic', sort: 'Order of the lists', byArea: 'By area', byName: 'By name',
       show_panel: 'Side panel', animations: 'Animations', minimap: 'Overview map when the whole map is not in view', device_labels: 'Device names when zoomed in',
-      colors: 'Colours', cloud: 'Internet', local: 'Local network', radio: 'Local radio', core: 'Home Assistant', offline: 'Offline', away: 'Off the network', reset: 'Default',
+      colors: 'Colours', cloud: 'Internet', local: 'Local network', radio: 'Local radio', core: 'Home Assistant', offline: 'Offline', away: 'Off the network', crecent: 'Seen recently', reset: 'Default',
       lines: 'Lines', lcloud: 'Internet links', llocal: 'Cable links', lradio: 'Radio links', lwifi: 'Wi-Fi links', solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted', width: 'Line width',
       sizes: 'Bubble sizes', score: 'Home Assistant', snetwork: 'Network nodes (router, coordinator, internet)', shub: 'Hubs and integrations', sdevice: 'Devices',
       content: 'What is shown', group_small: 'Group integrations with this many devices or fewer', show_trackers: 'Devices that only have a device tracker', show_mesh: 'Zigbee mesh routes',
-      mqtt_entities: 'MQTT entities without a device', exclude_integrations: 'Hidden integrations (domains, separated by commas)', router_name: 'Name of the local network node',
+      mqtt_entities: 'MQTT entities without a device', recent_hours: 'Hours a silent battery device counts as seen recently (0: never)', exclude_integrations: 'Hidden integrations (domains, separated by commas)', router_name: 'Name of the local network node',
       coordinator_name: 'Name of the radio coordinator', demo: 'Demo installation', none: 'None (my installation)', yaml: 'names, overrides, exclude_devices and z2m_base_topic are edited in YAML.' },
     es: { general: 'General', title: 'Título', language: 'Idioma', auto: 'Automático', sort: 'Orden de las listas', byArea: 'Por pieza', byName: 'Por nombre',
       show_panel: 'Panel lateral', animations: 'Animaciones', minimap: 'Mini-mapa cuando no se ve el mapa completo', device_labels: 'Nombres de los equipos al acercar',
-      colors: 'Colores', cloud: 'Internet', local: 'Red local', radio: 'Radio local', core: 'Home Assistant', offline: 'Sin conexión', away: 'Fuera de la red', reset: 'Por defecto',
+      colors: 'Colores', cloud: 'Internet', local: 'Red local', radio: 'Radio local', core: 'Home Assistant', offline: 'Sin conexión', away: 'Fuera de la red', crecent: 'Visto hace poco', reset: 'Por defecto',
       lines: 'Líneas', lcloud: 'Enlaces por internet', llocal: 'Enlaces por cable', lradio: 'Enlaces por radio', lwifi: 'Enlaces Wi-Fi', solid: 'Continua', dashed: 'Segmentada', dotted: 'Punteada', width: 'Grosor de línea',
       sizes: 'Tamaño de las burbujas', score: 'Home Assistant', snetwork: 'Nodos de red (router, coordinador, internet)', shub: 'Hubs e integraciones', sdevice: 'Equipos',
       content: 'Qué se muestra', group_small: 'Agrupar integraciones con esta cantidad de equipos o menos', show_trackers: 'Equipos que solo tienen device tracker', show_mesh: 'Rutas de la malla Zigbee',
-      mqtt_entities: 'Entidades MQTT sin dispositivo', exclude_integrations: 'Integraciones ocultas (dominios, separados por comas)', router_name: 'Nombre del nodo de red local',
+      mqtt_entities: 'Entidades MQTT sin dispositivo', recent_hours: 'Horas en que un equipo a batería sin respuesta cuenta como visto hace poco (0: nunca)', exclude_integrations: 'Integraciones ocultas (dominios, separados por comas)', router_name: 'Nombre del nodo de red local',
       coordinator_name: 'Nombre del coordinador de radio', demo: 'Instalación de demostración', none: 'Ninguna (mi instalación)', yaml: 'names, overrides, exclude_devices y z2m_base_topic se editan en YAML.' }
   };
   var LINE = ['solid', 'dashed', 'dotted'];
@@ -1556,12 +1576,12 @@
     { p: 'sort', k: 'select', o: [['area', 'byArea'], ['name', 'byName']], d: 'area' }, { p: 'show_panel', k: 'bool', d: true }, { p: 'animations', k: 'bool', d: true },
     { p: 'minimap', k: 'bool', d: true }, { p: 'device_labels', k: 'bool', d: true },
     { sec: 'colors' }, { p: 'colors.cloud', k: 'color', d: '#7c5cff', l: 'cloud' }, { p: 'colors.local', k: 'color', d: '#0b8a77', l: 'local' }, { p: 'colors.radio', k: 'color', d: '#b86e00', l: 'radio' },
-    { p: 'colors.core', k: 'color', d: '#03a9f4', l: 'core' }, { p: 'colors.offline', k: 'color', d: '#db4437', l: 'offline' }, { p: 'colors.away', k: 'color', d: '#a86400', l: 'away' },
+    { p: 'colors.core', k: 'color', d: '#03a9f4', l: 'core' }, { p: 'colors.offline', k: 'color', d: '#db4437', l: 'offline' }, { p: 'colors.away', k: 'color', d: '#a86400', l: 'away' }, { p: 'colors.recent', k: 'color', d: '#d9a900', l: 'crecent' },
     { sec: 'lines' }, { p: 'lines.cloud', k: 'select', o: LINE, d: 'dashed', l: 'lcloud' }, { p: 'lines.local', k: 'select', o: LINE, d: 'solid', l: 'llocal' },
     { p: 'lines.wifi', k: 'select', o: LINE, d: 'dotted', l: 'lwifi' }, { p: 'lines.radio', k: 'select', o: LINE, d: 'solid', l: 'lradio' }, { p: 'lines.width', k: 'range', min: 0.5, max: 6, step: 0.5, d: 2, l: 'width' },
     { sec: 'sizes' }, { p: 'sizes.core', k: 'range', min: 20, max: 80, step: 1, d: 56, l: 'score' }, { p: 'sizes.network', k: 'range', min: 16, max: 40, step: 1, d: 28, l: 'snetwork' },
     { p: 'sizes.hub', k: 'range', min: 14, max: 34, step: 1, d: 22, l: 'shub' }, { p: 'sizes.device', k: 'range', min: 3, max: 9, step: 0.2, d: 6.2, l: 'sdevice' },
-    { sec: 'content' }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'mqtt_entities', k: 'bool', d: true },
+    { sec: 'content' }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'mqtt_entities', k: 'bool', d: true }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
     { p: 'exclude_integrations', k: 'list' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
     { p: 'demo', k: 'select', o: [['', 'none'], ['unifi', 'UniFi'], ['fritz', 'FRITZ!Box'], ['large', '350']], d: '' }
   ];

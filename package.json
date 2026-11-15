@@ -1,0 +1,11 @@
+{
+  "name": "ha-connection-map-card",
+  "private": true,
+  "description": "Tests for the Connection Map Card. The card itself has no build step and no dependencies.",
+  "scripts": {
+    "test": "node --test tests/card.test.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
