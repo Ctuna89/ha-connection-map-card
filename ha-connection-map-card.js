@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.4.0';
+  var VERSION = '0.5.0';
 
   var STR = {
     en: {
@@ -31,7 +31,7 @@
       meshNote: 'Zigbee routes come from the Zigbee2MQTT network map.', status2: 'Status',
       network: 'Network', wired: 'Ethernet', wifi: 'Wi-Fi', ip: 'IP address', cable: 'Cable', connectedHere: 'Connected to this node',
       routerDesc: 'Access point / mesh node of your network.', backhaul: 'Link to main router',
-      away: 'Off the network', awayLong: 'Not connected to the network right now (off or sleeping)'
+      away: 'Off the network', awayLong: 'Not connected to the network right now (off or sleeping)', phones: 'Phones'
     },
     es: {
       title: 'Mapa de conexiones', loading: 'Cargando equipos…', cloud: 'Internet', local: 'Red local', radio: 'Radio local',
@@ -53,7 +53,7 @@
       meshNote: 'Las rutas Zigbee vienen del mapa de red de Zigbee2MQTT.', status2: 'Estado',
       network: 'Red', wired: 'Cable (Ethernet)', wifi: 'Wi-Fi', ip: 'Dirección IP', cable: 'Cable', connectedHere: 'Conectados a este nodo',
       routerDesc: 'Punto de acceso / nodo de la red.', backhaul: 'Enlace al router principal',
-      away: 'Fuera de la red', awayLong: 'No está conectado a la red ahora (apagado o en reposo)'
+      away: 'Fuera de la red', awayLong: 'No está conectado a la red ahora (apagado o en reposo)', phones: 'Celulares'
     }
   };
 
@@ -68,6 +68,10 @@
     'vodafone_station', 'sfr_box', 'freebox', 'bbox', 'orbi', 'linksys_smart', 'aruba', 'cisco_ios', 'ddwrt', 'tomato', 'opnsense', 'pfsense'];
   // Radio coordinators (USB sticks / built-in radios).
   var COORD_INTS = ['homeassistant_sky_connect', 'homeassistant_hardware', 'homeassistant_yellow', 'homeassistant_connect_zbt2'];
+  // Short, user-facing names for integrations whose official name is long or technical.
+  var SHORT = { hisense_ac_plugin: 'Hisense', anthropic: 'Claude', openai_conversation: 'ChatGPT', google_generative_ai_conversation: 'Gemini',
+    samsungtv: 'Samsung TV', androidtv_remote: 'Android TV', dlna_dmr: 'DLNA', wake_on_lan: 'Wake on LAN', hue: 'Philips Hue',
+    google_translate: 'Google TTS', waze_travel_time: 'Waze', radio_browser: 'Radio Browser', huawei_mesh_router: 'Huawei Mesh' };
   var VIRT = { oracle: 'VirtualBox', kvm: 'KVM', qemu: 'QEMU', vmware: 'VMware', microsoft: 'Hyper-V', xen: 'Xen', parallels: 'Parallels', lxc: 'LXC', docker: 'Docker' };
   var CLOUD_GUESS = ['smartthings', 'tuya', 'spotify', 'met', 'google_translate', 'anthropic', 'openai_conversation', 'nest',
     'ring', 'tesla_fleet', 'netatmo', 'ecobee', 'alexa', 'google_assistant', 'cloud', 'waze_travel_time', 'openweathermap'];
@@ -77,7 +81,7 @@
   function deg(a) { return a * Math.PI / 180; }
 
   var CSS = [
-    ':host{--cm-cloud:#7c5cff;--cm-local:#0f9f8a;--cm-radio:#e08a00;--cm-core:var(--primary-color,#03a9f4);--cm-bad:var(--error-color,#db4437);--cm-away:#d08700;',
+    ':host{--cm-cloud:#7c5cff;--cm-local:#0b8a77;--cm-radio:#b86e00;--cm-core:var(--primary-color,#03a9f4);--cm-bad:var(--error-color,#db4437);--cm-away:#a86400;',
     '--cm-ink:var(--primary-text-color,#212121);--cm-muted:var(--secondary-text-color,#727272);--cm-line:var(--divider-color,rgba(0,0,0,.12));',
     '--cm-bg:var(--ha-card-background,var(--card-background-color,#fff));--cm-faint:var(--secondary-background-color,rgba(127,127,127,.12));display:block}',
     'ha-card{overflow:hidden}',
@@ -119,7 +123,7 @@
     '.spoke{stroke:var(--cm-line);stroke-width:1}.spoke.meshl{stroke:var(--cm-radio);stroke-dasharray:3 2;stroke-opacity:.8}',
     '.edge.wifi{stroke-dasharray:1 6;stroke-linecap:round;stroke-width:3}',
     // motion: data flowing towards Home Assistant, devices popping in, offline / off-network rings breathing
-    '.flow{fill:none;stroke-width:2.4;stroke-dasharray:2 18;stroke-linecap:round;opacity:.85;pointer-events:none;animation:cmflow 1.8s linear infinite}',
+    '.flow{fill:none;stroke-width:2;stroke-dasharray:2 18;stroke-linecap:round;opacity:.35;pointer-events:none;animation:cmflow 3.2s linear infinite}',
     '.edge.hot+.flow{stroke-width:3.6;animation-duration:.7s;opacity:1}.edge.dim+.flow{opacity:.08}',
     '@keyframes cmflow{from{stroke-dashoffset:0}to{stroke-dashoffset:40}}',
     '.spoke.meshl{animation:cmmesh 1s linear infinite}@keyframes cmmesh{to{stroke-dashoffset:10}}',
@@ -131,12 +135,15 @@
     '.dev.away circle:last-of-type{fill:var(--cm-bg)!important;stroke:var(--cm-away);stroke-width:2.2;stroke-dasharray:2.5 2}',
     '.still .flow{display:none}.still *{animation:none!important;transition:none!important}',
     '@media (prefers-reduced-motion:reduce){.flow{display:none}.enter,.spoke.meshl,.dev circle{animation:none!important;transition:none!important}}',
-    '.elbl{font-size:10px;fill:var(--cm-muted);paint-order:stroke;stroke:var(--cm-bg);stroke-width:3px;stroke-linejoin:round}',
+    '.elbl{font-size:calc(10px / var(--k,1));font-weight:600;fill:var(--cm-muted);paint-order:stroke;stroke:var(--cm-bg);stroke-width:calc(4px / var(--k,1));stroke-linejoin:round}',
     '.dev{cursor:pointer}.dev circle{stroke:var(--cm-bg);stroke-width:1.5}',
     '.dev.offline circle{fill:var(--cm-bg)!important;stroke:var(--cm-bad);stroke-width:2.2}',
     '.dev.sel circle{stroke:var(--cm-ink);stroke-width:3}',
     '.hub,.mnode{cursor:pointer}.disc{fill:var(--cm-bg);stroke-width:2.5}.hub.sel .disc{stroke-width:5}',
-    '.lbl{font-size:13px;font-weight:600;fill:var(--cm-ink)}.sub{font-size:10.5px;fill:var(--cm-muted)}',
+    // text keeps the same size on screen whatever the zoom: --k is the current pixels-per-unit scale
+    '.lbl{font-size:calc(12px / var(--k,1));font-weight:600;fill:var(--cm-ink)}.lbl.small{font-size:calc(11px / var(--k,1))}',
+    '.sub{font-size:calc(10.5px / var(--k,1));fill:var(--cm-muted)}.tl{paint-order:stroke;stroke:var(--cm-bg);stroke-width:calc(3px / var(--k,1));stroke-linejoin:round}.tl.below{dominant-baseline:hanging}',
+    '@media (max-width:600px){.wrap{padding:12px;gap:9px}.stat{padding:3px 9px 3px 6px;font-size:12px;gap:5px}.tools input{flex:1 1 100%}.tools select,.tools .btn{flex:1 1 0;min-width:0}.zoom .btn{padding:7px 13px}}',
     '.dim{opacity:.12}',
     '.pulse{animation:cmpulse 2.4s ease-in-out infinite}@keyframes cmpulse{0%,100%{opacity:.3}50%{opacity:.85}}',
     '@media (prefers-reduced-motion:reduce){.pulse{animation:none}}',
@@ -163,7 +170,7 @@
       if (this._built && now - (this._last || 0) > 5000) { this._last = now; this._status(); this._marks(); }
     }
 
-    _t(k) { var l = (this._hass && this._hass.language || 'en').slice(0, 2); return (STR[l] || STR.en)[k] || STR.en[k]; }
+    _t(k) { var l = ((this._cfg && this._cfg.language) || (this._hass && this._hass.language) || 'en').slice(0, 2); return (STR[l] || STR.en)[k] || STR.en[k]; }
 
     _skeleton() {
       this._root = this.attachShadow({ mode: 'open' });
@@ -175,7 +182,7 @@
         '<div class="legend" id="legend"></div><div class="zoom"><button class="btn" id="zin">+</button><button class="btn" id="zout">−</button><button class="btn" id="zfit">⤢</button></div></div>' +
         '<aside class="panel" id="panel"><div class="msg" id="loading"></div></aside></div></div></ha-card>';
       var self = this;
-      this._ro = new ResizeObserver(function (en) { var w = en[0].contentRect.width; self._$('main').classList.toggle('wide', w > 860 && self._cfg.show_panel !== false); });
+      this._ro = new ResizeObserver(function (en) { var w = en[0].contentRect.width; self._$('main').classList.toggle('wide', w > 860 && self._cfg.show_panel !== false); if (self._vb) self._setVB(); });
       this._ro.observe(this._$('main'));
       if (this._cfg.show_panel === false) this._$('panel').style.display = 'none';
     }
@@ -273,6 +280,7 @@
     _hubConn(h) {
       // a hub's own connection, or the most common one among its devices
       if (h.trk) return this._conn(h.trk);
+      if (h.p === 'mobile_app') return null; // phones roam between access points: hang them off the main router
       var cnt = {}, best = null, self = this;
       h.dv.forEach(function (d) { var c = self._conn(d.trk); if (c && c.via) { cnt[c.via] = (cnt[c.via] || 0) + 1; if (!best || cnt[c.via] > cnt[best.via]) best = c; } });
       return best;
@@ -283,7 +291,13 @@
       return this._t(m);
     }
 
-    _intName(p) { return (this._man[p] && this._man[p].name) || p.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
+    _intName(p) {
+      var n = (this._cfg && this._cfg.names) || {};
+      if (n[p]) return n[p];
+      if (p === 'mobile_app') return this._t('phones');
+      if (SHORT[p]) return SHORT[p];
+      return (this._man[p] && this._man[p].name) || p.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+    }
     _medium(p) {
       var o = (this._cfg && this._cfg.overrides) || {};
       if (o[p] === 'cloud' || o[p] === 'local' || o[p] === 'radio') return o[p];
@@ -392,6 +406,8 @@
         }
       });
       this._hubs = Object.keys(hubs).map(function (k) { return hubs[k]; }).filter(function (h) { return h.dv.length; });
+      var rename = cfg.names || {};
+      this._hubs.forEach(function (h) { if (rename[h.n]) h.n = rename[h.n]; });
       this._hubs.forEach(function (h) { h.dv.sort(function (a, b) { return (a.a || '~').localeCompare(b.a || '~') || a.n.localeCompare(b.n); }); });
       this._devs = devs;
       this._status();
@@ -465,14 +481,14 @@
       if (this._router && mnodes.local) {
         this._rnodes[this._router.n] = mnodes.local;
         (this._routers || []).filter(function (r) { return r !== self._router; }).forEach(function (r, i) {
-          var a = mnodes.local.ac + (i % 2 ? -1 : 1) * (36 + Math.floor(i / 2) * 20);
-          self._rnodes[r.n] = { x: 205 * Math.cos(deg(a)), y: 205 * Math.sin(deg(a)), r: 20, ac: a, router: r };
+          var a = mnodes.local.ac + (i % 2 ? -1 : 1) * (44 + Math.floor(i / 2) * 20);
+          self._rnodes[r.n] = { x: 215 * Math.cos(deg(a)), y: 215 * Math.sin(deg(a)), r: 20, ac: a, router: r };
         });
       }
       var minX = -110, minY = -110, maxX = 110, maxY = 110;
       hubs.forEach(function (h) { var p = h.outer + 70; minX = Math.min(minX, h.x - p - 40); maxX = Math.max(maxX, h.x + p + 40); minY = Math.min(minY, h.y - p); maxY = Math.max(maxY, h.y + p); });
       this._vb0 = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-      this._vb = Object.assign({}, this._vb0);
+      if (!this._vb) this._vb = Object.assign({}, this._vb0); // keep the user's zoom/pan when the map is redrawn
     }
 
     _render() {
@@ -494,7 +510,17 @@
       var gE = el('g'), gS = el('g'), gN = el('g'), gH = el('g'), gD = el('g');
       this._edges = [];
       var core = { x: 0, y: 0 };
-      function lbl(x1, y1, x2, y2, txt) { if (!txt) return; var e = el('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 4, 'text-anchor': 'middle', 'class': 'elbl' }, gE); e.textContent = txt; }
+      // link labels sit at ~40% of the way out, away from the crowded node at either end
+      function lbl(x1, y1, x2, y2, txt, f) { if (!txt) return; f = f || 0.42; var e = el('text', { x: x1 + (x2 - x1) * f, y: y1 + (y2 - y1) * f, 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'class': 'elbl' }, gE); e.textContent = txt; }
+      // two-line node label (name + subtitle) that grows away from the node, whatever the text size
+      function tlabel(g, x, y, below, name, sub, small) {
+        var tx = el('text', { x: x, y: y, 'text-anchor': 'middle', 'class': 'tl' + (below ? ' below' : '') }, g);
+        var a = document.createElementNS(NS, 'tspan'); a.setAttribute('class', 'lbl' + (small ? ' small' : '')); a.setAttribute('x', x);
+        if (!below && sub) a.setAttribute('dy', '-1.15em');
+        a.textContent = name; tx.appendChild(a);
+        if (sub) { var b = document.createElementNS(NS, 'tspan'); b.setAttribute('class', 'sub'); b.setAttribute('x', x); b.setAttribute('dy', '1.3em'); b.textContent = sub; tx.appendChild(b); }
+        return tx;
+      }
       function short(c) { return c ? (c.wired ? t('cable') : (c.iface ? c.iface.replace(/\s*GHz/i, ' GHz') : t('wifi'))) : ''; }
       // a moving dash on top of every link: data flowing towards Home Assistant (x1 is always the side closer to the centre)
       var first = !this._entered, anim = this._cfg.animations !== false;
@@ -509,7 +535,7 @@
         var n = self._rnodes[k]; if (!n.router) return; var p = self._mnodes.local, c = self._conn(n.router.trk);
         n.edge = el('line', { x1: p.x, y1: p.y, x2: n.x, y2: n.y, 'class': 'edge' + (c && !c.wired ? ' wifi' : ''), stroke: M.local }, gE);
         flow(p.x, p.y, n.x, n.y, M.local);
-        if (c) lbl(p.x, p.y, n.x, n.y, short(c));
+        if (c) lbl(p.x, p.y, n.x, n.y, short(c), 0.62);
       });
       this._hubs.forEach(function (h) {
         var n = self._mnodes[h.m], c = null;
@@ -535,8 +561,8 @@
       el('circle', { cx: 0, cy: 0, r: 70, fill: 'none', stroke: M.core, 'stroke-width': 2, 'class': 'pulse' }, gc);
       el('circle', { cx: 0, cy: 0, r: 56, fill: M.core }, gc);
       var tc = el('text', { x: 0, y: -2, 'text-anchor': 'middle', 'class': 'lbl', style: 'fill:#fff;font-size:14px' }, gc); tc.textContent = 'Home Assistant';
-      var ts = el('text', { x: 0, y: 15, 'text-anchor': 'middle', 'class': 'sub', style: 'fill:rgba(255,255,255,.85)' }, gc); ts.textContent = (this._hass.config && this._hass.config.version) || '';
-      var th = el('text', { x: 0, y: 31, 'text-anchor': 'middle', 'class': 'sub', id: 'coreHost', style: 'fill:rgba(255,255,255,.85)' }, gc); th.textContent = this._hostShort();
+      var ts = el('text', { x: 0, y: 15, 'text-anchor': 'middle', style: 'fill:rgba(255,255,255,.88);font-size:10.5px' }, gc); ts.textContent = (this._hass.config && this._hass.config.version) || '';
+      var th = el('text', { x: 0, y: 31, 'text-anchor': 'middle', id: 'coreHost', style: 'fill:rgba(255,255,255,.88);font-size:10.5px' }, gc); th.textContent = this._hostShort();
       gc.addEventListener('click', function (e) { e.stopPropagation(); self._selCore(); });
       Object.keys(this._mnodes).forEach(function (m) {
         var n = self._mnodes[m], g = el('g', { 'class': 'mnode' }, gN);
@@ -544,12 +570,11 @@
         el('circle', { cx: n.x, cy: n.y, r: n.r, 'class': 'disc', stroke: down ? 'var(--cm-bad)' : M[m] }, g);
         var ic = el('text', { x: n.x, y: n.y + 4, 'text-anchor': 'middle', style: 'font-size:11px;font-weight:700;fill:' + M[m] }, g);
         ic.textContent = m === 'cloud' ? 'WWW' : m === 'local' ? (self._router ? 'Wi-Fi' : 'LAN') : (self._coord ? 'USB' : 'RF');
-        var oy = Math.sin(deg(n.ac)) >= 0 ? n.r + 15 : -(n.r + 20);
+        var below = Math.sin(deg(n.ac)) >= 0;
         var name = self._mname(m), sub = t(m + 'Sub');
         if (m === 'local' && self._router) sub = self._intName(self._router.p) + (self._routers.length > 1 ? ' · ' + self._routers.length + ' ' + t('meshNodes') : '');
         if (m === 'radio' && self._coord) sub = t('coordinator');
-        var tl = el('text', { x: n.x, y: n.y + oy, 'text-anchor': 'middle', 'class': 'lbl' }, g); tl.textContent = name.length > 30 ? name.slice(0, 29) + '…' : name;
-        var tsb = el('text', { x: n.x, y: n.y + oy + 13, 'text-anchor': 'middle', 'class': 'sub' }, g); tsb.textContent = sub;
+        tlabel(g, n.x, below ? n.y + n.r + 7 : n.y - n.r - 9, below, name.length > 30 ? name.slice(0, 29) + '…' : name, sub);
         g.addEventListener('click', function (e) { e.stopPropagation(); if (m === 'local' && self._router) self._selRouter(self._router); else self._selMedium(m); });
       });
       Object.keys(this._rnodes || {}).forEach(function (k) {
@@ -557,8 +582,8 @@
         var g = el('g', { 'class': 'mnode' }, gN);
         el('circle', { cx: n.x, cy: n.y, r: n.r, 'class': 'disc', stroke: r.off ? 'var(--cm-bad)' : M.local }, g);
         var ic = el('text', { x: n.x, y: n.y + 4, 'text-anchor': 'middle', style: 'font-size:9.5px;font-weight:700;fill:' + M.local }, g); ic.textContent = 'AP';
-        var oy = Math.sin(deg(n.ac)) >= 0 ? n.r + 14 : -(n.r + 8);
-        var tl = el('text', { x: n.x, y: n.y + oy, 'text-anchor': 'middle', 'class': 'lbl', style: 'font-size:11.5px' }, g); tl.textContent = r.n;
+        var below = Math.sin(deg(n.ac)) >= 0;
+        tlabel(g, n.x, below ? n.y + n.r + 6 : n.y - n.r - 8, below, r.n, '', true);
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selRouter(r); });
       });
       this._hubs.forEach(function (h, i) {
@@ -566,14 +591,12 @@
         el('circle', { cx: h.x, cy: h.y, r: 22, 'class': 'disc', stroke: M[h.m] }, g);
         var c = el('text', { x: h.x, y: h.y + 5, 'text-anchor': 'middle', style: 'font-size:13px;font-weight:700;fill:' + M[h.m] }, g); c.textContent = h.dv.length;
         var below = Math.sin(deg(h.ac)) > -0.35;
-        var ty = below ? h.y + h.outer + 19 : h.y - h.outer - 22;
-        var tl = el('text', { x: h.x, y: ty, 'text-anchor': 'middle', 'class': 'lbl' }, g); tl.textContent = h.n.length > 26 ? h.n.slice(0, 25) + '…' : h.n;
-        var tsb = el('text', { x: h.x, y: ty + 13, 'text-anchor': 'middle', 'class': 'sub' }, g); tsb.textContent = h.kind === 'hub' ? h.sub : h.kind === 'other' ? '' : '';
+        tlabel(g, h.x, below ? h.y + h.outer + 8 : h.y - h.outer - 9, below, h.n.length > 26 ? h.n.slice(0, 25) + '…' : h.n, h.kind === 'hub' ? h.sub : '');
         h.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selHub(h); });
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selHub(h); });
       });
-      this._setVB();
+      if (first) this._fit(); else this._setVB();
       this._entered = true;
       this._wire();
       this._filters();
@@ -586,7 +609,7 @@
       this._drag = drag;
       this._$('zin').onclick = function () { self._zoom(0.75); };
       this._$('zout').onclick = function () { self._zoom(1.33); };
-      this._$('zfit').onclick = function () { self._vb = Object.assign({}, self._vb0); self._setVB(); };
+      this._$('zfit').onclick = function () { self._fit(); };
       svg.addEventListener('wheel', function (e) { e.preventDefault(); var p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; var s = p.matrixTransform(svg.getScreenCTM().inverse()); self._zoom(e.deltaY > 0 ? 1.12 : 0.89, s.x, s.y); }, { passive: false });
       svg.addEventListener('pointerdown', function (e) { drag.on = true; drag.moved = false; drag.x = e.clientX; drag.y = e.clientY; drag.vb = Object.assign({}, self._vb); });
       window.addEventListener('pointermove', function (e) {
@@ -596,12 +619,33 @@
         self._$('tip').style.display = 'none';
       });
       window.addEventListener('pointerup', function () { drag.on = false; setTimeout(function () { drag.moved = false; }, 0); });
-      svg.addEventListener('click', function () { if (!drag.moved) self._reset(); });
+      // taps anywhere pick the nearest device or hub within ~24 px, so tiny dots are easy to hit on a phone
+      svg.addEventListener('click', function (e) {
+        if (drag.moved) return;
+        var p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; var s = p.matrixTransform(svg.getScreenCTM().inverse());
+        var bd = 24 / (self._k || 1), best = null;
+        (self._devs || []).forEach(function (d) { if (d.x == null || d.vis === false) return; var dd = Math.sqrt((d.x - s.x) * (d.x - s.x) + (d.y - s.y) * (d.y - s.y)); if (dd < bd) { bd = dd; best = { d: d }; } });
+        (self._hubs || []).forEach(function (h) { if (Math.sqrt((h.x - s.x) * (h.x - s.x) + (h.y - s.y) * (h.y - s.y)) <= 25) best = { h: h }; }); // inside a hub disc wins
+        if (best && best.d) self._selDev(best.d); else if (best && best.h) self._selHub(best.h); else self._reset();
+      });
       this._$('q').addEventListener('input', function (e) { self._S.q = e.target.value.trim().toLowerCase(); self._apply(); self._list(); });
       this._$('area').onchange = function (e) { self._S.area = e.target.value; self._apply(); self._list(); };
       this._$('offBtn').onclick = function (e) { self._S.off = !self._S.off; e.target.setAttribute('aria-pressed', self._S.off); self._apply(); self._list(); };
     }
-    _setVB() { var v = this._vb; this._$('svg').setAttribute('viewBox', v.x + ' ' + v.y + ' ' + v.w + ' ' + v.h); }
+    _setVB() {
+      var v = this._vb, svg = this._$('svg'); svg.setAttribute('viewBox', v.x + ' ' + v.y + ' ' + v.w + ' ' + v.h);
+      var r = svg.getBoundingClientRect(), k = r.width && v.w ? Math.min(r.width / v.w, (r.height || r.width) / v.h) : 1;
+      this._k = k || 1; svg.style.setProperty('--k', this._k.toFixed(4));
+    }
+    // narrow screens: taller map, starting zoomed in on Home Assistant so labels and dots are usable
+    _fit() {
+      var svg = this._$('svg'), W = this._$('map').getBoundingClientRect().width || 800, v0 = this._vb0;
+      if (W < 600) {
+        var H = Math.round(Math.min(window.innerHeight * 0.68, 640)); svg.style.height = H + 'px';
+        var w = v0.w * 0.58, h = w * H / W; this._vb = { x: -w / 2, y: -h / 2 + 30, w: w, h: h };
+      } else { svg.style.height = ''; this._vb = Object.assign({}, v0); }
+      this._setVB();
+    }
     _zoom(f, cx, cy) {
       var v = this._vb; if (cx == null) { cx = v.x + v.w / 2; cy = v.y + v.h / 2; }
       var nw = Math.min(this._vb0.w * 1.6, Math.max(this._vb0.w * 0.15, v.w * f)), k = nw / v.w;
