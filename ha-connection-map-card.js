@@ -32,7 +32,7 @@
       network: 'Network', wired: 'Ethernet', wifi: 'Wi-Fi', ip: 'IP address', cable: 'Cable', connectedHere: 'Connected to this node',
       routerDesc: 'Access point / mesh node of your network.', backhaul: 'Link to main router',
       away: 'Off the network', awayLong: 'Not connected to the network right now (off or sleeping)', mobile: 'Mobile devices', remote: 'Away · via internet', remoteLong: 'Away from your network: reaches Home Assistant over the internet', mobileData: 'Mobile data',
-      sortName: 'Sort: name', sortArea: 'Sort: area', parentDev: 'Part of', entity: 'Entity', openEntity: 'Open entity', mqttManual: 'MQTT entity without a device'
+      sortName: 'Sort: name', sortArea: 'Sort: area', parentDev: 'Part of', entity: 'Entity', openEntity: 'Open entity', bluetooth: 'Bluetooth', btDesc: 'Bluetooth devices: Home Assistant hears them directly or through a Bluetooth proxy.', mqttManual: 'MQTT entity without a device'
     },
     es: {
       title: 'Mapa de conexiones', loading: 'Cargando equipos…', cloud: 'Internet', local: 'Red local', radio: 'Radio local',
@@ -55,7 +55,7 @@
       network: 'Red', wired: 'Cable (Ethernet)', wifi: 'Wi-Fi', ip: 'Dirección IP', cable: 'Cable', connectedHere: 'Conectados a este nodo',
       routerDesc: 'Punto de acceso / nodo de la red.', backhaul: 'Enlace al router principal',
       away: 'Fuera de la red', awayLong: 'No está conectado a la red ahora (apagado o en reposo)', mobile: 'Dispositivos móviles', remote: 'Fuera de casa · vía internet', remoteLong: 'Fuera de tu red: llega a Home Assistant por internet', mobileData: 'Datos móviles',
-      sortName: 'Orden: nombre', sortArea: 'Orden: pieza', parentDev: 'Parte de', entity: 'Entidad', openEntity: 'Abrir entidad', mqttManual: 'Entidad MQTT sin dispositivo'
+      sortName: 'Orden: nombre', sortArea: 'Orden: pieza', parentDev: 'Parte de', entity: 'Entidad', openEntity: 'Abrir entidad', bluetooth: 'Bluetooth', btDesc: 'Equipos Bluetooth: Home Assistant los escucha directo o a través de un proxy Bluetooth.', mqttManual: 'Entidad MQTT sin dispositivo'
     }
   };
 
@@ -103,7 +103,7 @@
     function dev(o) {
       var id = 'demo_' + (++seq);
       devices[id] = { id: id, name: o.n, manufacturer: o.mf || '', model: o.mo || '', via_device_id: o.via || null, area_id: o.a || null,
-        entry_type: o.svc ? 'service' : null, connections: o.mac ? [['mac', o.mac]] : [], identifiers: o.ieee ? [['mqtt', 'zigbee2mqtt_' + o.ieee]] : [], disabled_by: null };
+        entry_type: o.svc ? 'service' : null, connections: o.mac ? [['mac', o.mac]] : o.bt ? [['bluetooth', mac()]] : [], identifiers: o.ieee ? [['mqtt', 'zigbee2mqtt_' + o.ieee]] : [], disabled_by: null };
       for (var k = 0; k < (o.ents || 1); k++) {
         var eid = (o.dom || 'sensor') + '.demo_' + seq + '_' + k;
         entities[eid] = { entity_id: eid, device_id: id, platform: o.p };
@@ -170,6 +170,9 @@
       [['sensor.water_tank_level', 'Water tank level'], ['switch.gate_relay', 'Gate relay'], ['sensor.boiler_temperature', 'Boiler temperature']].forEach(function (m) {
         states[m[0]] = { entity_id: m[0], state: 'on', attributes: { friendly_name: m[1] } }; if (!entities[m[0]]) src[m[0]] = { domain: 'mqtt' };
       });
+      integ('switchbot', 'SwitchBot Bluetooth', 'local_push'); integ('xiaomi_ble', 'Xiaomi BLE', 'local_push'); integ('inkbird', 'INKBIRD', 'local_push');
+      dev({ p: 'switchbot', n: 'Curtain bot', mo: 'Curtain 3', bt: true, a: A[2], dom: 'cover' }); dev({ p: 'switchbot', n: 'Bedroom meter', mo: 'Meter Plus', bt: true, a: A[2] });
+      dev({ p: 'xiaomi_ble', n: 'Plant sensor', mo: 'HHCCJCY01', bt: true, a: A[5] }); dev({ p: 'inkbird', n: 'Grill thermometer', mo: 'IBT-4XS', bt: true, a: A[5] });
       integ('tplink', 'TP-Link Smart Home', 'local_polling');
       var strip = dev({ p: 'tplink', n: 'Office power strip', mo: 'HS300', a: A[3], dom: 'switch', ents: 3 });
       for (i = 0; i < 6; i++) dev({ p: 'tplink', n: 'Strip outlet ' + (i + 1), via: strip, a: A[3], dom: 'switch' });
@@ -605,6 +608,7 @@
         hub.dv.push(x); devs.push(x);
         return x;
       }
+      function isBt(d) { var c = d.connections || []; return c.some(function (x) { return x[0] === 'bluetooth'; }) && !c.some(function (x) { return x[0] === 'mac'; }); }
       function hubFor(key, name, medium, kind, p) {
         if (!hubs[key]) hubs[key] = { key: key, n: name, m: medium, kind: kind, p: p, dv: [] };
         return hubs[key];
@@ -636,11 +640,14 @@
           if (medium !== 'radio') medium = self._medium(vp);
           hub = hubFor('dev:' + v.id, (v.name_by_user || v.name || 'Hub'), medium, 'hub', p);
           hub.devId = v.id; hub.sub = self._intName(p); if (!hub.trk) hub.trk = findTrk(v);
+        } else if (medium === 'local' && !((cfg.overrides || {})[p]) && isBt(d)) {
+          // registered by its Bluetooth address and not by a network one: it is a radio device, whatever its integration says
+          hub = hubFor('bt', t('bluetooth'), 'radio', 'other', null); hub.bt = true;
         } else {
           hub = hubFor('int:' + p + ':' + medium, self._intName(p), medium, 'int', p);
           hub.sub = self._intName(p);
         }
-        mk(id, d, es, p, hub);
+        var made = mk(id, d, es, p, hub); if (hub.bt) made.via = self._intName(p);
       });
       // MQTT entities configured by hand without a device block have no device: draw each one as its own dot.
       if (cfg.mqtt_entities !== false && cfg.exclude_integrations.indexOf('mqtt') < 0) {
@@ -760,7 +767,7 @@
           // keep hubs that use the same access point next to each other (the AP is then placed among them)
           var apOf = function (h) { var c = me._hubConn(h); return c && c.via ? c.via : ''; };
           arranged = g.slice().sort(function (x, y) { var kx = apOf(x), ky = apOf(y); return kx === ky ? y.dv.length - x.dv.length : (kx < ky ? -1 : 1); });
-        } else g.forEach(function (h, i) { if (i % 2) arranged.push(h); else arranged.unshift(h); });
+        } else { g.forEach(function (h, i) { if (h.bt) return; if (i % 2) arranged.push(h); else arranged.unshift(h); }); g.forEach(function (h) { if (h.bt) arranged.push(h); }); }
         arranged.forEach(function (h) {
           var aw = h.w / R * 180 / Math.PI * scale;
           var ac = a + aw / 2; a += aw;
@@ -854,6 +861,8 @@
       });
       this._hubs.forEach(function (h) {
         var n = self._mnodes[h.m], c = null;
+        h.direct = !!(h.bt && self._coord && self._hubs.some(function (x) { return x.m === 'radio' && !x.bt; }));
+        if (h.direct) n = { x: 0, y: 0 };
         if (h.m === 'local') { c = self._hubConn(h); if (c && c.via && self._rnodes[c.via]) n = self._rnodes[c.via]; }
         h.from = n;
         h.edge = el('line', { x1: n.x, y1: n.y, x2: h.x, y2: h.y, 'class': 'edge l-' + h.m + (c && c.wifi ? ' wifi' : ''), stroke: M[h.m] }, gE);
@@ -893,6 +902,7 @@
         var name = self._mname(m), sub = t(m + 'Sub');
         if (m === 'local' && self._router) sub = self._intName(self._router.p) + (self._routers.length > 1 ? ' · ' + self._routers.length + ' ' + t('meshNodes') : '');
         if (m === 'radio' && self._coord) sub = t('coordinator');
+        else if (m === 'radio' && self._hubs.every(function (x) { return x.m !== 'radio' || x.bt; })) sub = t('bluetooth');
         tlabel(g, n.x, n.y, n.r + 2, below, name.length > 30 ? name.slice(0, 29) + '…' : name, sub, false, 0);
         obst.push({ x: n.x, y: n.y, r: n.r + 2 });
         function pick() { if (m === 'local' && self._router) self._selRouter(self._router); else self._selMedium(m); }
@@ -1110,7 +1120,7 @@
       if (!tg || tg.core) { this._$('svg').classList.remove('foc'); return; }
       var self = this, on = [this._coreG];
       function dev(d) { on.push(d.g, d.spoke); var p = d.meshParent, n = 0; while (p && n++ < 6) { on.push(p.g, p.spoke); p = p.meshParent; } }
-      function hub(h) { on.push(h.g, h.edge); if (h.from) on.push(h.from.g, h.from.edge); var m = self._mnodes[h.m]; if (m) on.push(m.g, m.edge); }
+      function hub(h) { on.push(h.g, h.edge); if (h.from) on.push(h.from.g, h.from.edge); var m = h.direct ? null : self._mnodes[h.m]; if (m) on.push(m.g, m.edge); }
       var own = tg.node ? tg.node.g : tg.g;
       if (tg.dv) { tg.dv.forEach(dev); hub(tg); }
       else if (tg.node) {
@@ -1181,7 +1191,9 @@
     _route(arr) { return '<div class="route">' + arr.map(function (x, i) { return (i ? '<em>→</em>' : '') + '<span>' + esc(x) + '</span>'; }).join('') + '</div>'; }
     _pathOf(d) {
       var t = this._t.bind(this), r = [d.n], m = d.hub.m;
-      if (m === 'radio') {
+      if (d.hub.bt) {
+        r.push(d.via || this._intName(d.p)); r.push(t('bluetooth'));
+      } else if (m === 'radio') {
         var p = d.meshParent, guard = 0;
         while (p && guard++ < 6) { r.push(p.n + ' (' + t('repeater') + ')'); p = p.meshParent; }
         if (this._coord) r.push(this._coord);
@@ -1212,7 +1224,7 @@
       Object.keys(this._rnodes || {}).forEach(function (k) { var n = this._rnodes[k]; if (n.router && n.edge) n.edge.classList.remove('hot'); }, this);
     }
     _hot(h) {
-      if (h.edge) h.edge.classList.add('hot'); var n = this._mnodes[h.m]; if (n && n.edge) n.edge.classList.add('hot');
+      if (h.edge) h.edge.classList.add('hot'); var n = h.direct ? null : this._mnodes[h.m]; if (n && n.edge) n.edge.classList.add('hot');
       if (h.from && h.from.router && h.from.edge) h.from.edge.classList.add('hot');
     }
     _selRouter(r) {
@@ -1253,10 +1265,10 @@
       if (!h) return; var t = this._t.bind(this), self = this, S = this._S;
       if (!keep) S.sel = h; this._clear(); h.g.classList.add('sel'); this._hot(h);
       var f = S.q || S.area || S.off, list = h.dv.filter(function (d) { return !f || d.vis; }).sort(function (a, b) { return (S.sort === 'name' ? 0 : (a.a || '~').localeCompare(b.a || '~')) || a.n.localeCompare(b.n); }), off = h.dv.filter(function (d) { return d.off; }).length;
-      var desc = h.kind === 'hub' ? t('hubDesc') : h.kind === 'other' ? t('otherDesc') : t('intDesc');
-      var route = h.m === 'radio' ? [t('device'), this._coord || t('radio'), h.n, 'Home Assistant'] :
+      var desc = h.bt ? t('btDesc') : h.kind === 'hub' ? t('hubDesc') : h.kind === 'other' ? t('otherDesc') : t('intDesc');
+      var route = h.bt ? [t('device'), t('integration'), h.n, 'Home Assistant'] : h.m === 'radio' ? [t('device'), this._coord || t('radio'), h.n, 'Home Assistant'] :
         h.kind === 'hub' ? [t('device'), h.n, h.sub, this._mname(h.m), 'Home Assistant'] : [t('device'), h.kind === 'other' ? t('integration') : h.n, this._mname(h.m), 'Home Assistant'];
-      if (h.m === 'radio' && this._mesh) desc += ' ' + t('meshNote');
+      if (h.m === 'radio' && !h.bt && this._mesh) desc += ' ' + t('meshNote');
       this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M[h.m] + '">' + esc(t(h.m)) + (h.kind === 'hub' ? ' · ' + esc(t('hub')) : '') + '</div><h2>' + esc(h.n) + '</h2>' + this._route(route) + '<p>' + esc(desc) + '</p>' +
         '<dl class="kv"><dt>' + esc(t('devices')) + '</dt><dd>' + h.dv.length + '</dd>' + (off ? '<dt>' + esc(t('offline')) + '</dt><dd class="off">' + off + '</dd>' : '') +
         (function () { var c = self._conn(h.trk); return c && c.via ? '<dt>' + esc(t('network')) + '</dt><dd>' + esc([c.via, self._ifaceText(c)].filter(Boolean).join(' · ')) + '</dd>' + (c.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(c.ip) + '</dd>' : '') : ''; })() + '</dl>' +

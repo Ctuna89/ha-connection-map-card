@@ -120,6 +120,7 @@ All of these, except `names`, `overrides`, `exclude_devices` and `z2m_base_topic
 | Group | Rule |
 | --- | --- |
 | **Local radio** | The device belongs to a radio integration (ZHA, Z-Wave JS, deCONZ, Insteon, …) or is an MQTT device behind a Zigbee2MQTT bridge. |
+| **Bluetooth** (in local radio) | The device is registered by its Bluetooth address and has no network address (SwitchBot, Xiaomi BLE, Govee, Inkbird, …), whatever integration it belongs to. Bluetooth proxies are not shown yet: the group links straight to Home Assistant. Use `overrides` to move an integration elsewhere. |
 | **Internet** | The integration's `iot_class` is `cloud_push` or `cloud_polling`. |
 | **Local network** | Everything else (`local_push`, `local_polling`). |
 
