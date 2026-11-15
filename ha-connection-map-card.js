@@ -817,8 +817,20 @@
       var tot = present.reduce(function (s, m) { return s + spans[m]; }, 0);
       present.forEach(function (m) { spans[m] = Math.min(240, spans[m] * avail / tot); });
       gap = (360 - present.reduce(function (s, m) { return s + spans[m]; }, 0)) / present.length; // room left over becomes space between sectors
-      var start, mnodes, rn, loc, banned = {}, again = true, pass = 0, lonely = [], core = { x: 0, y: 0 }, self = this;
-      var allAps = (this._routers || []).filter(function (r) { return r !== me._router; }).slice(0, 6).map(function (r) { return r.n; });
+      // One sector only (for example a home with nothing but its local network): its node goes to the centre of the map,
+      // with its hubs all around it, and Home Assistant moves out into the free space. Nothing stands between the node
+      // and that space, so there is room there for the access points too.
+      var radioMix0 = !!this._coord && hubs.some(function (x) { return x.m === 'radio' && !x.own; }) && hubs.some(function (x) { return x.own; });
+      var single = present.length === 1 && !(present[0] === 'radio' && radioMix0), gapMid = 180, apR0 = Z.net * 0.72, coreD = Z.core * 1.25 + Z.net + 46;
+      if (single) {
+        var noHub = 0;
+        if (present[0] === 'local') (this._routers || []).forEach(function (r) { if (r !== me._router && !hubs.some(function (h) { var c = me._hubConn(h); return h.m === 'local' && c && c.via === r.n; })) noHub++; });
+        gap = Math.min(170, 2 * Math.asin(Math.min(1, (Z.core * 1.25 + 14) / coreD)) * 180 / Math.PI + 14 + 24 * Math.min(6, noHub));
+        spans[present[0]] = 360 - gap;
+      }
+      var start, mnodes, rn, loc, ringR = 0, banned = {}, again = true, pass = 0, lonely = [], self = this;
+      var core = this._core = single ? { x: coreD * Math.cos(deg(gapMid)), y: coreD * Math.sin(deg(gapMid)) } : { x: 0, y: 0 };
+      var allAps = (this._routers || []).filter(function (r) { return r !== me._router; }).slice(0, 12).map(function (r) { return r.n; });
       var radioMixed = !!this._coord && hubs.some(function (x) { return x.m === 'radio' && !x.own; });
       // Rule: two links never cross, and a link never runs over a bubble that is not one of its ends.
       // The sectors are laid out for that, and every access point is then checked against it. One that has no clean place
@@ -860,13 +872,15 @@
         return n;
       }
       while (again && pass++ < 8) {
-      again = false; start = -90 - (spans.cloud || 0) / 2; mnodes = {}; lonely = [];
+      again = false; start = single ? gapMid + gap / 2 : -90 - (spans.cloud || 0) / 2; mnodes = {}; lonely = [];
       var apNames = allAps.filter(function (k) { return !banned[k]; });
       hubs.forEach(function (h) { h.ap = ''; });
       present.forEach(function (m) {
         var span = spans[m], g = groups[m];
         var maxOuter = g.reduce(function (s, h) { return Math.max(s, h.outer); }, 0);
-        var R = Math.max(dist + 110, g.w / deg(span), dist + Z.net + 47 + maxOuter); // never closer to the centre than the medium node + the biggest cluster
+        var R = single ? Math.max(170, g.w / deg(span), Z.net + apR0 + 96 + maxOuter)
+          : Math.max(dist + 110, g.w / deg(span), dist + Z.net + 47 + maxOuter); // never closer to the centre than the medium node + the biggest cluster
+        ringR = R;
         var totalDeg = g.w / R * 180 / Math.PI, scale = Math.min(1, span / totalDeg);
         var a = start + (span - totalDeg * scale) / 2, mid = start + span / 2;
         // centre the heaviest hubs in the sector, smaller ones towards the edges
@@ -891,20 +905,21 @@
         // Bluetooth and Thread groups link straight to the centre when the radio node is a Zigbee coordinator:
         // the coordinator then sits in front of its own hubs, clear of those links
         var ownH = arranged.filter(function (h) { return h.own; }), reg = arranged.filter(function (h) { return !h.own; });
-        if (m === 'radio' && me._coord && ownH.length && reg.length) {
+        if (!single && m === 'radio' && me._coord && ownH.length && reg.length) {
           mid = Math.min(reg.reduce(function (s2, h) { return s2 + h.ac; }, 0) / reg.length, Math.min.apply(null, ownH.map(function (h) { return h.ac; })) - 18);
         }
         var g0 = m === 'local' && apNames.length ? arranged.filter(function (h) { return !h.ap; }) : [];
-        if (g0.length) mid = (g0[0].ac + g0[g0.length - 1].ac) / 2; // the router sits in front of its own hubs
-        mnodes[m] = { m: m, x: C.x + dist * Math.cos(deg(mid)), y: C.y + dist * Math.sin(deg(mid)), r: Z.net, ac: mid, lo: start, hi: start + span };
+        if (g0.length && !single) mid = (g0[0].ac + g0[g0.length - 1].ac) / 2; // the router sits in front of its own hubs
+        var nd = single ? 0 : dist;
+        mnodes[m] = { m: m, x: C.x + nd * Math.cos(deg(mid)), y: C.y + nd * Math.sin(deg(mid)), r: Z.net, ac: single ? gapMid + 180 : mid, lo: start, hi: start + span };
         start += span + gap;
       });
       loc = mnodes.local; rn = {};
       if (this._router && loc) rn[this._router.n] = loc;
       hubs.forEach(function (h) { h.direct = !!(h.own && radioMixed); h.from = h.direct ? core : mnodes[h.m]; });
-      var apR = Z.net * 0.72, ring = dist + 75;
+      var apR = Z.net * 0.72, rb = single ? 0 : dist, ring = rb + (single ? Z.net + apR + 62 : 75);
       hubs.forEach(function (h) { if (h.ap) ring = Math.min(ring, Math.sqrt(h.x * h.x + h.y * h.y) - h.outer - 34); });
-      ring = Math.max(ring, dist + Z.net + apR + 12);
+      ring = Math.max(ring, rb + Z.net + apR + 12);
       if (loc) (this._routers || []).forEach(function (r) {
         if (allAps.indexOf(r.n) < 0) return;
         var hs = hubs.filter(function (h) { return h.ap === r.n; }), node = { r: apR, router: r };
@@ -916,12 +931,18 @@
         if (around(node) !== 0) { banned[r.n] = 1; again = true; }
       });
       }
-      // Access points without hubs of their own are drawn only where there is a clean place: the gaps next to the local
-      // sector first, then beside the router. Otherwise they stay off the map; the router's panel lists them all anyway.
+      // Access points without hubs of their own are drawn only where there is a clean place: the free space next to the
+      // local sector first (all of it: with few sectors there is a lot), then beside the router. Otherwise they stay off
+      // the map, the warning under the map says so, and the router's panel lists them all anyway.
       lonely.forEach(function (node) {
         var cand = [], ia = loc.ac + 180, q = Z.net + apR + 16, ok = false;
-        [loc.lo - gap / 2, loc.hi + gap / 2].forEach(function (a) { [ring, ring - 40].forEach(function (rad) { cand.push([rad * Math.cos(deg(a)), rad * Math.sin(deg(a)), a]); }); });
-        [40, -40, 75, -75].forEach(function (o) { cand.push([loc.x + q * Math.cos(deg(ia + o)), loc.y + q * Math.sin(deg(ia + o)), loc.ac]); });
+        var step = 2 * Math.asin(Math.min(1, (apR + 9) / ring)) * 180 / Math.PI, half = gap / 2, slots = [];
+        if (half < step * 1.5) slots = [half]; else for (var o1 = step * 0.75; o1 <= half - step * 0.4; o1 += step) slots.push(o1);
+        if (single) { // around the centre node: anywhere in the free wedge, beside Home Assistant
+          slots = []; for (var o2 = 9; o2 <= gap / 2; o2 += 9) slots.push(o2);
+          [ringR, ring, coreD, (ring + ringR) / 2].forEach(function (rad) { slots.forEach(function (o1) { [loc.lo - o1, loc.lo - gap + o1].forEach(function (a) { cand.push([rad * Math.cos(deg(a)), rad * Math.sin(deg(a)), a]); }); }); });
+        } else [ring, ring + 2 * apR + 16, ring - 40].forEach(function (rad) { slots.forEach(function (o1) { [loc.hi + o1, loc.lo - o1].forEach(function (a) { cand.push([rad * Math.cos(deg(a)), rad * Math.sin(deg(a)), a]); }); }); });
+        if (!single) [40, -40, 75, -75].forEach(function (o) { cand.push([loc.x + q * Math.cos(deg(ia + o)), loc.y + q * Math.sin(deg(ia + o)), loc.ac]); });
         rn[node.router.n] = node;
         cand.forEach(function (c) { if (ok) return; node.x = c[0]; node.y = c[1]; node.ac = c[2]; ok = around(node) === 0; });
         if (!ok) delete rn[node.router.n];
@@ -933,7 +954,8 @@
       // routers and access points that exist but are not on the map (no clean place, or more than the map draws)
       this._offMap = loc ? (this._routers || []).filter(function (r) { return r !== me._router && !rn[r.n]; }).map(function (r) { return r.n; }) : [];
       this._linkProblems = problems();
-      var minX = -110, minY = -110, maxX = 110, maxY = 110;
+      var cb = Z.core * 1.25 + 30, minX = Math.min(-110, core.x - cb), minY = Math.min(-110, core.y - cb), maxX = Math.max(110, core.x + cb), maxY = Math.max(110, core.y + cb);
+      Object.keys(rn).forEach(function (k) { var n = rn[k]; minX = Math.min(minX, n.x - 90); maxX = Math.max(maxX, n.x + 90); minY = Math.min(minY, n.y - 60); maxY = Math.max(maxY, n.y + 60); });
       hubs.forEach(function (h) { var p = h.outer + 70; minX = Math.min(minX, h.x - p - 40); maxX = Math.max(maxX, h.x + p + 40); minY = Math.min(minY, h.y - p); maxY = Math.max(maxY, h.y + p); });
       this._vb0 = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
       // keep the user's zoom/pan when the map is redrawn, unless they were looking at the whole map
@@ -968,7 +990,7 @@
       var gE = el('g'), gS = el('g'), gN = el('g'), gH = el('g'), gD = el('g'), Z = this._sz;
       this._gL = el('g');
       this._edges = [];
-      var core = { x: 0, y: 0 };
+      var core = this._core;
       // Labels keep their size on screen, so how much room they need depends on the zoom: every label is registered here
       // and _declutter() moves or hides the ones that would be drawn over a node or over another label.
       var labs = this._labs = [], elabs = this._elabs = [], obst = this._obst = [];
@@ -990,9 +1012,9 @@
       function flow(x1, y1, x2, y2, col) { if (anim) el('line', { x1: x1, y1: y1, x2: x2, y2: y2, 'class': 'flow', stroke: col }, gE); }
       Object.keys(this._mnodes).forEach(function (m) {
         var n = self._mnodes[m], c = m === 'local' ? self._conn(self._haTrk) : null;
-        n.edge = el('line', { x1: 0, y1: 0, x2: n.x, y2: n.y, 'class': 'edge l-' + m + (c && c.wifi ? ' wifi' : ''), stroke: M[m] }, gE);
-        flow(0, 0, n.x, n.y, M[m]);
-        if (c) lbl(0, 0, n.x, n.y, short(c));
+        n.edge = el('line', { x1: core.x, y1: core.y, x2: n.x, y2: n.y, 'class': 'edge l-' + m + (c && c.wifi ? ' wifi' : ''), stroke: M[m] }, gE);
+        flow(core.x, core.y, n.x, n.y, M[m]);
+        if (c) lbl(core.x, core.y, n.x, n.y, short(c), 0.5);
       });
       Object.keys(this._rnodes || {}).forEach(function (k) {
         var n = self._rnodes[k]; if (!n.router) return; var p = self._mnodes.local, c = self._conn(n.router.trk);
@@ -1023,6 +1045,7 @@
       // core
       var gc = el('g', { 'class': 'mnode', tabindex: 0, role: 'button', 'aria-label': 'Home Assistant' }, gN); this._coreG = gc;
       var cr = Z.core, small = cr < 48, cf = cr / 56; // a small centre only says "HA": version and host stay in the side panel
+      gc.setAttribute('transform', 'translate(' + core.x + ' ' + core.y + ')');
       el('circle', { cx: 0, cy: 0, r: cr * 1.25, fill: 'none', stroke: M.core, 'stroke-width': 2, 'class': 'pulse' }, gc);
       el('circle', { cx: 0, cy: 0, r: cr, fill: M.core }, gc);
       var tc = el('text', { x: 0, y: small ? cr * 0.18 : -2 * cf, 'text-anchor': 'middle', 'class': 'lbl', style: 'fill:#fff;font-size:' + (small ? cr * 0.5 : 14 * cf) + 'px' }, gc); tc.textContent = small ? 'HA' : 'Home Assistant';
@@ -1030,7 +1053,7 @@
       var th = el('text', { x: 0, y: 31 * cf, 'text-anchor': 'middle', id: 'coreHost', style: 'fill:rgba(255,255,255,.88);font-size:' + (10.5 * cf) + 'px' }, gc); th.textContent = small ? '' : this._hostShort();
       gc.addEventListener('click', function (e) { e.stopPropagation(); self._selCore(); });
       gc.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selCore(); });
-      hov(gc, { core: true }, 0, 0, function () { return ['Home Assistant', [(self._hass.config && self._hass.config.version) || '', self._hostShort()].filter(Boolean).join(' · ')]; });
+      hov(gc, { core: true }, core.x, core.y - cr, function () { return ['Home Assistant', [(self._hass.config && self._hass.config.version) || '', self._hostShort()].filter(Boolean).join(' · ')]; });
       Object.keys(this._mnodes).forEach(function (m) {
         var n = self._mnodes[m], g = el('g', { 'class': 'mnode', tabindex: 0, role: 'button' }, gN); n.g = g;
         var down = m === 'local' && self._routers && self._routers.length && self._routers.every(function (r) { return r.off; });
@@ -1074,7 +1097,7 @@
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selHub(h); });
         hov(g, h, h.x, h.y - Z.hub, function () { var off = h.dv.filter(function (d) { return d.off; }).length; return [h.n, [h.kind === 'hub' || h.own ? h.sub : '', h.dv.length + ' ' + t('devices'), off ? off + ' ' + t('offline').toLowerCase() : ''].filter(Boolean).join(' · ')]; });
       });
-      obst.push({ x: 0, y: 0, r: cr * 1.25 + 2, hr: cr + 2 });
+      obst.push({ x: core.x, y: core.y, r: cr * 1.25 + 2, hr: cr + 2 });
       this._miniDraw();
       if (first) this._fit(); else this._setVB();
       this._declutter();
@@ -1099,7 +1122,7 @@
         var sc = self._vb.w / svg.getBoundingClientRect().width; self._vb.x = drag.vb.x - dx * sc; self._vb.y = drag.vb.y - dy * sc; self._setVB();
         self._$('tip').style.display = 'none';
       });
-      window.addEventListener('pointerup', function () { drag.on = false; setTimeout(function () { drag.moved = false; }, 0); });
+      window.addEventListener('pointerup', function () { if (drag.on && drag.moved) setTimeout(function () { self._declutter(); }, 30); drag.on = false; setTimeout(function () { drag.moved = false; }, 0); });
       // taps anywhere pick the nearest device or hub within ~24 px, so tiny dots are easy to hit on a phone
       svg.addEventListener('click', function (e) {
         if (drag.moved) return;
@@ -1137,9 +1160,9 @@
       if (this._cfg.minimap === false || !v) { mini.innerHTML = ''; mini.style.display = 'none'; return; }
       var h = '<svg viewBox="' + [v.x, v.y, v.w, v.h].join(' ') + '">';
       this._hubs.forEach(function (x) { if (x.from) h += '<line x1="' + x.from.x + '" y1="' + x.from.y + '" x2="' + x.x + '" y2="' + x.y + '" stroke="' + M[x.m] + '" stroke-width="3" stroke-opacity=".45"/>'; });
-      Object.keys(this._mnodes).forEach(function (m) { var n = self._mnodes[m]; h += '<line x1="0" y1="0" x2="' + n.x + '" y2="' + n.y + '" stroke="' + M[m] + '" stroke-width="3" stroke-opacity=".45"/><circle cx="' + n.x + '" cy="' + n.y + '" r="' + n.r + '" fill="' + M[m] + '"/>'; });
+      Object.keys(this._mnodes).forEach(function (m) { var n = self._mnodes[m]; h += '<line x1="' + self._core.x + '" y1="' + self._core.y + '" x2="' + n.x + '" y2="' + n.y + '" stroke="' + M[m] + '" stroke-width="3" stroke-opacity=".45"/><circle cx="' + n.x + '" cy="' + n.y + '" r="' + n.r + '" fill="' + M[m] + '"/>'; });
       this._hubs.forEach(function (x) { h += '<circle cx="' + x.x + '" cy="' + x.y + '" r="' + (x.outer + 4) + '" fill="' + M[x.m] + '" fill-opacity=".5"/>'; });
-      h += '<circle cx="0" cy="0" r="' + (this._sz.core * 1.1) + '" fill="' + M.core + '"/><rect class="view" id="miniView"/></svg>';
+      h += '<circle cx="' + this._core.x + '" cy="' + this._core.y + '" r="' + (this._sz.core * 1.1) + '" fill="' + M.core + '"/><rect class="view" id="miniView"/></svg>';
       mini.innerHTML = h;
       if (this._miniWired) return; this._miniWired = true;
       var down = false;
@@ -1167,7 +1190,7 @@
       var svg = this._$('svg'), W = this._$('map').getBoundingClientRect().width || 800, v0 = this._vb0;
       if (W < 600) {
         var H = Math.round(Math.min(window.innerHeight * 0.68, 640)); svg.style.height = H + 'px';
-        var w = v0.w * 0.58, h = w * H / W; this._vb = { x: -w / 2, y: -h / 2 + 30, w: w, h: h };
+        var w = v0.w * 0.58, h = w * H / W; var co = this._core || { x: 0, y: 0 }; this._vb = { x: co.x / 2 - w / 2, y: co.y / 2 - h / 2 + 30, w: w, h: h };
       } else { svg.style.height = ''; this._vb = Object.assign({}, v0); }
       this._setVB();
     }
@@ -1176,6 +1199,13 @@
     // (the name is still in the tooltip and in the side panel) and comes back when zooming in makes room.
     _declutter() {
       var k = this._k || 1, pad = 2 / k, obst = this._obst || [], placed = [], hiddenNames = 0;
+      // the zoom buttons and the overview map float over the map: no label goes under them
+      var svg0 = this._$('svg'), ctm = svg0.getScreenCTM && svg0.getScreenCTM(), root0 = this._root;
+      if (ctm) ['.zoom', '#mini'].forEach(function (q) {
+        var e = root0.querySelector(q), b = e && e.getBoundingClientRect(); if (!b || !b.width) return;
+        var inv = ctm.inverse(), p1 = svg0.createSVGPoint(), p2 = svg0.createSVGPoint(); p1.x = b.left; p1.y = b.top; p2.x = b.right; p2.y = b.bottom;
+        p1 = p1.matrixTransform(inv); p2 = p2.matrixTransform(inv); placed.push({ x0: p1.x, y0: p1.y, x1: p2.x, y1: p2.y });
+      });
       this._dk = k;
       function box(e) { var b; try { b = e.getBBox(); } catch (err) { return null; } return b && b.width ? { x0: b.x - pad, y0: b.y - pad, x1: b.x + b.width + pad, y1: b.y + b.height + pad } : null; }
       function free(r, inner) {
