@@ -2,6 +2,10 @@
 
 A Lovelace card that shows **how every device reaches Home Assistant**: through the cloud, over your local network (directly or through a hub such as a Hue Bridge, IKEA DIRIGERA or an Aqara hub), or over a local radio coordinator (Zigbee2MQTT, ZHA, Z-Wave).
 
+![Connection map of a demo home: UniFi router with two access points, Hue Bridge, Shelly and Sonos over Wi-Fi, a ZHA Zigbee mesh, Z-Wave and cloud integrations](docs/demo.svg)
+
+*The built-in `demo: unifi` installation.*
+
 Most network maps show one protocol at a time. This card draws all of them in one picture, so you can see at a glance which devices depend on the internet, which hub each one sits behind, and what is offline right now.
 
 ## Features
