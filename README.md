@@ -72,10 +72,11 @@ views:
 | `title` | string | `Connection map` | Card title. |
 | `group_small` | number | `1` | Integrations with this many devices or fewer (and no hub) are grouped into "Other cloud services" / "Other local devices". Use `0` to never group. |
 | `exclude_integrations` | list | `[]` | Integration domains to hide, for example `[mobile_app, bambu_lab]`. |
-| `exclude_devices` | list | `[]` | Device IDs to hide. |
+| `exclude_devices` | list | `[]` | Device IDs to hide. An entity ID hides an MQTT entity that has no device. |
 | `show_trackers` | boolean | `false` | Show devices that only have `device_tracker` entities (for example, every phone and laptop your router reports). |
 | `sort` | string | `area` | Order of the device lists: `area` (by area, then name) or `name` (alphabetical). The list of a hub also has a button to switch between the two. |
 | `core_size` | string | `large` | `compact` draws Home Assistant the same size as the network nodes; the version and host details stay in the side panel. |
+| `mqtt_entities` | boolean | `true` | Show MQTT entities that have no device (entities written by hand in YAML without a `device` block), one dot per entity. |
 | `show_panel` | boolean | `true` | Show the side panel with the summary and details. |
 | `animations` | boolean | `true` | Animated data flow, pop-in and hover effects. |
 | `language` | string | HA language | Force the card language: `en` or `es`. |
@@ -109,6 +110,8 @@ colors:
 A device is drawn behind a **hub** when it has a `via_device` and that parent device either has at least two children or looks like a bridge (few entities of its own). Virtual rooms and zones that some hubs expose (for example Hue rooms) are skipped.
 
 A parent that is just another device of the same integration, such as a power strip and its outlets, is not treated as a hub when the integration has at least as many devices of its own: the strip and its outlets are drawn together inside the integration's group, and the outlet's path shows the strip.
+
+**MQTT entities without a device**, the ones written by hand in YAML without a `device` block, are drawn as one dot each in the MQTT group. Tapping one opens the entity instead of a device page.
 
 **Mobile devices** are the phones, tablets and watches that run the Home Assistant companion app. At home they are shown on the access point they use. When the app reports mobile data, or your router reports the device as away, the path becomes `Device → Mobile devices → Mobile data → Internet → Home Assistant`. The card cannot tell which remote access method the device uses (Home Assistant Cloud, a VPN such as Tailscale, or an exposed port), so it only says *Internet*.
 

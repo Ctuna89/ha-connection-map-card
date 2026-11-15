@@ -32,7 +32,7 @@
       network: 'Network', wired: 'Ethernet', wifi: 'Wi-Fi', ip: 'IP address', cable: 'Cable', connectedHere: 'Connected to this node',
       routerDesc: 'Access point / mesh node of your network.', backhaul: 'Link to main router',
       away: 'Off the network', awayLong: 'Not connected to the network right now (off or sleeping)', mobile: 'Mobile devices', remote: 'Away · via internet', remoteLong: 'Away from your network: reaches Home Assistant over the internet', mobileData: 'Mobile data',
-      sortName: 'Sort: name', sortArea: 'Sort: area', parentDev: 'Part of'
+      sortName: 'Sort: name', sortArea: 'Sort: area', parentDev: 'Part of', entity: 'Entity', openEntity: 'Open entity', mqttManual: 'MQTT entity without a device'
     },
     es: {
       title: 'Mapa de conexiones', loading: 'Cargando equipos…', cloud: 'Internet', local: 'Red local', radio: 'Radio local',
@@ -55,7 +55,7 @@
       network: 'Red', wired: 'Cable (Ethernet)', wifi: 'Wi-Fi', ip: 'Dirección IP', cable: 'Cable', connectedHere: 'Conectados a este nodo',
       routerDesc: 'Punto de acceso / nodo de la red.', backhaul: 'Enlace al router principal',
       away: 'Fuera de la red', awayLong: 'No está conectado a la red ahora (apagado o en reposo)', mobile: 'Dispositivos móviles', remote: 'Fuera de casa · vía internet', remoteLong: 'Fuera de tu red: llega a Home Assistant por internet', mobileData: 'Datos móviles',
-      sortName: 'Orden: nombre', sortArea: 'Orden: pieza', parentDev: 'Parte de'
+      sortName: 'Orden: nombre', sortArea: 'Orden: pieza', parentDev: 'Parte de', entity: 'Entidad', openEntity: 'Abrir entidad', mqttManual: 'Entidad MQTT sin dispositivo'
     }
   };
 
@@ -93,7 +93,7 @@
   //   demo: fritz  -> FRITZ!Box + repeater, Zigbee2MQTT on a network coordinator, Tuya/tado cloud, no Supervisor (Docker)
   //   demo: large  -> ~350 devices across 30 integrations
   function makeDemo(kind, real) {
-    var devices = {}, entities = {}, states = {}, areas = {}, man = [], seq = 0, seed = 7;
+    var devices = {}, entities = {}, states = {}, areas = {}, man = [], src = {}, seq = 0, seed = 7;
     var host = null, haIp = null, zha = null, z2mInfo = null, z2mMap = null, i, j;
     function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
     function mac() { var s = []; for (var k = 0; k < 6; k++) s.push(('0' + Math.floor(rnd() * 256).toString(16)).slice(-2)); return s.join(':'); }
@@ -164,6 +164,12 @@
       dev({ p: 'nest', n: 'Nest Thermostat', a: A[0], dom: 'climate' }); dev({ p: 'nest', n: 'Nest Doorbell', a: A[6], dom: 'camera' }); dev({ p: 'ecobee', n: 'ecobee Premium', a: A[2], dom: 'climate' });
       dev({ p: 'met', n: 'Forecast', svc: true, dom: 'weather' }); dev({ p: 'mobile_app', n: 'Pixel 9' }); dev({ p: 'mobile_app', n: 'Galaxy Tab S9' });
       var ph = dev({ p: 'mobile_app', n: 'iPhone 16' }); entities['sensor.' + ph + '_connection_type'] = { entity_id: 'sensor.' + ph + '_connection_type', device_id: ph, platform: 'mobile_app' }; states['sensor.' + ph + '_connection_type'] = { entity_id: 'sensor.' + ph + '_connection_type', state: 'Cellular', attributes: {} };
+      // MQTT entities written by hand in YAML: one in the entity registry (it has a unique_id), two only in the state machine
+      if (!man.some(function (m) { return m.domain === 'mqtt'; })) integ('mqtt', 'MQTT', 'local_push');
+      entities['sensor.water_tank_level'] = { entity_id: 'sensor.water_tank_level', device_id: null, platform: 'mqtt', area_id: A[5] };
+      [['sensor.water_tank_level', 'Water tank level'], ['switch.gate_relay', 'Gate relay'], ['sensor.boiler_temperature', 'Boiler temperature']].forEach(function (m) {
+        states[m[0]] = { entity_id: m[0], state: 'on', attributes: { friendly_name: m[1] } }; if (!entities[m[0]]) src[m[0]] = { domain: 'mqtt' };
+      });
       integ('tplink', 'TP-Link Smart Home', 'local_polling');
       var strip = dev({ p: 'tplink', n: 'Office power strip', mo: 'HS300', a: A[3], dom: 'switch', ents: 3 });
       for (i = 0; i < 6; i++) dev({ p: 'tplink', n: 'Strip outlet ' + (i + 1), via: strip, a: A[3], dom: 'switch' });
@@ -188,6 +194,7 @@
       devices: devices, entities: entities, states: states, areas: areas,
       callWS: function (msg) {
         if (msg.type === 'manifest/list') return Promise.resolve(man);
+        if (msg.type === 'entity/source') return Promise.resolve(src);
         if (msg.type === 'supervisor/api' && host) {
           if (msg.endpoint === '/host/info') return Promise.resolve(host);
           if (msg.endpoint === '/network/info') return Promise.resolve({ interfaces: haIp ? [{ ipv4: { address: [haIp + '/24'] } }] : [] });
@@ -285,7 +292,7 @@
     setConfig(config) {
       this._cfg = Object.assign({
         title: null, group_small: 1, exclude_integrations: [], exclude_devices: [], show_trackers: false,
-        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large'
+        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', mqtt_entities: true
       }, config || {});
       if (this._root) this._built = false;
     }
@@ -327,6 +334,9 @@
       var man = {};
       try { (await this._hass.callWS({ type: 'manifest/list' })).forEach(function (m) { man[m.domain] = m; }); } catch (e) { /* non-admin: fall back to guesses */ }
       this._man = man;
+      // which integration each entity comes from, including YAML entities that are not in the entity registry
+      this._src = {};
+      try { this._src = (await this._hass.callWS({ type: 'entity/source' })) || {}; } catch (e) { /* older versions: registry only */ }
       this._model();
       this._loading = false;
       this._built = true;
@@ -589,6 +599,21 @@
         }
         mk(id, d, es, p, hub);
       });
+      // MQTT entities configured by hand without a device block have no device: draw each one as its own dot.
+      if (cfg.mqtt_entities !== false && cfg.exclude_integrations.indexOf('mqtt') < 0) {
+        var src = this._src || {}, loose = {};
+        Object.keys(entities).forEach(function (eid) { if (entities[eid].platform === 'mqtt' && !entities[eid].device_id) loose[eid] = 1; });
+        Object.keys(src).forEach(function (eid) { if (src[eid] && src[eid].domain === 'mqtt' && !(entities[eid] && entities[eid].device_id)) loose[eid] = 1; });
+        Object.keys(loose).sort().forEach(function (eid) {
+          var e = entities[eid] || {}, st = H.states[eid], xid = 'entity:' + eid;
+          if (e.hidden || (!st && !entities[eid]) || cfg.exclude_devices.indexOf(xid) >= 0 || cfg.exclude_devices.indexOf(eid) >= 0) return;
+          var med = self._medium('mqtt'), hub = hubFor('int:mqtt:' + med, self._intName('mqtt'), med, 'int', 'mqtt');
+          hub.sub = self._intName('mqtt');
+          var x = { id: xid, entity: eid, n: String((st && st.attributes && st.attributes.friendly_name) || e.name || eid).trim(), mo: t('mqttManual'),
+            a: e.area_id && areas[e.area_id] ? areas[e.area_id].name : '', p: 'mqtt', hub: hub, ents: [eid], ieee: null, trk: null };
+          hub.dv.push(x); devs.push(x);
+        });
+      }
       // A parent that is just another device of the same integration (a power strip and its outlets) is not a bridge.
       // When the integration has at least as many devices of its own, the parent and its children are drawn inside the integration's group.
       Object.keys(hubs).forEach(function (k) {
@@ -1106,6 +1131,7 @@
       this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M[h.m] + '">' + esc(t(h.m)) + '</div><h2>' + esc(d.n) + '</h2><dl class="kv">' +
         (d.mo ? '<dt>' + esc(t('model')) + '</dt><dd>' + esc(d.mo) + '</dd>' : '') + (d.a ? '<dt>' + esc(t('area')) + '</dt><dd>' + esc(d.a) + '</dd>' : '') +
         '<dt>' + esc(t('integration')) + '</dt><dd>' + esc(this._intName(d.p)) + '</dd>' +
+        (d.entity ? '<dt>' + esc(t('entity')) + '</dt><dd style="word-break:break-all">' + esc(d.entity) + '</dd>' : '') +
         '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '" style="' + (d.away ? 'color:var(--cm-away);font-weight:600' : '') + '">' + esc(d.off ? t('offline') : d.remote ? t('remoteLong') : d.away ? t('awayLong') : t('online')) + '</dd>' +
         (d.meshParent && !d.ieee ? '<dt>' + esc(t('parentDev')) + '</dt><dd>' + esc(d.meshParent.n) + '</dd>' : '') +
         (d.router != null && d.ieee ? '<dt>' + esc(t('role')) + '</dt><dd>' + esc(d.router ? t('roleRouter') : t('roleEnd')) + '</dd>' : '') +
@@ -1116,10 +1142,11 @@
           return '<dt>' + esc(t('network')) + '</dt><dd>' + esc((own ? '' : h.n + ' → ') + [c.via, self._ifaceText(c)].filter(Boolean).join(' · ')) + '</dd>' + (own && c.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(c.ip) + '</dd>' : '');
         })() + '</dl>' +
         '<div class="eyebrow" style="color:var(--cm-muted)">' + esc(t('path')) + '</div>' + this._route(this._pathOf(d)) +
-        '<button class="btn" id="open">' + esc(t('open')) + '</button><button class="btn" id="hubb">' + esc(t('seeAll')) + ' ' + esc(h.n) + '</button><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
+        '<button class="btn" id="open">' + esc(t(d.entity ? 'openEntity' : 'open')) + '</button><button class="btn" id="hubb">' + esc(t('seeAll')) + ' ' + esc(h.n) + '</button><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
       this._bind();
       this._$('panel').querySelector('#open').onclick = function () {
         if (self._hass.demo) return;
+        if (d.entity) { self.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: d.entity }, bubbles: true, composed: true })); return; }
         history.pushState(null, '', '/config/devices/device/' + d.id);
         window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
       };
