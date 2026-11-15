@@ -36,8 +36,9 @@ async function mountRandom(page, seed) {
   await page.evaluate(async (seed) => {
     let s = seed * 7919 + 13; const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; const ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
     const mac = () => Array.from({ length: 6 }, () => ('0' + ri(0, 255).toString(16)).slice(-2)).join(':');
-    const devices = {}, entities = {}, states = {}, man = [], matter = {}; let seq = 0;
-    const dev = (p, n, o = {}) => { const id = 'd' + (++seq); devices[id] = { id, name: n, via_device_id: o.via || null, connections: o.mac ? [['mac', o.mac]] : [], identifiers: [], disabled_by: null, area_id: null };
+    const devices = {}, entities = {}, states = {}, man = [], matter = {}, areas = {}; let seq = 0;
+    for (let i = 0; i < 7; i++) areas['a' + i] = { area_id: 'a' + i, name: 'Room ' + i };
+    const dev = (p, n, o = {}) => { const id = 'd' + (++seq); devices[id] = { id, name: n, via_device_id: o.via || null, connections: o.mac ? [['mac', o.mac]] : [], identifiers: [], disabled_by: null, area_id: rnd() < 0.75 ? 'a' + ri(0, 6) : null };
       for (let k = 0; k < (o.ents || 1); k++) { const e = 'sensor.e' + seq + '_' + k; entities[e] = { entity_id: e, device_id: id, platform: p }; states[e] = { entity_id: e, state: 'on', attributes: {} }; } return id; };
     const aps = [], nAp = rnd() < 0.2 ? 0 : ri(1, 7), hasRouter = rnd() < 0.9;
     const trk = (m, ap) => { const e = 'device_tracker.t' + (++seq); entities[e] = { entity_id: e, device_id: null, platform: 'unifi' }; states[e] = { entity_id: e, state: 'home', attributes: ap ? { mac: m, ap_mac: ap, essid: 'x', radio: 'ng' } : { mac: m } }; };
@@ -54,10 +55,10 @@ async function mountRandom(page, seed) {
     if (rnd() < 0.6) { man.push({ domain: 'zha', name: 'ZHA', iot_class: 'local_polling' }); const z = dev('zha', 'ZHA coordinator', { ents: 2 }); for (let k = 0, c = ri(2, 60); k < c; k++) dev('zha', 'zb' + k, { via: z }); }
     if (rnd() < 0.5) dev('homeassistant_sky_connect', 'Home Assistant SkyConnect', {});
     if (rnd() < 0.5) { man.push({ domain: 'matter', name: 'Matter', iot_class: 'local_push' }); for (let k = 0, c = ri(1, 8); k < c; k++) matter[dev('matter', 'th' + k)] = { network_type: 'thread', network_name: 'net', node_type: 'end_device' }; }
-    const hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} },
+    const hass = { language: 'en', states, devices, entities, areas, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} },
       callWS: async (m) => { if (m.type === 'manifest/list') return man; if (m.type === 'matter/node_diagnostics' && matter[m.device_id]) return matter[m.device_id]; throw new Error('not in test'); } };
     const host = document.getElementById('host'); host.innerHTML = '';
-    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false, group_small: seed % 3 ? 1 : 0 }); host.appendChild(c); c.hass = hass; window.card = c;
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false, group_small: seed % 3 ? 1 : 0, group_by_area: seed % 2 === 0 }); host.appendChild(c); c.hass = hass; window.card = c;
     for (let i = 0; i < 80 && !(c._built && c._mnodes && (!Object.keys(matter).length || c._matter)); i++) await new Promise((r) => setTimeout(r, 25));
     await new Promise((r) => setTimeout(r, 30));
   }, seed);
@@ -71,7 +72,8 @@ function linkProblems(page) {
     Object.keys(c._mnodes).forEach((m) => E.push({ a: core, b: c._mnodes[m], n: 'home>' + m }));
     Object.keys(c._rnodes || {}).forEach((k) => { const n = c._rnodes[k]; if (n.router) E.push({ a: c._mnodes.local, b: n, n: 'router>' + k }); });
     c._hubs.forEach((h) => E.push({ a: h.from || core, b: h, n: '>' + h.n }));
-    c._devs.forEach((d) => { const tree = d.meshParent && d.meshParent.x != null && d.hub.tree; S.push({ a: tree ? d.meshParent : d.hub, b: d, n: d.n, hub: d.hub }); });
+    c._devs.forEach((d) => { const tree = d.meshParent && d.meshParent.x != null && d.hub.tree; S.push({ a: d.parentNode || (tree ? d.meshParent : d.hub), b: d, n: d.n, hub: d.hub }); });
+    c._hubs.forEach((h) => (h.areas || []).forEach((ar) => S.push({ a: h, b: ar, n: 'area ' + ar.n, hub: h })));
     const w = (p, q, r) => (r.y - p.y) * (q.x - p.x) - (q.y - p.y) * (r.x - p.x);
     const X = (e, f) => !(e.a === f.a || e.a === f.b || e.b === f.a || e.b === f.b) && w(e.a, e.b, f.a) * w(e.a, e.b, f.b) < 0 && w(f.a, f.b, e.a) * w(f.a, f.b, e.b) < 0;
     const out = [];
@@ -85,7 +87,7 @@ function linkProblems(page) {
     E.forEach((e) => D.forEach((d) => { if (d.o === e.a || d.o === e.b) return; const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y, t = Math.max(0, Math.min(1, ((d.o.x - e.a.x) * dx + (d.o.y - e.a.y) * dy) / (dx * dx + dy * dy)));
       if (Math.hypot(d.o.x - e.a.x - t * dx, d.o.y - e.a.y - t * dy) < d.r) out.push('link over a bubble: ' + e.n + ' over ' + d.n); }));
     // Rule 3: dots never sit on top of each other, or on their hub's bubble.
-    const drawn = c._devs.filter((d) => d.g);
+    const drawn = c._devs.filter((d) => d.g).concat(...c._hubs.map((h) => (c._compact() ? [] : h.areas || [])));
     for (let i = 0; i < drawn.length; i++) {
       const a = drawn[i]; if (Math.hypot(a.x - a.hub.x, a.y - a.hub.y) < Z.hub + Z.dev - 0.5) out.push('dot on its hub: ' + a.n);
       for (let j = i + 1; j < drawn.length; j++) if (Math.hypot(a.x - drawn[j].x, a.y - drawn[j].y) < 2 * Z.dev - 0.5) out.push('dots overlap: ' + a.n + ' × ' + drawn[j].n);
@@ -108,7 +110,7 @@ function labelProblems(page) {
     const R = [...svg.querySelectorAll('text.tl, text.elbl, text.dl')].filter(vis).map((e) => ({ t: e.textContent, r: e.getBoundingClientRect() }));
     const out = [];
     for (let i = 0; i < R.length; i++) for (let j = i + 1; j < R.length; j++) { const a = R[i].r, b = R[j].r; if (a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5) out.push('labels overlap: ' + R[i].t + ' × ' + R[j].t); }
-    const discs = [...svg.querySelectorAll('circle.disc, .dev circle:last-of-type')].map((e) => e.getBoundingClientRect());
+    const discs = [...svg.querySelectorAll('circle.disc, .dev circle:last-of-type, circle.anode')].map((e) => e.getBoundingClientRect());
     R.forEach((x) => discs.forEach((d) => { const cx = d.left + d.width / 2, cy = d.top + d.height / 2, rr = d.width / 2, dx = cx - Math.max(x.r.left, Math.min(cx, x.r.right)), dy = cy - Math.max(x.r.top, Math.min(cy, x.r.bottom)); if (dx * dx + dy * dy < rr * rr - 2) out.push('label over a bubble: ' + x.t); }));
     return out;
   });

@@ -5,6 +5,8 @@
 ### Added
 
 - **Z-Wave controller.** The controller of a Z-Wave network (a USB stick, a Connect ZWA-2) is drawn as the hub of its nodes, named after the adapter, the way a Zigbee2MQTT bridge or a Hue Bridge is. Before, it was one more dot in the Z-Wave group.
+- **The bridge itself.** The panel of a hub lists the bridge as a device of its own, with its model and a link to its device page. A bridge whose own entities are all unavailable is shown as offline, with a red ring.
+- **Group by area** (`group_by_area`, off by default): inside each hub, the devices of an area with more than one device hang from a small area node, hub → area → devices. Clicking the node filters the map to that area. A Zigbee mesh keeps its own shape instead.
 
 ## 0.7.1 — 2026-11-15
 

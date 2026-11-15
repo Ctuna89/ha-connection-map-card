@@ -315,3 +315,40 @@ test('a Z-Wave controller is the hub of its network, linked straight to Home Ass
   assert.deepEqual(await H.linkProblems(page), []);
   await page.close();
 });
+
+test('group_by_area: hub -> area -> devices, for areas with more than one device', async () => {
+  for (const demo of ['unifi', 'large']) {
+    const page = await H.newPage(browser);
+    await H.mountDemo(page, { demo, group_by_area: true });
+    assert.deepEqual(await H.linkProblems(page), [], demo);
+    assert.deepEqual(await H.labelProblems(page), [], demo);
+    await page.evaluate(() => { const h = window.card._hubs.find((x) => x.n === 'Hue Bridge'); window.card._zoom(0.4, h.x, h.y); });
+    assert.deepEqual(await H.labelProblems(page), [], demo + ', zoomed in on the Hue hub');
+    const r = await page.evaluate(() => { const c = window.card, h = c._hubs.find((x) => x.n === 'Hue Bridge'), z = c._hubs.find((x) => x.m === 'radio' && x.dv.some((d) => d.meshParent));
+      const sizes = {}; h.dv.forEach((d) => { if (d.a) sizes[d.a] = (sizes[d.a] || 0) + 1; });
+      return { areas: h.areas.map((a) => a.n + ':' + a.list.length).sort(), expected: Object.keys(sizes).filter((a) => sizes[a] > 1).map((a) => a + ':' + sizes[a]).sort(),
+        inArea: h.dv.filter((d) => d.parentNode).length, total: h.dv.length, mesh: z ? z.areas.length : 0, shown: c._alabs.filter((a) => a.lab.style.display !== 'none').length }; });
+    assert.ok(r.areas.length > 0); assert.deepEqual(r.areas, r.expected);
+    assert.equal(r.mesh, 0, 'a Zigbee mesh keeps its own shape');
+    assert.ok(r.shown > 0, 'area names are on the map');
+    // clicking an area node filters the map to that area
+    const picked = await page.evaluate(() => { const c = window.card, ar = c._hubs.find((x) => x.n === 'Hue Bridge').areas[0];
+      [...c.shadowRoot.querySelectorAll('svg g[role=button]')].find((g) => g.getAttribute('aria-label') === ar.n && g.querySelector('.anode')).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      return [ar.n, c._S.area, c.shadowRoot.getElementById('area').value]; });
+    assert.deepEqual(picked, [picked[0], picked[0], picked[0]]);
+    await page.close();
+  }
+});
+
+test('a bridge is listed as a device of its own, and can be offline', async () => {
+  const page = await H.newPage(browser);
+  await H.mountDemo(page, { demo: 'unifi' }, { settle: false });
+  const r = await page.evaluate(() => { const c = window.card, h = c._hubs.find((x) => x.n === 'Hue Bridge'); c._selHub(h);
+    const row = c.shadowRoot.querySelector('#hubdev'), before = row.innerText.replace(/\n+/g, ' | ');
+    h.ents.forEach((e) => { c._hass.states[e].state = 'unavailable'; }); c._status(); c._marks(); c._selHub(h);
+    return { before, after: c.shadowRoot.querySelector('#hubdev').innerText.replace(/\n+/g, ' | '), red: h.g.classList.contains('offline') }; });
+  assert.equal(r.before, 'Hue Bridge · Signify · BSB002 | The bridge itself');
+  assert.equal(r.after, 'Hue Bridge · Signify · BSB002 | Offline');
+  assert.ok(r.red);
+  await page.close();
+});

@@ -29,6 +29,7 @@ Most network maps show one protocol at a time. This card draws all of them in on
 - **Visual editor.** Colours, line styles and width, the size of each level of bubbles and what is shown can be changed from the card editor, with a live preview.
 - **Compact map.** For big homes, `layout: compact` (or the ◎ button on the map) draws one bubble per hub or integration with its number of devices, and a red counter for the ones that are offline. The devices are in the side panel.
 - **Save as an image.** The ⤓ button saves what is on screen as a PNG, with or without names. Without names, hubs, routers, access points and devices are numbered and the version, host and Thread network name are left out, so the image can be posted anywhere.
+- **Group by area.** Optionally, the devices of a hub are grouped by area: 35 Hue lights become dining room, living room, bedroom…, each with its lights.
 - **Click to explore.** Tap a device to see its full path, for example `Bedroom lamp → Hue Bridge → Philips Hue → Local network → Home Assistant`, and open its device page.
 - **Filter and search** by connection type, area, name or model, or show only offline devices.
 - **Zoom and pan** with the mouse wheel, by dragging, or with the buttons. Labels keep the same size on screen at any zoom level. A label is never drawn over a node or over another label: it moves to a free side of its node, and if there is no room at the current zoom it is hidden until you zoom in.
@@ -84,6 +85,7 @@ views:
 | `exclude_integrations` | list | `[]` | Integration domains to hide, for example `[mobile_app, bambu_lab]`. |
 | `exclude_devices` | list | `[]` | Device IDs to hide. An entity ID hides an MQTT entity that has no device. |
 | `show_trackers` | boolean | `false` | Show devices that only have `device_tracker` entities (for example, every phone and laptop your router reports). |
+| `group_by_area` | boolean | `false` | Inside each hub, hang the devices of an area with more than one device from a small area node (hub → area → devices). Clicking the node filters the map to that area. Hubs with a Zigbee mesh keep the mesh instead. |
 | `sort` | string | `area` | Order of the device lists: `area` (by area, then name) or `name` (alphabetical). The list of a hub also has a button to switch between the two. |
 | `core_size` | string | `large` | `compact` is a shortcut for `sizes.core: 28`. |
 | `mqtt_entities` | boolean | `true` | Show MQTT entities that have no device (entities written by hand in YAML without a `device` block), one dot per entity. |
