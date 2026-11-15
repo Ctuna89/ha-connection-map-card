@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.5.0';
+  var VERSION = '0.6.0';
 
   var STR = {
     en: {
@@ -76,6 +76,129 @@
   var CLOUD_GUESS = ['smartthings', 'tuya', 'spotify', 'met', 'google_translate', 'anthropic', 'openai_conversation', 'nest',
     'ring', 'tesla_fleet', 'netatmo', 'ecobee', 'alexa', 'google_assistant', 'cloud', 'waze_travel_time', 'openweathermap'];
   var NS = 'http://www.w3.org/2000/svg';
+
+  // "/dev/serial/by-id/usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_ab12...-if00-port0" -> "ITead Sonoff Zigbee 3.0 USB Dongle Plus"
+  function adapterName(port) {
+    port = String(port || ''); if (!port) return '';
+    var m = port.match(/^(?:tcp|socket):\/\/([^:/]+)/i); if (m) return 'Network coordinator (' + m[1] + ')';
+    var b = port.split('/').pop().replace(/^usb-/, '').replace(/-if\d+(-port\d+)?$/, '').replace(/_[0-9A-Fa-f]{6,}$/, '');
+    if (/^tty|^COM\d/i.test(b)) return '';
+    return b.replace(/_/g, ' ').replace(/^Nabu Casa Home Assistant /, '').replace(/\s+/g, ' ').trim();
+  }
+
+  // ---------- demo mode: synthetic installations to try the card (and its layout) without those devices ----------
+  //   demo: unifi  -> UniFi APs (wired + 2.4/5 GHz clients), Hue, Shelly, Sonos, ZHA mesh, Z-Wave, Nest/ecobee cloud
+  //   demo: fritz  -> FRITZ!Box + repeater, Zigbee2MQTT on a network coordinator, Tuya/tado cloud, no Supervisor (Docker)
+  //   demo: large  -> ~350 devices across 30 integrations
+  function makeDemo(kind, real) {
+    var devices = {}, entities = {}, states = {}, areas = {}, man = [], seq = 0, seed = 7;
+    var host = null, haIp = null, zha = null, z2mInfo = null, z2mMap = null, i, j;
+    function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+    function mac() { var s = []; for (var k = 0; k < 6; k++) s.push(('0' + Math.floor(rnd() * 256).toString(16)).slice(-2)); return s.join(':'); }
+    function area(n) { var id = n.toLowerCase().replace(/\W+/g, '_'); areas[id] = { area_id: id, name: n }; return id; }
+    var A = ['Living room', 'Kitchen', 'Bedroom', 'Office', 'Garage', 'Garden', 'Hallway', 'Bathroom'].map(area);
+    function integ(domain, name, iot) { man.push({ domain: domain, name: name, iot_class: iot }); }
+    function dev(o) {
+      var id = 'demo_' + (++seq);
+      devices[id] = { id: id, name: o.n, manufacturer: o.mf || '', model: o.mo || '', via_device_id: o.via || null, area_id: o.a || null,
+        entry_type: o.svc ? 'service' : null, connections: o.mac ? [['mac', o.mac]] : [], identifiers: o.ieee ? [['mqtt', 'zigbee2mqtt_' + o.ieee]] : [], disabled_by: null };
+      for (var k = 0; k < (o.ents || 1); k++) {
+        var eid = (o.dom || 'sensor') + '.demo_' + seq + '_' + k;
+        entities[eid] = { entity_id: eid, device_id: id, platform: o.p };
+        states[eid] = { entity_id: eid, state: o.off ? 'unavailable' : 'on', attributes: {} };
+      }
+      return id;
+    }
+    function trk(name, plat, attrs, home) {
+      var eid = 'device_tracker.' + name.toLowerCase().replace(/\W+/g, '_');
+      entities[eid] = { entity_id: eid, platform: plat }; states[eid] = { entity_id: eid, state: home === false ? 'not_home' : 'home', attributes: attrs };
+    }
+    if (kind === 'fritz') {
+      integ('fritz', 'AVM FRITZ!Box Tools', 'local_polling'); integ('mqtt', 'MQTT', 'local_push'); integ('tuya', 'Tuya', 'cloud_push');
+      integ('tado', 'tado°', 'cloud_polling'); integ('cast', 'Google Cast', 'local_polling'); integ('spotify', 'Spotify', 'cloud_polling'); integ('esphome', 'ESPHome', 'local_push');
+      dev({ p: 'fritz', n: 'FRITZ!Box 7590', mo: 'FRITZ!Box 7590', ents: 6 }); dev({ p: 'fritz', n: 'FRITZ!Repeater 1200', mo: 'Repeater 1200', ents: 3 });
+      var br = dev({ p: 'mqtt', n: 'Zigbee2MQTT Bridge', mf: 'Zigbee2MQTT', mo: 'Bridge', ents: 4 });
+      z2mMap = { nodes: [{ ieeeAddr: '0xc0', type: 'Coordinator' }], links: [] };
+      var rs = [];
+      for (i = 0; i < 3; i++) { var ie = '0xr' + i; rs.push(ie); dev({ p: 'mqtt', n: 'Smart plug ' + (i + 1), mo: 'TS011F', via: br, ieee: ie, a: A[i], dom: 'switch' }); z2mMap.nodes.push({ ieeeAddr: ie, type: 'Router' }); z2mMap.links.push({ source: { ieeeAddr: ie }, target: { ieeeAddr: '0xc0' }, lqi: 220 - i * 50, relationship: 2 }); }
+      for (i = 0; i < 10; i++) { var ie2 = '0xe' + i, par = i < 3 ? '0xc0' : rs[i % 3]; dev({ p: 'mqtt', n: ['Motion', 'Contact', 'Climate'][i % 3] + ' sensor ' + (i + 1), mo: 'Aqara', via: br, ieee: ie2, a: A[i % 8], dom: 'binary_sensor', off: i === 8 }); z2mMap.nodes.push({ ieeeAddr: ie2, type: 'EndDevice' }); z2mMap.links.push({ source: { ieeeAddr: ie2 }, target: { ieeeAddr: par }, lqi: 90 + i * 12, relationship: 1 }); }
+      z2mInfo = { coordinator: { type: 'zStack3x0', meta: { revision: 20240710 } }, config: { serial: { port: 'tcp://192.168.178.50:6638' } } };
+      for (i = 0; i < 4; i++) { var m = mac(); dev({ p: 'cast', n: ['Kitchen speaker', 'Living room TV', 'Bedroom speaker', 'Office display'][i], mo: 'Nest Audio', mac: m, a: A[i], dom: 'media_player' }); trk('cast_' + i, 'fritz', { mac: m, ip: '192.168.178.' + (30 + i), connected_to: i < 2 ? 'FRITZ!Box 7590' : 'FRITZ!Repeater 1200', connection_type: i === 1 ? 'LAN' : 'WLAN', ssid: 'Home' }, i !== 3); }
+      for (i = 0; i < 6; i++) dev({ p: 'tuya', n: 'Tuya ' + ['bulb', 'plug', 'fan', 'heater', 'blind', 'kettle'][i], mo: 'Tuya', a: A[i], dom: 'light' });
+      for (i = 0; i < 3; i++) dev({ p: 'tado', n: 'tado ' + ['Living room', 'Bedroom', 'Office'][i], mo: 'Smart Radiator Thermostat', a: A[[0, 2, 3][i]], dom: 'climate' });
+      for (i = 0; i < 4; i++) { var m2 = mac(); dev({ p: 'esphome', n: 'ESP node ' + (i + 1), mo: 'ESP32-C3', mac: m2, a: A[i + 2] }); trk('esp_' + i, 'fritz', { mac: m2, connected_to: 'FRITZ!Repeater 1200', connection_type: 'WLAN', ssid: 'Home' }); }
+      dev({ p: 'spotify', n: 'Spotify', svc: true, dom: 'media_player' });
+    } else if (kind === 'large') {
+      integ('unifi', 'UniFi Network', 'local_push'); integ('hue', 'Philips Hue', 'local_push'); integ('mqtt', 'MQTT', 'local_push'); integ('esphome', 'ESPHome', 'local_push');
+      integ('shelly', 'Shelly', 'local_push'); integ('tuya', 'Tuya', 'cloud_push'); integ('sonos', 'Sonos', 'local_push'); integ('nest', 'Google Nest', 'cloud_push'); integ('ring', 'Ring', 'cloud_polling'); integ('mobile_app', 'Mobile App', 'local_push');
+      var gw = dev({ p: 'unifi', n: 'UDM SE', mo: 'UDM-SE', mac: mac(), ents: 8 }), aps = [];
+      for (i = 0; i < 4; i++) { var am = mac(); aps.push(am); dev({ p: 'unifi', n: 'AP ' + ['Ground floor', 'First floor', 'Garage', 'Garden'][i], mo: 'U6-LR', mac: am, ents: 4 }); }
+      var hue = dev({ p: 'hue', n: 'Hue Bridge', mo: 'BSB002', ents: 2 }); for (i = 0; i < 60; i++) dev({ p: 'hue', n: 'Hue light ' + (i + 1), via: hue, a: A[i % 8], dom: 'light', off: i % 23 === 5 });
+      var br2 = dev({ p: 'mqtt', n: 'Zigbee2MQTT Bridge', mf: 'Zigbee2MQTT', mo: 'Bridge', ents: 4 }); z2mMap = { nodes: [{ ieeeAddr: '0xc0', type: 'Coordinator' }], links: [] };
+      var rr = []; for (i = 0; i < 12; i++) { var ri = '0xr' + i; rr.push(ri); dev({ p: 'mqtt', n: 'Router plug ' + (i + 1), via: br2, ieee: ri, a: A[i % 8], dom: 'switch' }); z2mMap.nodes.push({ ieeeAddr: ri, type: 'Router' }); z2mMap.links.push({ source: { ieeeAddr: ri }, target: { ieeeAddr: i < 6 ? '0xc0' : rr[i - 6] }, lqi: 80 + Math.floor(rnd() * 170), relationship: 2 }); }
+      for (i = 0; i < 108; i++) { var ei = '0xe' + i; dev({ p: 'mqtt', n: 'Zigbee sensor ' + (i + 1), via: br2, ieee: ei, a: A[i % 8], dom: 'binary_sensor', off: i % 31 === 7 }); z2mMap.nodes.push({ ieeeAddr: ei, type: 'EndDevice' }); z2mMap.links.push({ source: { ieeeAddr: ei }, target: { ieeeAddr: i % 4 === 0 ? '0xc0' : rr[i % 12] }, lqi: 40 + Math.floor(rnd() * 200), relationship: 1 }); }
+      z2mInfo = { coordinator: { type: 'EmberZNet', meta: { revision: '7.4.4 [GA]' } }, config: { serial: { port: '/dev/serial/by-id/usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_V2_20240123abcdef-if00-port0' } } };
+      for (i = 0; i < 40; i++) { var em = mac(); dev({ p: 'esphome', n: 'ESPHome node ' + (i + 1), mac: em, a: A[i % 8] }); trk('esphome_' + i, 'unifi', { mac: em, ap_mac: aps[i % 4], essid: 'IoT', radio: 'ng' }); }
+      for (i = 0; i < 30; i++) { var sm = mac(); dev({ p: 'shelly', n: 'Shelly ' + (i + 1), mac: sm, a: A[i % 8], dom: 'switch' }); trk('shelly_' + i, 'unifi', { mac: sm, ap_mac: aps[(i + 1) % 4], essid: 'IoT', radio: 'ng' }, i % 13 !== 4); }
+      for (i = 0; i < 40; i++) dev({ p: 'tuya', n: 'Tuya device ' + (i + 1), a: A[i % 8], off: i % 17 === 3 });
+      for (i = 0; i < 8; i++) { var so = mac(); dev({ p: 'sonos', n: 'Sonos ' + (i + 1), mac: so, a: A[i], dom: 'media_player' }); trk('sonos_' + i, 'unifi', { mac: so, ap_mac: aps[i % 4], essid: 'Home', radio: i % 3 ? 'na' : '' }); }
+      for (i = 0; i < 5; i++) dev({ p: 'nest', n: 'Nest ' + (i + 1), a: A[i] }); for (i = 0; i < 4; i++) dev({ p: 'ring', n: 'Ring ' + (i + 1), a: A[i + 4] });
+      for (i = 0; i < 4; i++) dev({ p: 'mobile_app', n: 'Phone ' + (i + 1) });
+      for (j = 0; j < 20; j++) { var dom = 'misc_' + j; integ(dom, 'Integration ' + (j + 1), j % 3 ? 'local_polling' : 'cloud_polling'); for (i = 0; i < 1 + (j % 3); i++) dev({ p: dom, n: 'Gadget ' + (j + 1) + '.' + (i + 1), a: A[j % 8] }); }
+      host = { operating_system: 'Home Assistant OS 18.4', chassis: 'embedded', hostname: 'homeassistant', disk_used: 41, disk_total: 116 };
+    } else {
+      integ('unifi', 'UniFi Network', 'local_push'); integ('hue', 'Philips Hue', 'local_push'); integ('shelly', 'Shelly', 'local_push'); integ('sonos', 'Sonos', 'local_push');
+      integ('nest', 'Google Nest', 'cloud_push'); integ('ecobee', 'ecobee', 'cloud_polling'); integ('zha', 'Zigbee Home Automation', 'local_polling'); integ('zwave_js', 'Z-Wave', 'local_push');
+      integ('mobile_app', 'Mobile App', 'local_push'); integ('esphome', 'ESPHome', 'local_push'); integ('met', 'Meteorologisk institutt (Met.no)', 'cloud_polling');
+      dev({ p: 'unifi', n: 'UDM Pro', mf: 'Ubiquiti', mo: 'UDM-Pro', mac: mac(), ents: 8 });
+      var ap1 = mac(), ap2 = mac();
+      dev({ p: 'unifi', n: 'AP Living room', mf: 'Ubiquiti', mo: 'U6-Lite', mac: ap1, a: A[0], ents: 4 }); dev({ p: 'unifi', n: 'AP Office', mf: 'Ubiquiti', mo: 'U6-Pro', mac: ap2, a: A[3], ents: 4 });
+      var hm = mac(), hb = dev({ p: 'hue', n: 'Hue Bridge', mf: 'Signify', mo: 'BSB002', mac: hm, ents: 2 });
+      trk('hue_bridge', 'unifi', { mac: hm, ip: '10.0.0.20' });
+      for (i = 0; i < 12; i++) dev({ p: 'hue', n: 'Hue lamp ' + (i + 1), mf: 'Signify', mo: 'LCA001', via: hb, a: A[i % 4], dom: 'light' });
+      for (i = 0; i < 6; i++) { var sh = mac(); dev({ p: 'shelly', n: 'Shelly plug ' + (i + 1), mo: 'Plus Plug S', mac: sh, a: A[i % 6], dom: 'switch' }); trk('shelly_' + i, 'unifi', { mac: sh, ap_mac: i % 2 ? ap2 : ap1, essid: 'IoT', radio: 'ng', ip: '10.0.0.' + (40 + i) }, i !== 5); }
+      for (i = 0; i < 4; i++) { var sn = mac(); dev({ p: 'sonos', n: 'Sonos ' + ['Living room', 'Kitchen', 'Bedroom', 'Office'][i], mo: 'Era 100', mac: sn, a: A[i], dom: 'media_player' }); trk('sonos_' + i, 'unifi', { mac: sn, ap_mac: i < 2 ? ap1 : ap2, essid: 'Home', radio: 'na' }); }
+      for (i = 0; i < 3; i++) dev({ p: 'esphome', n: 'ESP sensor ' + (i + 1), mo: 'ESP32', a: A[i] });
+      dev({ p: 'nest', n: 'Nest Thermostat', a: A[0], dom: 'climate' }); dev({ p: 'nest', n: 'Nest Doorbell', a: A[6], dom: 'camera' }); dev({ p: 'ecobee', n: 'ecobee Premium', a: A[2], dom: 'climate' });
+      dev({ p: 'met', n: 'Forecast', svc: true, dom: 'weather' }); dev({ p: 'mobile_app', n: 'Pixel 9' }); dev({ p: 'mobile_app', n: 'iPhone 16' });
+      var co = dev({ p: 'zha', n: 'SkyConnect', mf: 'Nabu Casa', mo: 'SkyConnect v1.0', ents: 2 });
+      zha = [{ ieee: 'c0', device_type: 'Coordinator', device_reg_id: co, manufacturer: 'Nabu Casa', model: 'SkyConnect v1.0', neighbors: [] }];
+      var zr = [];
+      for (i = 0; i < 3; i++) { var rid = dev({ p: 'zha', n: 'Zigbee plug ' + (i + 1), mo: 'TS011F', via: co, a: A[i], dom: 'switch' }); zr.push('r' + i); zha.push({ ieee: 'r' + i, device_type: 'Router', device_reg_id: rid, lqi: 210 - i * 45, neighbors: [{ ieee: 'c0', device_type: 'Coordinator', relationship: 'Sibling', lqi: 210 - i * 45 }] }); }
+      for (i = 0; i < 12; i++) {
+        var eid2 = dev({ p: 'zha', n: ['Motion', 'Door', 'Climate'][i % 3] + ' sensor ' + (i + 1), mo: 'Aqara', via: co, a: A[i % 8], dom: 'binary_sensor', off: i === 7 });
+        zha.push({ ieee: 'e' + i, device_type: 'EndDevice', device_reg_id: eid2, lqi: 100 + ((i * 37) % 140), neighbors: [] });
+        var pz = i < 4 ? zha[0] : zha.filter(function (z) { return z.ieee === zr[i % 3]; })[0];
+        pz.neighbors.push({ ieee: 'e' + i, device_type: 'EndDevice', relationship: 'Child', lqi: 90 + i * 9 });
+      }
+      var zc = dev({ p: 'zwave_js', n: 'Z-Wave controller', mf: 'Zooz', mo: 'ZST39 800', ents: 2 });
+      for (i = 0; i < 6; i++) dev({ p: 'zwave_js', n: 'Z-Wave ' + ['lock', 'dimmer', 'switch'][i % 3] + ' ' + (i + 1), via: zc, a: A[i % 8] });
+      host = { operating_system: 'Home Assistant OS 18.4', chassis: 'vm', virtualization: 'kvm', hostname: 'homeassistant', disk_used: 22, disk_total: 64 };
+      haIp = '10.0.0.10'; trk('homeassistant', 'unifi', { mac: mac(), ip: haIp });
+    }
+    return {
+      demo: true, language: (real && real.language) || 'en', themes: real && real.themes, config: { version: (real && real.config && real.config.version) || '2026.11.1' },
+      devices: devices, entities: entities, states: states, areas: areas,
+      callWS: function (msg) {
+        if (msg.type === 'manifest/list') return Promise.resolve(man);
+        if (msg.type === 'supervisor/api' && host) {
+          if (msg.endpoint === '/host/info') return Promise.resolve(host);
+          if (msg.endpoint === '/network/info') return Promise.resolve({ interfaces: haIp ? [{ ipv4: { address: [haIp + '/24'] } }] : [] });
+        }
+        if (msg.type === 'zha/devices' && zha) return Promise.resolve(zha);
+        return Promise.reject(new Error('not available in demo'));
+      },
+      callService: function () { return Promise.resolve(); },
+      connection: {
+        subscribeMessage: function (cb, msg) {
+          var topic = (msg.trigger && msg.trigger.topic) || '', p = null;
+          if (/bridge\/info$/.test(topic)) p = z2mInfo; else if (/networkmap$/.test(topic) && z2mMap) p = { data: { value: z2mMap } };
+          if (p) setTimeout(function () { cb({ variables: { trigger: { payload: JSON.stringify(p) } } }); }, 300);
+          return Promise.resolve(function () { });
+        }
+      }
+    };
+  }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function deg(a) { return a * Math.PI / 180; }
@@ -163,6 +286,7 @@
     getGridOptions() { return { columns: 'full', min_rows: 8 }; }
 
     set hass(h) {
+      if (this._cfg && this._cfg.demo) { if (!this._demoHass) this._demoHass = makeDemo(String(this._cfg.demo), h); h = this._demoHass; }
       this._hass = h;
       if (!this._root) this._skeleton();
       if (!this._built && !this._loading) { this._load(); return; }
@@ -182,7 +306,7 @@
         '<div class="legend" id="legend"></div><div class="zoom"><button class="btn" id="zin">+</button><button class="btn" id="zout">−</button><button class="btn" id="zfit">⤢</button></div></div>' +
         '<aside class="panel" id="panel"><div class="msg" id="loading"></div></aside></div></div></ha-card>';
       var self = this;
-      this._ro = new ResizeObserver(function (en) { var w = en[0].contentRect.width; self._$('main').classList.toggle('wide', w > 860 && self._cfg.show_panel !== false); if (self._vb) self._setVB(); });
+      this._ro = new ResizeObserver(function (en) { var w = en[0].contentRect.width; self._$('main').classList.toggle('wide', w > 860 && self._cfg.show_panel !== false); if (self._vb) requestAnimationFrame(function () { self._setVB(); }); });
       this._ro.observe(this._$('main'));
       if (this._cfg.show_panel === false) this._$('panel').style.display = 'none';
     }
@@ -191,7 +315,7 @@
     async _load() {
       this._loading = true;
       var t = this._t.bind(this);
-      this._$('title').textContent = this._cfg.title || t('title');
+      this._$('title').textContent = (this._cfg.title || t('title')) + (this._hass.demo ? ' · demo: ' + this._cfg.demo : '');
       this._$('loading').textContent = t('loading');
       var man = {};
       try { (await this._hass.callWS({ type: 'manifest/list' })).forEach(function (m) { man[m.domain] = m; }); } catch (e) { /* non-admin: fall back to guesses */ }
@@ -203,7 +327,7 @@
       this._extras();
     }
 
-    // Host details (Supervisor, admin only) and the Zigbee2MQTT mesh. Both are optional.
+    // Host details (Supervisor), coordinator details and the Zigbee mesh (Zigbee2MQTT or ZHA). All optional, admin only.
     async _extras() {
       var H = this._hass;
       try {
@@ -217,23 +341,69 @@
         var S = H.states; this._haTrk = (this._trk || []).filter(function (eid) { var a = (S[eid] || {}).attributes || {}; return a.ip && ips.indexOf(a.ip) >= 0; })[0] || null;
         if (this._haTrk) this._render();
       } catch (e) { /* not supervised or not admin */ }
-      if (this._cfg.show_mesh !== false && this._z2mBridge) {
-        try { await this._loadMesh(); this._render(); } catch (e) { /* no MQTT access or Zigbee2MQTT did not answer */ }
+      var base = this._cfg.z2m_base_topic || 'zigbee2mqtt', mesh = this._cfg.show_mesh !== false, changed = false;
+      if (this._z2mBridge) {
+        try { this._z2mInfo(await this._mqttOnce(base + '/bridge/info', null, 5000)); changed = true; } catch (e) { /* retained bridge/info not available */ }
+        if (mesh) { try { var nm = await this._mqttOnce(base + '/bridge/response/networkmap', { topic: base + '/bridge/request/networkmap', payload: JSON.stringify({ type: 'raw', routes: false }) }, 45000); this._applyMesh(nm.data && nm.data.value); changed = true; } catch (e) { /* no answer */ } }
       }
+      if (mesh && this._hasZha) {
+        try { this._applyZhaMesh(await H.callWS({ type: 'zha/devices' })); changed = true; } catch (e) { /* ZHA not loaded or not admin */ }
+      }
+      if (changed) this._render();
     }
-    _loadMesh() {
-      var H = this._hass, base = this._cfg.z2m_base_topic || 'zigbee2mqtt', self = this;
+    // subscribe to one MQTT topic (optionally publishing a request) and resolve with the first JSON payload
+    _mqttOnce(topic, pub, ms) {
+      var H = this._hass;
       return new Promise(function (resolve, reject) {
         var done = false, unsub = null;
-        var timer = setTimeout(function () { if (!done) { done = true; if (unsub) unsub(); reject(new Error('timeout')); } }, 45000);
+        var timer = setTimeout(function () { if (!done) { done = true; if (unsub) unsub(); reject(new Error('timeout')); } }, ms || 45000);
         H.connection.subscribeMessage(function (m) {
           if (done) return; done = true; clearTimeout(timer); if (unsub) unsub();
-          try { var p = JSON.parse(m.variables.trigger.payload); self._applyMesh(p.data && p.data.value); resolve(); } catch (e) { reject(e); }
-        }, { type: 'subscribe_trigger', trigger: { platform: 'mqtt', topic: base + '/bridge/response/networkmap' } }).then(function (u) {
+          try { resolve(JSON.parse(m.variables.trigger.payload)); } catch (e) { reject(e); }
+        }, { type: 'subscribe_trigger', trigger: { platform: 'mqtt', topic: topic } }).then(function (u) {
           unsub = u; if (done) u();
-          return H.callService('mqtt', 'publish', { topic: base + '/bridge/request/networkmap', payload: JSON.stringify({ type: 'raw', routes: false }) });
+          if (pub) return H.callService('mqtt', 'publish', pub);
         }).catch(function (e) { if (!done) { done = true; clearTimeout(timer); reject(e); } });
       });
+    }
+    // Zigbee2MQTT bridge/info: coordinator firmware and the adapter, named from its serial port
+    _z2mInfo(info) {
+      if (!info) return;
+      var c = info.coordinator || {}, meta = c.meta || {}, port = ((info.config || {}).serial || {}).port || '';
+      var fw = meta.revision || [meta.major, meta.minor, meta.patch].filter(function (x) { return x != null; }).join('.');
+      this._coordInfo = { type: c.type || '', fw: fw ? String(fw) : '', port: port, name: adapterName(port) };
+      if (!this._coordFromDev && !this._cfg.coordinator_name && (this._coordInfo.name || c.type)) this._coord = this._coordInfo.name || c.type;
+    }
+    // ZHA: every device lists its neighbours with their relationship (Parent / Child / Sibling) and LQI
+    _applyZhaMesh(list) {
+      if (!Array.isArray(list) || !list.length) return;
+      var byIeee = {}, byReg = {}, types = {}, parent = {}, lqi = {}, own = {}, coord = null;
+      (this._devs || []).forEach(function (d) { byReg[d.id] = d; });
+      list.forEach(function (z) {
+        types[z.ieee] = z.device_type; own[z.ieee] = z.lqi;
+        if (z.device_reg_id && byReg[z.device_reg_id]) byIeee[z.ieee] = byReg[z.device_reg_id];
+        if (z.device_type === 'Coordinator') coord = z;
+      });
+      list.forEach(function (z) {
+        (z.neighbors || []).forEach(function (n) {
+          var rel = String(n.relationship || '').toLowerCase();
+          if (rel === 'child' && !parent[n.ieee]) { parent[n.ieee] = z.ieee; lqi[n.ieee] = +n.lqi; }
+          else if (rel === 'parent' && !parent[z.ieee]) { parent[z.ieee] = n.ieee; lqi[z.ieee] = +n.lqi; }
+        });
+      });
+      list.forEach(function (z) {
+        if (types[z.ieee] !== 'Router' || parent[z.ieee]) return;
+        var best = null;
+        (z.neighbors || []).forEach(function (n) { if ((n.device_type === 'Coordinator' || n.device_type === 'Router') && (!best || +n.lqi > +best.lqi)) best = n; });
+        if (best) { parent['~' + z.ieee] = best.ieee; lqi[z.ieee] = +best.lqi; }
+      });
+      Object.keys(byIeee).forEach(function (ie) {
+        var d = byIeee[ie], p = parent[ie] || parent['~' + ie];
+        d.ieee = d.ieee || ie; d.router = types[ie] === 'Router'; d.lqi = lqi[ie] != null && !isNaN(lqi[ie]) ? lqi[ie] : own[ie];
+        d.meshParent = p && (!coord || p !== coord.ieee) && byIeee[p] && byIeee[p] !== d ? byIeee[p] : null;
+      });
+      if (coord && !this._coordFromDev && !this._cfg.coordinator_name) this._coord = [coord.manufacturer, coord.model].filter(Boolean).join(' ') || this._coord;
+      this._mesh = true;
     }
     _applyMesh(v) {
       if (!v || !v.nodes) return;
@@ -268,14 +438,26 @@
       return h.chassis === 'vm' ? ((VIRT[h.virt] || (h.virt && h.virt !== 'none' ? h.virt : '')) + ' VM').trim() : (h.os || '');
     }
     _coreText() { var e = this._root && this._root.getElementById('coreHost'); if (e) e.textContent = this._hostShort(); }
+    // Normalise what different router integrations report about a client:
+    //   Huawei Mesh: connected_via + interface_type (LAN / 2.4GHz / 5GHz)
+    //   FRITZ!Box:   connected_to + connection_type (LAN / WLAN) + ssid
+    //   UniFi:       ap_mac (-> AP device) + essid + radio (ng / na / 6e); wired clients have neither
     _conn(eid) {
       if (!eid || !this._hass) return null; var s = this._hass.states[eid]; if (!s) return null; var a = s.attributes || {};
-      var iface = String(a.interface_type || a.connection_type || a.connection || a.radio || '').trim();
-      return { via: a.connected_via || a.ap_name || a.access_point || null, iface: iface, wired: /lan|ethernet|wired|cable/i.test(iface), rssi: a.rssi || a.signal_strength || null, ip: a.ip || a.ip_address || null, home: s.state === 'home' };
+      var plat = ((this._hass.entities || {})[eid] || {}).platform;
+      var raw = String(a.interface_type || a.connection_type || a.connection || '').trim();
+      var band = { ng: '2.4 GHz', na: '5 GHz', '6e': '6 GHz', '6g': '6 GHz' }[String(a.radio || '').toLowerCase()] || '';
+      if (/2[.,]?4\s*g/i.test(raw)) band = '2.4 GHz'; else if (/(^|[^\d.])5\s*g/i.test(raw)) band = '5 GHz'; else if (/(^|[^\d.])6\s*g/i.test(raw)) band = '6 GHz';
+      var wired = /^(lan|eth|ethernet|wired|cable)\b/i.test(raw);
+      if (!raw && !band && plat === 'unifi' && !a.essid && !a.ap_mac && s.state === 'home') wired = true;
+      var via = a.connected_via || a.connected_to || a.ap_name || a.access_point || null;
+      if (!via && a.ap_mac) via = (this._macName || {})[String(a.ap_mac).toLowerCase()] || a.ap_mac;
+      var wifi = !wired && !!(band || /w-?lan|wi-?fi|wireless|802\.11/i.test(raw) || a.essid || a.ssid);
+      return { via: via, iface: wired ? 'LAN' : band, wired: wired, wifi: wifi, ssid: a.essid || a.ssid || null, rssi: a.rssi || a.signal_strength || null, ip: a.ip || a.ip_address || null, home: s.state === 'home' };
     }
     _ifaceText(c) {
       var t = this._t.bind(this); if (!c) return '';
-      return c.wired ? t('wired') : (c.iface ? t('wifi') + ' ' + c.iface.replace(/\s*GHz/i, ' GHz') : t('wifi'));
+      return c.wired ? t('wired') : c.wifi ? t('wifi') + (c.iface ? ' ' + c.iface : '') : '';
     }
     _hubConn(h) {
       // a hub's own connection, or the most common one among its devices
@@ -325,6 +507,10 @@
       var trk = [];
       Object.keys(entities).forEach(function (eid) { var e = entities[eid]; if (eid.indexOf('device_tracker.') === 0 && ROUTER_INTS.indexOf(e.platform) >= 0) trk.push(eid); });
       this._trk = trk;
+      var macName = {};
+      Object.keys(devices).forEach(function (id) { var d = devices[id]; (d.connections || []).forEach(function (c) { if (c[0] === 'mac') macName[String(c[1]).toLowerCase()] = (d.name_by_user || d.name); }); });
+      this._macName = macName;
+      this._hasZha = Object.keys(entities).some(function (k) { return entities[k].platform === 'zha'; });
       function slug(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
       function findTrk(dev) {
         if (!dev || !trk.length || dev.entry_type === 'service') return null;
@@ -392,11 +578,15 @@
       });
       routers.forEach(function (r) { r.trk = findTrk(devices[r.id]); });
       this._routers = routers;
-      this._router = routers.filter(function (r) { return /primary|main|principal|gateway|router/i.test(r.n); })[0] || routers[0] || null;
+      this._router = routers.filter(function (r) { return /primary|main|principal|gateway|router|udm|dream|ucg|usg|fritz!?\s?box|box/i.test(r.n); })[0] || routers[0] || null;
       if (this._router && cfg.router_name) this._router.n = cfg.router_name;
       this._coord = cfg.coordinator_name || coords[0] || null;
+      this._coordFromDev = !!coords[0];
       // Merge small integration groups into one "other" node per medium.
       var small = Math.max(0, cfg.group_small | 0);
+      // big installations: fold more tiny integrations together so the map stays readable
+      var intCount = Object.keys(hubs).filter(function (k) { return hubs[k].kind === 'int'; }).length;
+      if (cfg.group_small == null || cfg.group_small === 1) { if (intCount > 30) small = Math.max(small, 3); else if (intCount > 18) small = Math.max(small, 2); }
       Object.keys(hubs).forEach(function (k) {
         var h = hubs[k];
         if (h.kind === 'int' && h.dv.length <= small) {
@@ -423,11 +613,15 @@
     }
 
     _layout() {
-      var hubs = this._hubs, C = { x: 0, y: 0 };
+      var hubs = this._hubs, C = { x: 0, y: 0 }, me = this;
       hubs.forEach(function (h) {
         h.dv.forEach(function (d) { d.rx = null; d.ry = null; });
         // devices that reach the hub through a mesh router are drawn next to that router
-        var top = h.dv.filter(function (d) { return !d.meshParent || h.dv.indexOf(d.meshParent) < 0; }), i = 0, ring = 0; h.outer = 30;
+        // small meshes are drawn as a tree (children next to their router); big ones stay on rings, ordered by router
+        h.tree = h.dv.length <= 30;
+        var top = h.tree ? h.dv.filter(function (d) { return !d.meshParent || h.dv.indexOf(d.meshParent) < 0; })
+          : h.dv.slice().sort(function (x, y) { var px = x.meshParent ? x.meshParent.n : (x.router ? x.n : ''), py = y.meshParent ? y.meshParent.n : (y.router ? y.n : ''); return px === py ? (x.router ? -1 : 0) - (y.router ? -1 : 0) : (px < py ? -1 : 1); });
+        var i = 0, ring = 0; h.outer = 30;
         while (i < top.length) {
           var rad = 34 + ring * 15, cap = Math.floor(2 * Math.PI * rad / 15), n = Math.min(cap, top.length - i);
           top.slice(i, i + n).forEach(function (d, k) { var a = -Math.PI / 2 + (k / n) * 2 * Math.PI + ring * 0.2; d.ang = a; d.rx = rad * Math.cos(a); d.ry = rad * Math.sin(a); });
@@ -460,11 +654,17 @@
       var start = -90 - (spans.cloud || 0) / 2, mnodes = {};
       present.forEach(function (m) {
         var span = spans[m], g = groups[m];
-        var R = Math.max(250, g.w / deg(span));
+        var maxOuter = g.reduce(function (s, h) { return Math.max(s, h.outer); }, 0);
+        var R = Math.max(250, g.w / deg(span), 215 + maxOuter); // never closer to the centre than the medium node + the biggest cluster
         var totalDeg = g.w / R * 180 / Math.PI, scale = Math.min(1, span / totalDeg);
         var a = start + (span - totalDeg * scale) / 2, mid = start + span / 2;
         // centre the heaviest hubs in the sector, smaller ones towards the edges
-        var arranged = []; g.forEach(function (h, i) { if (i % 2) arranged.push(h); else arranged.unshift(h); });
+        var arranged = [];
+        if (m === 'local' && me._routers && me._routers.length > 1) {
+          // keep hubs that use the same access point next to each other (the AP is then placed among them)
+          var apOf = function (h) { var c = me._hubConn(h); return c && c.via ? c.via : ''; };
+          arranged = g.slice().sort(function (x, y) { var kx = apOf(x), ky = apOf(y); return kx === ky ? y.dv.length - x.dv.length : (kx < ky ? -1 : 1); });
+        } else g.forEach(function (h, i) { if (i % 2) arranged.push(h); else arranged.unshift(h); });
         arranged.forEach(function (h) {
           var aw = h.w / R * 180 / Math.PI * scale;
           var ac = a + aw / 2; a += aw;
@@ -480,9 +680,13 @@
       var self = this; this._rnodes = {};
       if (this._router && mnodes.local) {
         this._rnodes[this._router.n] = mnodes.local;
-        (this._routers || []).filter(function (r) { return r !== self._router; }).forEach(function (r, i) {
-          var a = mnodes.local.ac + (i % 2 ? -1 : 1) * (44 + Math.floor(i / 2) * 20);
-          self._rnodes[r.n] = { x: 215 * Math.cos(deg(a)), y: 215 * Math.sin(deg(a)), r: 20, ac: a, router: r };
+        (this._routers || []).filter(function (r) { return r !== self._router; }).slice(0, 6).forEach(function (r, i) {
+          var hs = hubs.filter(function (h) { if (h.m !== 'local') return false; var c = self._hubConn(h); return c && c.via === r.n; });
+          var a = hs.length ? hs.reduce(function (s, h) { return s + h.ac; }, 0) / hs.length : mnodes.local.ac + (i % 2 ? -1 : 1) * (44 + Math.floor(i / 2) * 20);
+          // sit between the main router and its hubs, clear of the hubs' device rings
+          var rad = 215; hs.forEach(function (h) { rad = Math.min(rad, Math.sqrt(h.x * h.x + h.y * h.y) - h.outer - 34); });
+          rad = Math.max(rad, 175);
+          self._rnodes[r.n] = { x: rad * Math.cos(deg(a)), y: rad * Math.sin(deg(a)), r: 20, ac: a, router: r };
         });
       }
       var minX = -110, minY = -110, maxX = 110, maxY = 110;
@@ -521,19 +725,19 @@
         if (sub) { var b = document.createElementNS(NS, 'tspan'); b.setAttribute('class', 'sub'); b.setAttribute('x', x); b.setAttribute('dy', '1.3em'); b.textContent = sub; tx.appendChild(b); }
         return tx;
       }
-      function short(c) { return c ? (c.wired ? t('cable') : (c.iface ? c.iface.replace(/\s*GHz/i, ' GHz') : t('wifi'))) : ''; }
+      function short(c) { return c ? (c.wired ? t('cable') : c.wifi ? (c.iface || t('wifi')) : '') : ''; }
       // a moving dash on top of every link: data flowing towards Home Assistant (x1 is always the side closer to the centre)
       var first = !this._entered, anim = this._cfg.animations !== false;
       function flow(x1, y1, x2, y2, col) { if (anim) el('line', { x1: x1, y1: y1, x2: x2, y2: y2, 'class': 'flow', stroke: col }, gE); }
       Object.keys(this._mnodes).forEach(function (m) {
         var n = self._mnodes[m], c = m === 'local' ? self._conn(self._haTrk) : null;
-        n.edge = el('line', { x1: 0, y1: 0, x2: n.x, y2: n.y, 'class': 'edge' + (c && !c.wired ? ' wifi' : ''), stroke: M[m], 'stroke-dasharray': m === 'cloud' ? '6 6' : '' }, gE);
+        n.edge = el('line', { x1: 0, y1: 0, x2: n.x, y2: n.y, 'class': 'edge' + (c && c.wifi ? ' wifi' : ''), stroke: M[m], 'stroke-dasharray': m === 'cloud' ? '6 6' : '' }, gE);
         flow(0, 0, n.x, n.y, M[m]);
         if (c) lbl(0, 0, n.x, n.y, short(c));
       });
       Object.keys(this._rnodes || {}).forEach(function (k) {
         var n = self._rnodes[k]; if (!n.router) return; var p = self._mnodes.local, c = self._conn(n.router.trk);
-        n.edge = el('line', { x1: p.x, y1: p.y, x2: n.x, y2: n.y, 'class': 'edge' + (c && !c.wired ? ' wifi' : ''), stroke: M.local }, gE);
+        n.edge = el('line', { x1: p.x, y1: p.y, x2: n.x, y2: n.y, 'class': 'edge' + (c && c.wifi ? ' wifi' : ''), stroke: M.local }, gE);
         flow(p.x, p.y, n.x, n.y, M.local);
         if (c) lbl(p.x, p.y, n.x, n.y, short(c), 0.62);
       });
@@ -541,13 +745,14 @@
         var n = self._mnodes[h.m], c = null;
         if (h.m === 'local') { c = self._hubConn(h); if (c && c.via && self._rnodes[c.via]) n = self._rnodes[c.via]; }
         h.from = n;
-        h.edge = el('line', { x1: n.x, y1: n.y, x2: h.x, y2: h.y, 'class': 'edge' + (c && !c.wired ? ' wifi' : ''), stroke: M[h.m], 'stroke-dasharray': h.m === 'cloud' ? '6 6' : '' }, gE);
+        h.edge = el('line', { x1: n.x, y1: n.y, x2: h.x, y2: h.y, 'class': 'edge' + (c && c.wifi ? ' wifi' : ''), stroke: M[h.m], 'stroke-dasharray': h.m === 'cloud' ? '6 6' : '' }, gE);
         flow(n.x, n.y, h.x, h.y, M[h.m]);
         if (c && h.trk) lbl(n.x, n.y, h.x, h.y, short(c));
       });
       this._devs.forEach(function (d, i) {
-        var from = d.meshParent && d.meshParent.x != null ? d.meshParent : d.hub;
-        d.spoke = el('line', { x1: from.x, y1: from.y, x2: d.x, y2: d.y, 'class': 'spoke' + (d.meshParent ? ' meshl' : '') }, gS);
+        var tree = d.meshParent && d.meshParent.x != null && d.hub.tree;
+        var from = tree ? d.meshParent : d.hub;
+        d.spoke = el('line', { x1: from.x, y1: from.y, x2: d.x, y2: d.y, 'class': 'spoke' + (tree ? ' meshl' : '') }, gS);
         var g = el('g', { 'class': 'dev' + (first ? ' enter' : ''), tabindex: 0, role: 'button', 'aria-label': d.n, style: first ? 'animation-delay:' + Math.min(1100, 250 + i * 6) + 'ms' : '' }, gD);
         if (d.router) el('circle', { cx: d.x, cy: d.y, r: 10, fill: 'none', stroke: M[d.hub.m], 'stroke-width': 1.6, 'class': 'rring' }, g);
         el('circle', { cx: d.x, cy: d.y, r: 6.2, fill: M[d.hub.m] }, g); d.g = g;
@@ -709,7 +914,7 @@
       } else {
         if (d.hub.kind === 'hub') r.push(d.hub.n);
         var c = this._conn(d.trk) || (d.hub.kind === 'hub' ? this._conn(d.hub.trk) : null);
-        var hop = c && c.via ? c.via + ' (' + this._ifaceText(c) + ')' : null;
+        var how = this._ifaceText(c), hop = c && c.via ? c.via + (how ? ' (' + how + ')' : '') : null;
         if (m === 'cloud') {
           if (hop) r.push(hop);
           r.push(d.via || this._intName(d.p)); r.push(t('cloud'));
@@ -776,7 +981,7 @@
       if (h.m === 'radio' && this._mesh) desc += ' ' + t('meshNote');
       this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M[h.m] + '">' + esc(t(h.m)) + (h.kind === 'hub' ? ' · ' + esc(t('hub')) : '') + '</div><h2>' + esc(h.n) + '</h2>' + this._route(route) + '<p>' + esc(desc) + '</p>' +
         '<dl class="kv"><dt>' + esc(t('devices')) + '</dt><dd>' + h.dv.length + '</dd>' + (off ? '<dt>' + esc(t('offline')) + '</dt><dd class="off">' + off + '</dd>' : '') +
-        (function () { var c = self._conn(h.trk); return c && c.via ? '<dt>' + esc(t('network')) + '</dt><dd>' + esc(c.via + ' · ' + self._ifaceText(c)) + '</dd>' + (c.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(c.ip) + '</dd>' : '') : ''; })() + '</dl>' +
+        (function () { var c = self._conn(h.trk); return c && c.via ? '<dt>' + esc(t('network')) + '</dt><dd>' + esc([c.via, self._ifaceText(c)].filter(Boolean).join(' · ')) + '</dd>' + (c.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(c.ip) + '</dd>' : '') : ''; })() + '</dl>' +
         '<div class="list">' + list.map(function (d) { return self._item(d); }).join('') + '</div><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
       this._bind();
     }
@@ -789,7 +994,11 @@
         extra = '<p>' + esc(t('infraLocal')) + '</p><div class="eyebrow" style="color:var(--cm-muted)">' + esc(this._intName(this._router.p)) + '</div><div class="list">' +
           this._routers.map(function (r) { return '<div class="item"><i style="' + (r.off ? 'border:2px solid var(--cm-bad)' : 'background:' + self._M.local) + '"></i><span class="nm">' + esc(r.n) + '</span><small class="' + (r.off ? 'off' : '') + '">' + esc(r.off ? t('offline') : t('online')) + '</small></div>'; }).join('') + '</div>';
       }
-      if (m === 'radio' && this._coord) extra = '<p>' + esc(t('infraRadio')) + '</p>';
+      if (m === 'radio' && this._coord) {
+        var ci = this._coordInfo;
+        extra = '<p>' + esc(t('infraRadio')) + '</p>' + (ci ? '<dl class="kv">' + (ci.type ? '<dt>' + esc(t('coordinator')) + '</dt><dd>' + esc(ci.type) + '</dd>' : '') +
+          (ci.fw ? '<dt>Firmware</dt><dd>' + esc(ci.fw) + '</dd>' : '') + (ci.port ? '<dt>Port</dt><dd style="word-break:break-all">' + esc(ci.port) + '</dd>' : '') + '</dl>' : '');
+      }
       this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M[m] + '">' + esc(t(m)) + '</div><h2>' + esc(this._mname(m)) + '</h2>' + extra + '<div class="list">' +
         hs.map(function (h) { return '<button class="item" data-hub="' + esc(h.key) + '"><i style="background:' + self._M[h.m] + '"></i><span class="nm">' + esc(h.n) + '</span><small>' + h.dv.length + '</small></button>'; }).join('') +
         '</div><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
@@ -807,12 +1016,13 @@
         (d.lqi != null ? '<dt>' + esc(t('signal')) + '</dt><dd>' + d.lqi + ' / 255</dd>' : '') +
         (function () {
           var c = self._conn(d.trk), own = !!c; if (!c && h.kind === 'hub') c = self._conn(h.trk); if (!c || !c.via) return '';
-          return '<dt>' + esc(t('network')) + '</dt><dd>' + esc((own ? '' : h.n + ' → ') + c.via + ' · ' + self._ifaceText(c)) + '</dd>' + (own && c.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(c.ip) + '</dd>' : '');
+          return '<dt>' + esc(t('network')) + '</dt><dd>' + esc((own ? '' : h.n + ' → ') + [c.via, self._ifaceText(c)].filter(Boolean).join(' · ')) + '</dd>' + (own && c.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(c.ip) + '</dd>' : '');
         })() + '</dl>' +
         '<div class="eyebrow" style="color:var(--cm-muted)">' + esc(t('path')) + '</div>' + this._route(this._pathOf(d)) +
         '<button class="btn" id="open">' + esc(t('open')) + '</button><button class="btn" id="hubb">' + esc(t('seeAll')) + ' ' + esc(h.n) + '</button><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
       this._bind();
       this._$('panel').querySelector('#open').onclick = function () {
+        if (self._hass.demo) return;
         history.pushState(null, '', '/config/devices/device/' + d.id);
         window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
       };
@@ -829,7 +1039,7 @@
           (h.disk && h.disk[1] ? '<dt>' + esc(t('disk')) + '</dt><dd>' + h.disk[0] + ' / ' + h.disk[1] + ' GB</dd>' : '');
       }
       var hc = this._conn(this._haTrk);
-      if (hc && hc.via) rows += '<dt>' + esc(t('network')) + '</dt><dd>' + esc(hc.via + ' · ' + this._ifaceText(hc)) + '</dd>' + (hc.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(hc.ip) + '</dd>' : '');
+      if (hc && hc.via) rows += '<dt>' + esc(t('network')) + '</dt><dd>' + esc([hc.via, this._ifaceText(hc)].filter(Boolean).join(' · ')) + '</dd>' + (hc.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(hc.ip) + '</dd>' : '');
       this._$('panel').innerHTML = '<div class="eyebrow" style="color:var(--cm-core)">' + esc(t('host')) + '</div><h2>Home Assistant</h2><p>' + esc(t('coreDesc')) + '</p><dl class="kv">' + rows + '</dl><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
       this._bind();
     }
