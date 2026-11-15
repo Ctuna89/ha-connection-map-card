@@ -1,0 +1,47 @@
+name: Release
+
+# Publishes a GitHub release when the version in the card has no tag yet. HACS only offers versions
+# that exist as a release, and the manual install downloads the card from the latest one.
+# The release notes are that version's section of CHANGELOG.md.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ha-connection-map-card.js
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the version from the card
+        id: version
+        run: |
+          version=$(sed -n "s/^ *var VERSION = '\([^']*\)';.*/\1/p" ha-connection-map-card.js | head -1)
+          test -n "$version"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Create the release if it does not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; nothing to do."
+            exit 0
+          fi
+          # this version's section of the changelog, without its heading
+          awk -v v="$VERSION" '/^## /{ on = (index($0, "## " v) == 1); next } on' CHANGELOG.md > notes.md
+          if [ -s notes.md ]; then
+            gh release create "$TAG" ha-connection-map-card.js --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" ha-connection-map-card.js --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+          fi
