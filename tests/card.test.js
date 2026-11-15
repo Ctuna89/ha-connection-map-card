@@ -107,3 +107,69 @@ test('the visual editor writes the option, and removes it again at its default',
   assert.deepEqual(out, { demo: 'unifi', sizes: { device: 8 }, colors: { cloud: '#ff0066' } });
   await page.close();
 });
+
+test('compact map: one bubble per hub, same rules, offline devices counted on the bubble', async () => {
+  for (const demo of ['unifi', 'large']) {
+    const page = await H.newPage(browser);
+    await H.mountDemo(page, { demo, layout: 'compact' });
+    assert.deepEqual(await H.linkProblems(page), [], demo);
+    assert.deepEqual(await H.labelProblems(page), [], demo);
+    const r = await page.evaluate(() => { const c = window.card, svg = c.shadowRoot.querySelector('svg');
+      return { dots: svg.querySelectorAll('.dev').length, hubs: svg.querySelectorAll('.hub').length, model: c._hubs.length,
+        badges: c._hubs.filter((h) => h.badge && h.badge.parentNode.style.display !== 'none').map((h) => +h.badge.textContent).reduce((a, b) => a + b, 0), off: c._devs.filter((d) => d.off).length }; });
+    assert.equal(r.dots, 0); assert.equal(r.hubs, r.model); assert.equal(r.badges, r.off); assert.ok(r.off > 0);
+    // the button on the map switches back to the detailed map
+    await page.evaluate(() => window.card.shadowRoot.getElementById('zlay').click());
+    assert.ok(await page.evaluate(() => window.card.shadowRoot.querySelectorAll('svg .dev').length) > 20);
+    assert.deepEqual(await H.linkProblems(page), [], demo + ' after switching back');
+    await page.close();
+  }
+});
+
+test('the map can be saved as an image, and without names it gives nothing away', async () => {
+  const page = await H.newPage(browser);
+  await H.mountDemo(page, { demo: 'unifi' });
+  await page.evaluate(() => { const h = window.card._hubs.find((x) => x.n === 'Hue Bridge'); window.card._zoom(0.4, h.x, h.y); }); await page.waitForTimeout(600); // zoomed in on the Hue hub: its lamps' names are on screen
+  const r = await page.evaluate(async () => { const c = window.card; return { anon: c._exportSvg(true).text, full: c._exportSvg(false).text, png: await c._export(true) }; });
+  for (const name of ['Hue Bridge', 'UDM Pro', 'AP Office', 'ESP32 Bluetooth proxy', 'Hue lamp', 'KVM', '2026.11.1', 'ha-thread-1a2b']) {
+    assert.ok(r.full.includes(name), 'the image with names shows ' + name);
+    assert.ok(!r.anon.includes(name), 'the image without names must not show ' + name);
+  }
+  for (const alias of ['Router', 'AP 1', 'Hub 1', 'Philips Hue']) assert.ok(r.anon.includes(alias), 'expected ' + alias);
+  assert.ok(r.png && r.png.bytes > 20000 && r.png.w > 1000, 'a PNG was produced: ' + JSON.stringify(r.png));
+  await page.close();
+});
+
+test('Netgear / Orbi: clients are placed behind the satellite named by their access point sensor', async () => {
+  const page = await H.newPage(browser);
+  await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {};
+    const dev = (id, name, mac, via) => { devices[id] = { id, name, via_device_id: via || null, connections: mac ? [['mac', mac]] : [], identifiers: [], disabled_by: null, area_id: null }; };
+    const ent = (eid, device_id, platform, state, attributes, translation_key) => { entities[eid] = { entity_id: eid, device_id, platform, translation_key }; states[eid] = { entity_id: eid, state, attributes: attributes || {} }; };
+    dev('router', 'Orbi Router', 'aa:00:00:00:00:01'); ent('sensor.orbi_router_uptime', 'router', 'netgear', '5'); ent('switch.orbi_router_x', 'router', 'netgear', 'on');
+    dev('sat', 'Orbi Satellite', 'aa:00:00:00:00:02', 'router'); ent('device_tracker.orbi_satellite', 'sat', 'netgear', 'home', { mac: 'aa:00:00:00:00:02' }); ent('sensor.orbi_satellite_ssid', 'sat', 'netgear', 'backhaul', {}, 'ssid');
+    // a laptop that only Netgear knows: a plain client, not a network node
+    dev('laptop', 'Laptop', 'aa:00:00:00:00:09', 'router'); ent('device_tracker.laptop', 'laptop', 'netgear', 'home', { mac: 'aa:00:00:00:00:09' }); ent('sensor.laptop_ssid', 'laptop', 'netgear', 'Home', {}, 'ssid');
+    // four plugs from another integration; Netgear adds its tracker and sensors to the same devices
+    for (let i = 0; i < 4; i++) { const id = 'plug' + i, mac = 'aa:00:00:00:01:0' + i, onSat = i < 3;
+      dev(id, 'Plug ' + i, mac, 'router'); ent('switch.plug_' + i, id, 'shelly', 'on'); ent('sensor.plug_' + i + '_power', id, 'shelly', '3'); ent('sensor.plug_' + i + '_energy', id, 'shelly', '3'); ent('sensor.plug_' + i + '_temp', id, 'shelly', '3');
+      ent('device_tracker.plug_' + i, id, 'netgear', 'home', { mac });
+      ent('sensor.plug_' + i + '_access_point_mac', id, 'netgear', onSat ? 'AA:00:00:00:00:02' : 'AA:00:00:00:00:01', {}, 'access_point_mac');
+      ent('sensor.plug_' + i + '_link_type', id, 'netgear', onSat ? '2.4GHz' : 'wired', {}, 'link_type'); }
+    const man = [{ domain: 'netgear', name: 'NETGEAR', iot_class: 'local_polling' }, { domain: 'shelly', name: 'Shelly', iot_class: 'local_push' }];
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false, group_small: 0 }); document.getElementById('host').appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+  });
+  const r = await page.evaluate(() => { const c = window.card; return { routers: c._routers.map((x) => x.n).sort(), main: c._router.n, drawn: c._devs.map((d) => d.n).sort(), hubs: c._hubs.map((h) => h.n),
+    sat: c._pathOf(c._devs.find((d) => d.n === 'Plug 0')).join(' > '), wired: c._pathOf(c._devs.find((d) => d.n === 'Plug 3')).join(' > '), node: !!c._rnodes['Orbi Satellite'], from: c._hubs[0].from === c._rnodes['Orbi Satellite'] }; });
+  assert.deepEqual(r.routers, ['Orbi Router', 'Orbi Satellite']);
+  assert.equal(r.main, 'Orbi Router');
+  assert.deepEqual(r.drawn, ['Plug 0', 'Plug 1', 'Plug 2', 'Plug 3'], 'the laptop is a client, not a device of the map');
+  assert.deepEqual(r.hubs, ['Shelly'], 'being "via the router" does not make the router a hub');
+  assert.equal(r.sat, 'Plug 0 > Shelly > Orbi Satellite (Wi-Fi 2.4 GHz) > Orbi Router > Home Assistant');
+  assert.equal(r.wired, 'Plug 3 > Shelly > Orbi Router (Ethernet) > Home Assistant');
+  assert.ok(r.node && r.from, 'the satellite is drawn, and the Shelly group (mostly on it) hangs from it');
+  assert.deepEqual(await H.linkProblems(page), []);
+  await page.close();
+});

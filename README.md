@@ -26,6 +26,8 @@ Most network maps show one protocol at a time. This card draws all of them in on
 - **More detail as you zoom in.** Once the dots are far enough apart on screen, the devices in view show their names next to them.
 - **Overview map.** When part of the map is outside the view (because of the zoom, or on a phone), a small overview appears in the corner with the visible part marked. Click or drag on it to move. It disappears when the whole map fits.
 - **Visual editor.** Colours, line styles and width, the size of each level of bubbles and what is shown can be changed from the card editor, with a live preview.
+- **Compact map.** For big homes, `layout: compact` (or the ◎ button on the map) draws one bubble per hub or integration with its number of devices, and a red counter for the ones that are offline. The devices are in the side panel.
+- **Save as an image.** The ⤓ button saves what is on screen as a PNG, with or without names. Without names, hubs, routers, access points and devices are numbered and the version, host and Thread network name are left out, so the image can be posted anywhere.
 - **Click to explore.** Tap a device to see its full path, for example `Bedroom lamp → Hue Bridge → Philips Hue → Local network → Home Assistant`, and open its device page.
 - **Filter and search** by connection type, area, name or model, or show only offline devices.
 - **Zoom and pan** with the mouse wheel, by dragging, or with the buttons. Labels keep the same size on screen at any zoom level. A label is never drawn over a node or over another label: it moves to a free side of its node, and if there is no room at the current zoom it is hidden until you zoom in.
@@ -85,6 +87,8 @@ views:
 | `core_size` | string | `large` | `compact` is a shortcut for `sizes.core: 28`. |
 | `mqtt_entities` | boolean | `true` | Show MQTT entities that have no device (entities written by hand in YAML without a `device` block), one dot per entity. |
 | `recent_hours` | number | `24` | How long a battery device that stopped answering counts as *seen recently* (yellow) before it is shown as offline (red). `0` turns it off. The time is taken from when its entities became unavailable, so after a Home Assistant restart it counts from the restart. |
+| `layout` | string | `detailed` | `detailed` draws every device as a dot; `compact` draws one bubble per hub or integration. The ◎ button on the map switches between them without changing the configuration. |
+| `show_export` | boolean | `true` | Show the button that saves the map as an image. |
 | `show_panel` | boolean | `true` | Show the side panel with the summary and details. |
 | `animations` | boolean | `true` | Animated data flow, pop-in and hover effects. |
 | `language` | string | HA language | Force the card language: `en` or `es`. |
@@ -156,6 +160,7 @@ The card reads the attributes that router integrations put on their `device_trac
 | Huawei Mesh Router (HACS) | `connected_via` | `interface_type` | yes | Tested |
 | UniFi Network | `ap_mac` → AP device | wired clients have no `essid` | `radio` (ng / na / 6e) | Untested on real hardware |
 | AVM FRITZ!Box Tools | `connected_to` | `connection_type` (LAN / WLAN) | no | Untested on real hardware |
+| NETGEAR / Orbi | *Access point MAC* sensor of each client (disabled by default: enable it) | *Link type* sensor (also disabled by default) | from the link type | Untested on real hardware |
 | TP-Link Omada, ASUSWRT, OpenWrt (luci / ubus), Nmap, Ping | — | — | — | Routers and APs appear in the local node; clients are not linked to an AP because these integrations don't report it |
 
 Host details and the Zigbee mesh need an admin user; for other users the card simply skips them.
