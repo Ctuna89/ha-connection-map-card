@@ -21,7 +21,7 @@ Most network maps show one protocol at a time. This card draws all of them in on
 - **Motion.** Small dots travel along every link towards Home Assistant, devices pop in when the map loads, and the selected path speeds up. It respects the system's reduced-motion setting and can be turned off with `animations: false`.
 - **Click to explore.** Tap a device to see its full path, for example `Bedroom lamp → Hue Bridge → Philips Hue → Local network → Home Assistant`, and open its device page.
 - **Filter and search** by connection type, area, name or model, or show only offline devices.
-- **Zoom and pan** with the mouse wheel, by dragging, or with the buttons. Labels keep the same size on screen at any zoom level.
+- **Zoom and pan** with the mouse wheel, by dragging, or with the buttons. Labels keep the same size on screen at any zoom level. A label is never drawn over a node or over another label: it moves to a free side of its node, and if there is no room at the current zoom it is hidden until you zoom in.
 - **Phone friendly.** On narrow screens the map is taller and starts zoomed in on Home Assistant, and a tap selects the nearest device or hub, so you don't have to hit tiny dots.
 - Follows your Home Assistant theme, including dark mode.
 - English and Spanish built in.

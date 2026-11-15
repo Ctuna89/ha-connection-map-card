@@ -741,15 +741,19 @@
       var gE = el('g'), gS = el('g'), gN = el('g'), gH = el('g'), gD = el('g');
       this._edges = [];
       var core = { x: 0, y: 0 };
+      // Labels keep their size on screen, so how much room they need depends on the zoom: every label is registered here
+      // and _declutter() moves or hides the ones that would be drawn over a node or over another label.
+      var labs = this._labs = [], elabs = this._elabs = [], obst = this._obst = [];
       // link labels sit at ~40% of the way out, away from the crowded node at either end
-      function lbl(x1, y1, x2, y2, txt, f) { if (!txt) return; f = f || 0.42; var e = el('text', { x: x1 + (x2 - x1) * f, y: y1 + (y2 - y1) * f, 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'class': 'elbl' }, gE); e.textContent = txt; }
-      // two-line node label (name + subtitle) that grows away from the node, whatever the text size
-      function tlabel(g, x, y, below, name, sub, small) {
-        var tx = el('text', { x: x, y: y, 'text-anchor': 'middle', 'class': 'tl' + (below ? ' below' : '') }, g);
-        var a = document.createElementNS(NS, 'tspan'); a.setAttribute('class', 'lbl' + (small ? ' small' : '')); a.setAttribute('x', x);
-        if (!below && sub) a.setAttribute('dy', '-1.15em');
+      function lbl(x1, y1, x2, y2, txt, f) { if (!txt) return; f = f || 0.42; var e = el('text', { 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'class': 'elbl' }, gE); e.textContent = txt; elabs.push({ e: e, x1: x1, y1: y1, x2: x2, y2: y2, f: f }); }
+      // two-line node label (name + subtitle) next to a node of radius rad; pri: lower numbers get their place first
+      function tlabel(g, cx, cy, rad, below, name, sub, small, pri) {
+        var tx = el('text', { 'text-anchor': 'middle', 'class': 'tl' }, g);
+        var a = document.createElementNS(NS, 'tspan'); a.setAttribute('class', 'lbl' + (small ? ' small' : ''));
         a.textContent = name; tx.appendChild(a);
-        if (sub) { var b = document.createElementNS(NS, 'tspan'); b.setAttribute('class', 'sub'); b.setAttribute('x', x); b.setAttribute('dy', '1.3em'); b.textContent = sub; tx.appendChild(b); }
+        var b = null;
+        if (sub) { b = document.createElementNS(NS, 'tspan'); b.setAttribute('class', 'sub'); b.setAttribute('dy', '1.3em'); b.textContent = sub; tx.appendChild(b); }
+        labs.push({ tx: tx, a: a, b: b, cx: cx, cy: cy, rad: rad, below: below, pri: pri || 0 });
         return tx;
       }
       function short(c) { return c ? (c.wired ? t('cable') : c.wifi ? (c.iface || t('wifi')) : '') : ''; }
@@ -808,7 +812,8 @@
         var name = self._mname(m), sub = t(m + 'Sub');
         if (m === 'local' && self._router) sub = self._intName(self._router.p) + (self._routers.length > 1 ? ' · ' + self._routers.length + ' ' + t('meshNodes') : '');
         if (m === 'radio' && self._coord) sub = t('coordinator');
-        tlabel(g, n.x, below ? n.y + n.r + 7 : n.y - n.r - 9, below, name.length > 30 ? name.slice(0, 29) + '…' : name, sub);
+        tlabel(g, n.x, n.y, n.r + 2, below, name.length > 30 ? name.slice(0, 29) + '…' : name, sub, false, 0);
+        obst.push({ x: n.x, y: n.y, r: n.r + 2 });
         g.addEventListener('click', function (e) { e.stopPropagation(); if (m === 'local' && self._router) self._selRouter(self._router); else self._selMedium(m); });
       });
       Object.keys(this._rnodes || {}).forEach(function (k) {
@@ -817,7 +822,8 @@
         el('circle', { cx: n.x, cy: n.y, r: n.r, 'class': 'disc', stroke: r.off ? 'var(--cm-bad)' : M.local }, g);
         var ic = el('text', { x: n.x, y: n.y + 4, 'text-anchor': 'middle', style: 'font-size:9.5px;font-weight:700;fill:' + M.local }, g); ic.textContent = 'AP';
         var below = Math.sin(deg(n.ac)) >= 0;
-        tlabel(g, n.x, below ? n.y + n.r + 6 : n.y - n.r - 8, below, r.n, '', true);
+        tlabel(g, n.x, n.y, n.r + 2, below, r.n, '', true, 1);
+        obst.push({ x: n.x, y: n.y, r: n.r + 2 });
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selRouter(r); });
       });
       this._hubs.forEach(function (h, i) {
@@ -825,12 +831,15 @@
         el('circle', { cx: h.x, cy: h.y, r: 22, 'class': 'disc', stroke: M[h.m] }, g);
         var c = el('text', { x: h.x, y: h.y + 5, 'text-anchor': 'middle', style: 'font-size:13px;font-weight:700;fill:' + M[h.m] }, g); c.textContent = h.dv.length;
         var below = Math.sin(deg(h.ac)) > -0.35;
-        tlabel(g, h.x, below ? h.y + h.outer + 8 : h.y - h.outer - 9, below, h.n.length > 26 ? h.n.slice(0, 25) + '…' : h.n, h.kind === 'hub' ? h.sub : '');
+        tlabel(g, h.x, h.y, h.outer + 7, below, h.n.length > 26 ? h.n.slice(0, 25) + '…' : h.n, h.kind === 'hub' ? h.sub : '', false, 2 + i / 1000);
+        obst.push({ x: h.x, y: h.y, r: h.outer + 7 });
         h.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selHub(h); });
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selHub(h); });
       });
+      obst.push({ x: 0, y: 0, r: small ? 30 : 58 });
       if (first) this._fit(); else this._setVB();
+      this._declutter();
       this._entered = true;
       this._wire();
       this._filters();
@@ -870,6 +879,11 @@
       var v = this._vb, svg = this._$('svg'); svg.setAttribute('viewBox', v.x + ' ' + v.y + ' ' + v.w + ' ' + v.h);
       var r = svg.getBoundingClientRect(), k = r.width && v.w ? Math.min(r.width / v.w, (r.height || r.width) / v.h) : 1;
       this._k = k || 1; svg.style.setProperty('--k', this._k.toFixed(4));
+      // labels change size relative to the map when the zoom changes: place them again
+      if (this._labs && Math.abs(this._k - (this._dk || 0)) > this._k * 0.02 && !this._dq) {
+        var self = this; this._dq = true;
+        requestAnimationFrame(function () { self._dq = false; self._declutter(); });
+      }
     }
     // narrow screens: taller map, starting zoomed in on Home Assistant so labels and dots are usable
     _fit() {
@@ -879,6 +893,54 @@
         var w = v0.w * 0.58, h = w * H / W; this._vb = { x: -w / 2, y: -h / 2 + 30, w: w, h: h };
       } else { svg.style.height = ''; this._vb = Object.assign({}, v0); }
       this._setVB();
+    }
+    // No label may be drawn over a node or over another label. Node labels try below / above / right / left of their node,
+    // then the same without the subtitle; link labels slide along their link. A label with no free place is hidden
+    // (the name is still in the tooltip and in the side panel) and comes back when zooming in makes room.
+    _declutter() {
+      var k = this._k || 1, pad = 2 / k, obst = this._obst || [], placed = [];
+      this._dk = k;
+      function box(e) { var b; try { b = e.getBBox(); } catch (err) { return null; } return b && b.width ? { x0: b.x - pad, y0: b.y - pad, x1: b.x + b.width + pad, y1: b.y + b.height + pad } : null; }
+      function free(r) {
+        if (!r) return false;
+        for (var i = 0; i < obst.length; i++) {
+          var o = obst[i], dx = o.x - Math.max(r.x0, Math.min(o.x, r.x1)), dy = o.y - Math.max(r.y0, Math.min(o.y, r.y1));
+          if (dx * dx + dy * dy < o.r * o.r) return false;
+        }
+        for (var j = 0; j < placed.length; j++) { var p = placed[j]; if (r.x0 < p.x1 && r.x1 > p.x0 && r.y0 < p.y1 && r.y1 > p.y0) return false; }
+        return true;
+      }
+      // mode: two letters, vertical (b below, a above, m middle) and horizontal (c centred, r right, l left)
+      function put(L, mode, sub) {
+        var v = mode[0], h = mode[1], gap = 6 / k, d = v !== 'm' && h !== 'c' ? 0.72 : 1, off = (L.rad + gap) * d;
+        var x = h === 'r' ? L.cx + off : h === 'l' ? L.cx - off : L.cx;
+        var y = v === 'b' ? L.cy + off : v === 'a' ? L.cy - off : L.cy;
+        L.tx.setAttribute('class', 'tl' + (v === 'b' ? ' below' : ''));
+        L.tx.setAttribute('text-anchor', h === 'r' ? 'start' : h === 'l' ? 'end' : 'middle');
+        L.tx.setAttribute('x', x); L.tx.setAttribute('y', y); L.a.setAttribute('x', x);
+        var dy = v === 'a' ? (sub ? '-1.3em' : '') : v === 'm' ? (sub ? '-.3em' : '.35em') : '';
+        if (dy) L.a.setAttribute('dy', dy); else L.a.removeAttribute('dy');
+        if (L.b) { L.b.setAttribute('x', x); L.b.style.display = sub ? '' : 'none'; }
+      }
+      (this._labs || []).slice().sort(function (a, b) { return a.pri - b.pri; }).forEach(function (L) {
+        L.tx.style.display = '';
+        var modes = L.below ? ['bc', 'ac', 'mr', 'ml', 'br', 'bl', 'ar', 'al'] : ['ac', 'bc', 'mr', 'ml', 'ar', 'al', 'br', 'bl'], r = null;
+        [true, false].forEach(function (sub) {
+          if (r || (!sub && !L.b)) return;
+          modes.forEach(function (m) { if (r) return; put(L, m, sub && !!L.b); var b = box(L.tx); if (free(b)) r = b; });
+        });
+        if (r) placed.push(r); else L.tx.style.display = 'none';
+      });
+      (this._elabs || []).forEach(function (E) {
+        E.e.style.display = '';
+        var r = null;
+        [E.f, 0.5, 0.35, 0.6, 0.28, 0.7, 0.8].forEach(function (f) {
+          if (r) return;
+          E.e.setAttribute('x', E.x1 + (E.x2 - E.x1) * f); E.e.setAttribute('y', E.y1 + (E.y2 - E.y1) * f);
+          var b = box(E.e); if (free(b)) r = b;
+        });
+        if (r) placed.push(r); else E.e.style.display = 'none';
+      });
     }
     _zoom(f, cx, cy) {
       var v = this._vb; if (cx == null) { cx = v.x + v.w / 2; cy = v.y + v.h / 2; }
