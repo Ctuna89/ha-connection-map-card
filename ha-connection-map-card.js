@@ -8,13 +8,13 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.7.4';
+  var VERSION = '0.7.5';
 
   var STR = {
     en: {
       title: 'Connection map', loading: 'Loading devices…', cloud: 'Internet', local: 'Local network', radio: 'Local radio',
       cloudSub: 'Cloud integrations', localSub: 'LAN / Wi-Fi', radioSub: 'Zigbee · Z-Wave',
-      offline: 'Offline', search: 'Search device, model or area…', allAreas: 'All areas', onlyOffline: 'Offline only',
+      offline: 'Offline', search: 'Search device, model or area…', allAreas: 'All areas', onlyOffline: 'Offline only', onlyPhysical: 'Physical only', onlyPhysicalTip: 'Hide accounts, online services and loose sensors: only things you can touch',
       summary: 'Summary', devices: 'devices', found: 'devices found', none: 'Nothing matches.', allOnline: 'Everything is online.',
       offlineNow: 'Offline now', model: 'Model', area: 'Area', status: 'Status', online: 'Online', hub: 'Hub', integration: 'Integration',
       path: 'Path to Home Assistant', open: 'Open device', seeAll: 'Show all of', back: 'Back to summary', device: 'Device',
@@ -46,7 +46,7 @@
     es: {
       title: 'Mapa de conexiones', loading: 'Cargando equipos…', cloud: 'Internet', local: 'Red local', radio: 'Radio local',
       cloudSub: 'Integraciones en la nube', localSub: 'LAN / Wi-Fi', radioSub: 'Zigbee · Z-Wave',
-      offline: 'Sin conexión', search: 'Buscar equipo, modelo o pieza…', allAreas: 'Todas las piezas', onlyOffline: 'Solo sin conexión',
+      offline: 'Sin conexión', search: 'Buscar equipo, modelo o pieza…', allAreas: 'Todas las piezas', onlyOffline: 'Solo sin conexión', onlyPhysical: 'Solo físicos', onlyPhysicalTip: 'Oculta cuentas, servicios en línea y sensores sueltos: solo cosas que se pueden tocar',
       summary: 'Resumen', devices: 'equipos', found: 'equipos encontrados', none: 'Nada coincide.', allOnline: 'Todo conectado.',
       offlineNow: 'Sin conexión ahora', model: 'Modelo', area: 'Pieza', status: 'Estado', online: 'Conectado', hub: 'Hub', integration: 'Integración',
       path: 'Camino hasta Home Assistant', open: 'Abrir equipo', seeAll: 'Ver todo', back: 'Volver al resumen', device: 'Equipo',
@@ -268,7 +268,7 @@
     '.tools input,.tools select,.btn{font:inherit;font-size:13px;background:var(--cm-bg);color:var(--cm-ink);border:1px solid var(--cm-line);border-radius:10px;padding:7px 11px}',
     '.tools input{flex:1 1 180px;min-width:0}',
     '.btn{cursor:pointer}',
-    '.btn[aria-pressed="true"]{border-color:var(--cm-bad);color:var(--cm-bad);font-weight:600}',
+    '.btn[aria-pressed="true"]{border-color:var(--cm-bad);color:var(--cm-bad);font-weight:600}#physBtn[aria-pressed="true"]{border-color:var(--cm-core);color:var(--cm-core)}',
     '.main{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}',
     '.main.wide{grid-template-columns:minmax(0,1fr) 300px;align-items:start}',
     '.map{position:relative;border:1px solid var(--cm-line);border-radius:14px;overflow:hidden;min-width:0}',
@@ -333,7 +333,7 @@
     // text keeps the same size on screen whatever the zoom: --k is the current pixels-per-unit scale
     '.lbl{font-size:calc(12px / var(--k,1));font-weight:600;fill:var(--cm-ink)}.lbl.small{font-size:calc(11px / var(--k,1))}',
     '.sub{font-size:calc(10.5px / var(--k,1));fill:var(--cm-muted)}.tl{paint-order:stroke;stroke:var(--cm-bg);stroke-width:calc(3px / var(--k,1));stroke-linejoin:round}.tl.below{dominant-baseline:hanging}',
-    '@media (max-width:600px){.wrap{padding:12px;gap:9px}.stat{padding:3px 9px 3px 6px;font-size:12px;gap:5px}.tools input{flex:1 1 100%}.tools select,.tools .btn{flex:1 1 0;min-width:0}.zoom .btn{padding:7px 13px}.zoom{max-width:156px}.xmenu{top:104px}}',
+    '@media (max-width:600px){.wrap{padding:12px;gap:9px}.stat{padding:3px 9px 3px 6px;font-size:12px;gap:5px}.tools input{flex:1 1 100%}.tools select{flex:1 1 100%;min-width:0}.tools .btn{flex:1 1 0;min-width:0}.zoom .btn{padding:7px 13px}.zoom{max-width:156px}.xmenu{top:104px}}',
     '.dim{opacity:.12}',
     '.pulse{animation:cmpulse 2.4s ease-in-out infinite}@keyframes cmpulse{0%,100%{opacity:.3}50%{opacity:.85}}',
     '@media (prefers-reduced-motion:reduce){.pulse{animation:none}}',
@@ -345,11 +345,11 @@
     setConfig(config) {
       this._cfg = Object.assign({
         title: null, group_small: 1, exclude_integrations: [], exclude_devices: [], show_trackers: false,
-        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', group_by_area: false, mqtt_entities: true, entities_without_device: true, devices_without_entities: true, merge_duplicates: true, recent_hours: 24, layout: 'detailed', show_export: true
+        show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', physical_only: false, group_by_area: false, mqtt_entities: true, entities_without_device: true, devices_without_entities: true, merge_duplicates: true, recent_hours: 24, layout: 'detailed', show_export: true
       }, config || {});
       // look-only options are applied by drawing again; anything else needs the model to be rebuilt
       var LOOK = ['title', 'colors', 'lines', 'sizes', 'core_size', 'minimap', 'device_labels', 'animations', 'show_panel', 'layout', 'show_export', 'group_by_area'];
-      if (this._S) this._S.layout = null; // a layout chosen with the button gives way to the configuration
+      if (this._S) { this._S.layout = null; this._S.physical = null; } // what was chosen with the buttons gives way to the configuration
       function rest(c) { var o = {}; Object.keys(c || {}).sort().forEach(function (k) { if (LOOK.indexOf(k) < 0) o[k] = c[k]; }); return JSON.stringify(o); }
       var same = this._built && this._modelKey === rest(this._cfg);
       this._modelKey = rest(this._cfg);
@@ -398,7 +398,7 @@
     _skeleton() {
       this._root = this.attachShadow({ mode: 'open' });
       this._root.innerHTML = '<style>' + CSS + '</style><style id="dyn"></style><ha-card><div class="wrap"><div class="head"><h1 id="title"></h1><div class="stats" id="stats"></div></div>' +
-        '<div class="tools"><input id="q" type="search"><select id="area"></select><button class="btn" id="offBtn" aria-pressed="false"></button></div>' +
+        '<div class="tools"><input id="q" type="search"><select id="area"></select><button class="btn" id="offBtn" aria-pressed="false"></button><button class="btn" id="physBtn" aria-pressed="false"></button></div>' +
         '<div class="main" id="main"><div class="map" id="map"><svg id="svg" viewBox="0 0 1000 700" role="img"></svg><div class="tip" id="tip"></div><div class="mini" id="mini"></div>' +
         '<div class="note" id="note" role="status"></div><div class="legend" id="legend"></div><div class="xmenu" id="xmenu"></div><div class="zoom"><button class="btn" id="zin">+</button><button class="btn" id="zout">−</button><button class="btn" id="zfit">⤢</button><button class="btn" id="zlay">◎</button><button class="btn" id="zexp">⤓</button></div></div>' +
         '<aside class="panel" id="panel"><div class="msg" id="loading"></div></aside></div></div></ha-card>';
@@ -546,11 +546,17 @@
     }
     _roam() {
       if (this._mobSig() === this._mobKey) return false;
+      this._remodel(); return true;
+    }
+    // build the model again and draw it, keeping the Zigbee mesh that was already loaded
+    _remodel() {
       this._model();
       if (this._rawMesh) this._applyMesh(this._rawMesh); if (this._rawZha) this._applyZhaMesh(this._rawZha);
       if (this._S && this._S.sel && !this._S.sel.core) this._S.sel = null;
-      this._render(); return true;
+      this._render(); if (this._S) this._list();
     }
+    // the button on the map wins over the configuration until the configuration changes
+    _physical() { return this._S && this._S.physical != null ? !!this._S.physical : !!this._cfg.physical_only; }
     _applyMesh(v) {
       this._rawMesh = v;
       if (!v || !v.nodes) return;
@@ -886,6 +892,12 @@
         var x = { id: 'entities:' + plat, integration: plat, entity: list.length === 1 ? list[0] : null, n: self._intName(plat), mo: list.length + ' ' + t('nEntities'), a: '', p: plat, hub: hub, ents: list, ieee: null, trk: null };
         hub.dv.push(x); devs.push(x);
       });
+      // Physical devices only: no accounts, no online services, no loose sensors of an integration. What is left is
+      // what you could put your hand on.
+      if (this._physical()) devs.slice().forEach(function (x) {
+        if (!x.svc && !x.integration) return;
+        x.hub.dv.splice(x.hub.dv.indexOf(x), 1); devs.splice(devs.indexOf(x), 1);
+      });
       // A parent that is just another device of the same integration (a power strip and its outlets) is not a bridge.
       // When the integration has at least as many devices of its own, the parent and its children are drawn inside the integration's group.
       Object.keys(hubs).forEach(function (k) {
@@ -1191,6 +1203,7 @@
       this._M = M;
       this._$('q').placeholder = t('search');
       this._$('offBtn').textContent = t('onlyOffline');
+      var pb = this._$('physBtn'); pb.textContent = t('onlyPhysical'); pb.title = t('onlyPhysicalTip'); pb.setAttribute('aria-pressed', this._physical());
       this._$('legend').innerHTML = ['cloud', 'local', 'radio'].map(function (m) { return '<span><i style="background:' + M[m] + '"></i>' + esc(t(m)) + '</span>'; }).join('') +
         '<span><i style="border:2px solid var(--cm-bad)"></i>' + esc(t('offline')) + '</span>' +
         '<span><i style="border:2px solid var(--cm-recent)"></i>' + esc(t('recent')) + '</span>' +
@@ -1392,6 +1405,7 @@
       });
       this._$('q').addEventListener('input', function (e) { self._S.q = e.target.value.trim().toLowerCase(); self._apply(); self._list(); });
       this._$('area').onchange = function (e) { self._S.area = e.target.value; self._apply(); self._list(); };
+      this._$('physBtn').onclick = function () { self._S.physical = !self._physical(); self._vb = null; self._remodel(); };
       this._$('offBtn').onclick = function (e) { self._S.off = !self._S.off; e.target.setAttribute('aria-pressed', self._S.off); self._apply(); self._list(); };
     }
     _setVB() {
@@ -1859,7 +1873,7 @@
       lines: 'Lines', lcloud: 'Internet links', llocal: 'Cable links', lradio: 'Radio links', lwifi: 'Wi-Fi links', solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted', width: 'Line width',
       sizes: 'Bubble sizes', score: 'Home Assistant', snetwork: 'Network nodes (router, coordinator, internet)', shub: 'Hubs and integrations', sdevice: 'Devices',
       content: 'What is shown', group_small: 'Group integrations with this many devices or fewer', show_trackers: 'Devices that only have a device tracker', show_mesh: 'Zigbee mesh routes',
-      mqtt_entities: 'MQTT entities without a device', merge_duplicates: 'Draw a device set up through several integrations as one', entities_without_device: 'Entities of device integrations that have no device', devices_without_entities: 'Devices that have no entities', recent_hours: 'Hours a silent battery device counts as seen recently (0: never)', exclude_integrations: 'Hidden integrations (domains, separated by commas)', router_name: 'Name of the local network node',
+      physical_only: 'Physical devices only (no accounts, services or loose sensors)', mqtt_entities: 'MQTT entities without a device', merge_duplicates: 'Draw a device set up through several integrations as one', entities_without_device: 'Entities of device integrations that have no device', devices_without_entities: 'Devices that have no entities', recent_hours: 'Hours a silent battery device counts as seen recently (0: never)', exclude_integrations: 'Hidden integrations (domains, separated by commas)', router_name: 'Name of the local network node',
       coordinator_name: 'Name of the radio coordinator', demo: 'Demo installation', none: 'None (my installation)', yaml: 'names, overrides, exclude_devices and z2m_base_topic are edited in YAML.' },
     es: { general: 'General', title: 'Título', language: 'Idioma', auto: 'Automático', sort: 'Orden de las listas', byArea: 'Por pieza', byName: 'Por nombre',
       group_by_area: 'Agrupar por pieza los equipos de cada hub', layout: 'Mapa', detailed: 'Detallado: cada equipo es un punto', compact: 'Compacto: una burbuja por hub', show_export: 'Botón para guardar el mapa como imagen', show_panel: 'Panel lateral', animations: 'Animaciones', minimap: 'Mini-mapa cuando no se ve el mapa completo', device_labels: 'Nombres de los equipos al acercar',
@@ -1867,7 +1881,7 @@
       lines: 'Líneas', lcloud: 'Enlaces por internet', llocal: 'Enlaces por cable', lradio: 'Enlaces por radio', lwifi: 'Enlaces Wi-Fi', solid: 'Continua', dashed: 'Segmentada', dotted: 'Punteada', width: 'Grosor de línea',
       sizes: 'Tamaño de las burbujas', score: 'Home Assistant', snetwork: 'Nodos de red (router, coordinador, internet)', shub: 'Hubs e integraciones', sdevice: 'Equipos',
       content: 'Qué se muestra', group_small: 'Agrupar integraciones con esta cantidad de equipos o menos', show_trackers: 'Equipos que solo tienen device tracker', show_mesh: 'Rutas de la malla Zigbee',
-      mqtt_entities: 'Entidades MQTT sin dispositivo', merge_duplicates: 'Dibujar como uno solo un equipo configurado en varias integraciones', entities_without_device: 'Entidades sin dispositivo de integraciones de equipos', devices_without_entities: 'Dispositivos que no tienen entidades', recent_hours: 'Horas en que un equipo a batería sin respuesta cuenta como visto hace poco (0: nunca)', exclude_integrations: 'Integraciones ocultas (dominios, separados por comas)', router_name: 'Nombre del nodo de red local',
+      physical_only: 'Solo equipos físicos (sin cuentas, servicios ni sensores sueltos)', mqtt_entities: 'Entidades MQTT sin dispositivo', merge_duplicates: 'Dibujar como uno solo un equipo configurado en varias integraciones', entities_without_device: 'Entidades sin dispositivo de integraciones de equipos', devices_without_entities: 'Dispositivos que no tienen entidades', recent_hours: 'Horas en que un equipo a batería sin respuesta cuenta como visto hace poco (0: nunca)', exclude_integrations: 'Integraciones ocultas (dominios, separados por comas)', router_name: 'Nombre del nodo de red local',
       coordinator_name: 'Nombre del coordinador de radio', demo: 'Instalación de demostración', none: 'Ninguna (mi instalación)', yaml: 'names, overrides, exclude_devices y z2m_base_topic se editan en YAML.' }
   };
   var LINE = ['solid', 'dashed', 'dotted'];
@@ -1881,7 +1895,7 @@
     { p: 'lines.wifi', k: 'select', o: LINE, d: 'dotted', l: 'lwifi' }, { p: 'lines.radio', k: 'select', o: LINE, d: 'solid', l: 'lradio' }, { p: 'lines.width', k: 'range', min: 0.5, max: 6, step: 0.5, d: 2, l: 'width' },
     { sec: 'sizes' }, { p: 'sizes.core', k: 'range', min: 20, max: 80, step: 1, d: 56, l: 'score' }, { p: 'sizes.network', k: 'range', min: 16, max: 40, step: 1, d: 28, l: 'snetwork' },
     { p: 'sizes.hub', k: 'range', min: 14, max: 34, step: 1, d: 22, l: 'shub' }, { p: 'sizes.device', k: 'range', min: 3, max: 9, step: 0.2, d: 6.2, l: 'sdevice' },
-    { sec: 'content' }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'mqtt_entities', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'bool', d: true }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
+    { sec: 'content' }, { p: 'physical_only', k: 'bool', d: false }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'mqtt_entities', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'bool', d: true }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
     { p: 'exclude_integrations', k: 'list' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
     { p: 'demo', k: 'select', o: [['', 'none'], ['unifi', 'UniFi'], ['fritz', 'FRITZ!Box'], ['large', '350']], d: '' }
   ];

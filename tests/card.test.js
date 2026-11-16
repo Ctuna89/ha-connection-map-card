@@ -493,3 +493,45 @@ test('services and physical devices are never folded into the same "Other" group
   assert.deepEqual(r.mixed, ['Other cloud devices:devices', 'Other cloud services:services']);
   await page.close();
 });
+
+test('physical_only: accounts, services and loose sensors are left out, and the button switches it', async () => {
+  const page = await H.newPage(browser);
+  const mount = (config) => page.evaluate(async (config) => {
+    const devices = {}, entities = {}, states = {}, man = []; let n = 0;
+    const dev = (name, dom, service) => { const id = 'd' + (++n); devices[id] = { id, name, via_device_id: null, entry_type: service ? 'service' : null, connections: [], identifiers: [[dom, id]], disabled_by: null, area_id: null };
+      const e = 'sensor.e' + n; entities[e] = { entity_id: e, device_id: id, platform: dom }; states[e] = { entity_id: e, state: 'on', attributes: {} }; };
+    const integ = (domain, name, iot, type) => man.push({ domain, name, iot_class: iot, integration_type: type });
+    integ('spotify', 'Spotify', 'cloud_polling', 'service'); dev('Spotify Jaime', 'spotify', true);
+    integ('anthropic', 'Anthropic', 'cloud_polling', 'service'); dev('Claude conversation', 'anthropic', true);
+    integ('met', 'Met.no', 'cloud_polling', 'service'); dev('Forecast', 'met', true);
+    integ('tuya', 'Tuya', 'cloud_push', 'hub'); dev('Litter box', 'tuya');
+    integ('hisense', 'Hisense', 'cloud_polling', 'hub'); dev('Aire Pieza', 'hisense'); dev('Aire Living', 'hisense');
+    integ('shelly', 'Shelly', 'local_push', 'device'); dev('Plug 1', 'shelly'); dev('Plug 2', 'shelly');
+    // an integration that gives its entities no device: a light you can operate, and plain sensors
+    integ('daybetter', 'DayBetter', 'local_push', 'hub');
+    for (const [e, p] of [['light.desk_strip', 'daybetter'], ['sensor.daybetter_rssi', 'daybetter'], ['sensor.daybetter_uptime', 'daybetter']]) { entities[e] = { entity_id: e, device_id: null, platform: p }; states[e] = { entity_id: e, state: 'on', attributes: { friendly_name: e } }; }
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig(Object.assign({ animations: false }, config)); host.appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+  }, config);
+  const names = () => page.evaluate(() => ({ names: window.card._devs.map((d) => d.n).sort(), groups: window.card._hubs.map((h) => h.n).sort(), pressed: window.card.shadowRoot.getElementById('physBtn').getAttribute('aria-pressed'), stats: window.card.shadowRoot.getElementById('stats').innerText.replace(/\s+/g, ' ') }));
+  const PHYSICAL = ['Aire Living', 'Aire Pieza', 'Litter box', 'Plug 1', 'Plug 2', 'light.desk_strip'];
+  await mount({ physical_only: true });
+  let r = await names();
+  assert.deepEqual(r.names, PHYSICAL);
+  assert.ok(!r.groups.includes('Other cloud services')); assert.equal(r.pressed, 'true');
+  assert.match(r.stats, /Internet 3 Local network 3/);
+  assert.deepEqual(await H.linkProblems(page), []);
+  // the button brings everything back, and takes it away again
+  await page.evaluate(() => window.card.shadowRoot.getElementById('physBtn').click());
+  r = await names();
+  assert.equal(r.names.length, 10, 'three accounts and the DayBetter sensors are back'); assert.equal(r.pressed, 'false');
+  await page.evaluate(() => window.card.shadowRoot.getElementById('physBtn').click());
+  assert.deepEqual((await names()).names, PHYSICAL);
+  // off by default
+  await mount({});
+  assert.equal((await names()).names.length, 10);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});

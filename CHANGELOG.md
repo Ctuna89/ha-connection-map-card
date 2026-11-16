@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.5 — 2026-11-16
+
+### Added
+
+- **Physical devices only.** A "Physical only" button next to "Offline only", and the option `physical_only`, leave out accounts, online services and the loose sensors of an integration, so the map shows only things you could put your hand on. The counters and the groups are recalculated, and a group left empty disappears.
+
+### Changed
+
+- On a phone, the area selector takes a row of its own, and the two filter buttons share the next one.
+
+### Limits
+
+- What counts as a service is how each integration declares itself. A custom integration that does not say it is a service stays on the map in this mode.
+
+### Not verified on real hardware
+
+Tested with a simulated installation of accounts, services, devices and loose sensors, not on a real one.
+
 ## 0.7.4 — 2026-11-16
 
 ### Fixed
