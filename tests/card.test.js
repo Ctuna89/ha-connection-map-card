@@ -191,9 +191,14 @@ test('a device set up through several integrations is drawn once', async () => {
     dev('spk1', 'Kitchen speaker', { mac: 'aa:00:00:00:00:10' }); ent('media_player.spk1', 'spk1', 'cast', 'on'); ent('sensor.spk1', 'spk1', 'cast', 'on');
     dev('spk2', 'Nest Mini', { mac: 'aa:00:00:00:00:10' }); ent('media_player.spk2', 'spk2', 'dlna_dmr', 'on');
     ent('device_tracker.kitchen_speaker', null, 'unifi', 'home', { mac: 'aa:00:00:00:00:10' });
+    // a TV through its local integration and through its maker's cloud: same name, give or take the model in brackets
+    dev('fr1', 'Samsung The Frame 65 (QN65LS03BAGXZS)', { mf: 'Samsung', mo: 'QN65LS03BAGXZS' }); ent('media_player.frame', 'fr1', 'samsungtv', 'on');
+    dev('fr2', 'Samsung The Frame 65', { mf: 'Samsung Electronics', mo: 'Samsung The Frame' }); ent('media_player.frame_st', 'fr2', 'smartthings', 'on'); ent('sensor.frame_st', 'fr2', 'smartthings', 'on');
+    // a speaker and a thermostat both called after their room: different makers, different things
+    dev('lr1', 'Living room', { mf: 'Sonos' }); ent('media_player.lr', 'lr1', 'sonos', 'on'); dev('lr2', 'Living room', { mf: 'Google' }); ent('climate.lr', 'lr2', 'nest', 'on');
     // two different lamps that happen to share a name: not the same device
     dev('l1', 'Lamp'); ent('light.l1', 'l1', 'wiz', 'on'); dev('l2', 'Lamp'); ent('light.l2', 'l2', 'wiz', 'on');
-    const man = ['unifi', 'braviatv', 'mobile_app', 'androidtv', 'cast', 'dlna_dmr', 'wiz'].map((d) => ({ domain: d, name: { braviatv: 'Sony Bravia TV', mobile_app: 'Mobile App', androidtv: 'Android Debug Bridge' }[d] || d, iot_class: 'local_push' }));
+    const man = ['unifi', 'braviatv', 'mobile_app', 'androidtv', 'cast', 'dlna_dmr', 'wiz', 'samsungtv', 'smartthings', 'sonos', 'nest'].map((d) => ({ domain: d, name: { braviatv: 'Sony Bravia TV', mobile_app: 'Mobile App', androidtv: 'Android Debug Bridge', samsungtv: 'Samsung Smart TV', smartthings: 'SmartThings' }[d] || d, iot_class: d === 'smartthings' || d === 'nest' ? 'cloud_push' : 'local_push' }));
     const host = document.getElementById('host'); host.innerHTML = '';
     const c = document.createElement('connection-map-card'); c.setConfig(Object.assign({ animations: false, group_small: 0 }, config)); host.appendChild(c); window.card = c;
     c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
@@ -201,10 +206,13 @@ test('a device set up through several integrations is drawn once', async () => {
     const by = (n) => c._devs.filter((d) => d.n === n);
     return { names: c._devs.map((d) => d.n).sort(), tv: by('Sony XR-55A84L').map((d) => ({ as: c._intName(d.p), also: d.also.map((o) => o.as) })),
       phone: by('Pixel 9').map((d) => ({ as: c._intName(d.p), also: d.also.map((o) => o.as), remote: d.remote, path: c._pathOf(d).join(' > ') })),
-      speaker: by('Kitchen speaker').map((d) => d.also.map((o) => o.n)), groups: c._hubs.map((h) => h.n).sort() };
+      speaker: by('Kitchen speaker').map((d) => d.also.map((o) => o.n)), groups: c._hubs.map((h) => h.n).sort(),
+      frame: c._devs.filter((d) => /Frame/.test(d.n)).map((d) => ({ n: d.n, as: c._intName(d.p), also: d.also.map((o) => o.as) })), rooms: by('Living room').length };
   }, config);
   const r = await mount({});
-  assert.deepEqual(r.names, ['Kitchen speaker', 'Lamp', 'Lamp', 'Pixel 9', 'Sony XR-55A84L']);
+  assert.deepEqual(r.names, ['Kitchen speaker', 'Lamp', 'Lamp', 'Living room', 'Living room', 'Pixel 9', 'Samsung The Frame 65 (QN65LS03BAGXZS)', 'Sony XR-55A84L']);
+  assert.deepEqual(r.frame, [{ n: 'Samsung The Frame 65 (QN65LS03BAGXZS)', as: 'Samsung TV', also: ['SmartThings'] }], 'the local entry stays, the cloud one is folded into it');
+  assert.equal(r.rooms, 2);
   assert.deepEqual(r.tv, [{ as: 'Sony Bravia TV', also: ['Mobile devices'] }]);
   assert.equal(r.phone.length, 1);
   assert.deepEqual(r.phone[0].also, ['Mobile devices']);
@@ -212,7 +220,7 @@ test('a device set up through several integrations is drawn once', async () => {
   assert.match(r.phone[0].path, /Mobile data > Internet > Home Assistant$/);
   assert.deepEqual(r.speaker, [['Nest Mini']]);
   assert.ok(!r.groups.includes('Mobile devices'), 'no empty group is left behind');
-  assert.equal((await mount({ merge_duplicates: false })).names.length, 8);
+  assert.equal((await mount({ merge_duplicates: false })).names.length, 12);
   await page.close();
 });
 
@@ -421,5 +429,67 @@ test('group_by_area also works in a group with power strips: singles by area, ea
   assert.equal(r.outlet, 'HS300'); assert.equal(r.outletArea, false); assert.equal(r.strip, false);
   assert.deepEqual(await H.linkProblems(page), []);
   assert.deepEqual(await H.labelProblems(page), []);
+  await page.close();
+});
+
+test('each mobile device is drawn on the access point it is on, and follows it when it roams', async () => {
+  const page = await H.newPage(browser);
+  await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {}; let n = 0;
+    const dev = (name, dom, mac) => { const id = 'd' + (++n); devices[id] = { id, name, via_device_id: null, connections: mac ? [['mac', mac]] : [], identifiers: [[dom, id]], disabled_by: null, area_id: null };
+      for (let k = 0; k < 2; k++) { const e = 'sensor.e' + n + '_' + k; entities[e] = { entity_id: e, device_id: id, platform: dom }; states[e] = { entity_id: e, state: 'on', attributes: {} }; } return id; };
+    const trk = (slug, via, kind) => { const e = 'device_tracker.' + slug; entities[e] = { entity_id: e, device_id: null, platform: 'huawei_mesh_router' }; states[e] = { entity_id: e, state: 'home', attributes: { connected_via: via, interface_type: kind } }; };
+    dev('Primary router', 'huawei_mesh_router', 'aa:00:00:00:00:01'); dev('Wifi auxiliar living', 'huawei_mesh_router', 'aa:00:00:00:00:02');
+    dev('Pixel 9', 'mobile_app'); dev('Galaxy Tab', 'mobile_app'); dev('iPhone de Ana', 'mobile_app');
+    trk('pixel_9', 'Primary router', '5GHz'); trk('galaxy_tab', 'Primary router', '5GHz'); trk('iphone_de_ana', 'Wifi auxiliar living', '2.4GHz');
+    for (let i = 0; i < 3; i++) dev('Plug ' + i, 'shelly');
+    const man = [['huawei_mesh_router', 'Huawei Mesh Router'], ['mobile_app', 'Mobile App'], ['shelly', 'Shelly']].map((m) => ({ domain: m[0], name: m[1], iot_class: 'local_push' }));
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false }); document.getElementById('host').appendChild(c); window.card = c;
+    window.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    c.hass = window.hass;
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+  });
+  const look = () => page.evaluate(() => { const c = window.card; return c._hubs.filter((h) => h.p === 'mobile_app').map((h) => h.dv.map((d) => d.n).sort().join('+') + ' @ ' + (h.from.router ? h.from.router.n : 'Primary router')).sort(); });
+  assert.deepEqual(await look(), ['Galaxy Tab+Pixel 9 @ Primary router', 'iPhone de Ana @ Wifi auxiliar living']);
+  assert.equal(await page.evaluate(() => window.card._pathOf(window.card._devs.find((d) => d.n === 'iPhone de Ana')).join(' > ')), 'iPhone de Ana > Mobile devices > Wifi auxiliar living (Wi-Fi 2.4 GHz) > Primary router > Home Assistant');
+  assert.deepEqual(await H.linkProblems(page), []);
+  // the tablet walks to the living room: on the next update it is drawn there
+  await page.evaluate(() => { window.hass.states['device_tracker.galaxy_tab'].attributes.connected_via = 'Wifi auxiliar living'; window.card._last = 0; window.card.hass = window.hass; });
+  assert.deepEqual(await look(), ['Galaxy Tab+iPhone de Ana @ Wifi auxiliar living', 'Pixel 9 @ Primary router']);
+  // everybody back on the main router: one group again
+  await page.evaluate(() => { for (const e of ['galaxy_tab', 'iphone_de_ana']) window.hass.states['device_tracker.' + e].attributes.connected_via = 'Primary router'; window.card._last = 0; window.card.hass = window.hass; });
+  assert.deepEqual(await look(), ['Galaxy Tab+Pixel 9+iPhone de Ana @ Primary router']);
+  assert.deepEqual(await H.linkProblems(page), []);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('services and physical devices are never folded into the same "Other" group', async () => {
+  const page = await H.newPage(browser);
+  const r = await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {}, man = []; let n = 0;
+    const dev = (name, dom, service) => { const id = 'd' + (++n); devices[id] = { id, name, via_device_id: null, entry_type: service ? 'service' : null, connections: [], identifiers: [[dom, id]], disabled_by: null, area_id: null };
+      const e = 'sensor.e' + n; entities[e] = { entity_id: e, device_id: id, platform: dom }; states[e] = { entity_id: e, state: 'on', attributes: {} }; };
+    const integ = (domain, name, iot, type) => man.push({ domain, name, iot_class: iot, integration_type: type });
+    // accounts and APIs: many of them, each with one entry
+    integ('spotify', 'Spotify', 'cloud_polling', 'service'); dev('Spotify Jaime', 'spotify', true); dev('SpotifyPlus Jaime', 'spotify', true);
+    integ('google_translate', 'Google Translate', 'cloud_push', 'service'); dev('Google Translate en com', 'google_translate', true);
+    integ('anthropic', 'Anthropic', 'cloud_polling', 'service'); dev('Claude conversation', 'anthropic', true); dev('Claude AI Task', 'anthropic', true);
+    for (let i = 0; i < 20; i++) { integ('svc' + i, 'Service ' + i, 'cloud_polling', 'service'); dev('Account ' + i, 'svc' + i, true); }
+    // things in the house that report through their maker's cloud
+    integ('tuya', 'Tuya', 'cloud_push', 'hub'); dev('Ti Pro25 Smart Litter Box', 'tuya');
+    integ('hisense', 'Hisense', 'cloud_polling', 'hub'); dev('Aire Pieza', 'hisense'); dev('Aire Living', 'hisense');
+    for (let i = 0; i < 5; i++) { integ('loc' + i, 'Local ' + i, 'local_push', 'hub'); for (let k = 0; k < 4; k++) dev('Thing ' + i + '.' + k, 'loc' + i); }
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false }); document.getElementById('host').appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((res) => setTimeout(res, 25));
+    const g = (name) => { const d = c._devs.find((x) => x.n === name); return d.hub.n; };
+    return { spotify: g('Spotify Jaime'), claude: g('Claude AI Task'), account: g('Account 3'), litter: g('Ti Pro25 Smart Litter Box'), air: g('Aire Pieza'), air2: g('Aire Living'),
+      mixed: c._hubs.filter((h) => h.kind === 'other').map((h) => h.n + ':' + (h.dv.every((d) => d.svc) ? 'services' : h.dv.some((d) => d.svc) ? 'MIXED' : 'devices')).sort() };
+  });
+  assert.equal(r.account, 'Other cloud services');
+  assert.equal(r.litter, 'Other cloud devices', 'a single Tuya device is folded, but with other devices, not with accounts');
+  assert.equal(r.air, 'Hisense'); assert.equal(r.air2, 'Hisense', 'two air conditioners keep their own group: 25 services do not make the map crowded');
+  assert.deepEqual(r.mixed, ['Other cloud devices:devices', 'Other cloud services:services']);
   await page.close();
 });
