@@ -10,70 +10,288 @@
   'use strict';
   var VERSION = '0.7.5';
 
+  // Texts of the card, one per line and in alphabetical order, the same in every language.
+  // To add a language: copy the whole "en" block, name it with the two-letter code Home Assistant uses ("de", "fr", ...)
+  // and translate the values. Do the same in ED, further down, for the visual editor. A text that is missing falls back
+  // to English, and the tests fail if a language does not have exactly the keys of English.
   var STR = {
     en: {
-      title: 'Connection map', loading: 'Loading devices…', cloud: 'Internet', local: 'Local network', radio: 'Local radio',
-      cloudSub: 'Cloud integrations', localSub: 'LAN / Wi-Fi', radioSub: 'Zigbee · Z-Wave',
-      offline: 'Offline', search: 'Search device, model or area…', allAreas: 'All areas', onlyOffline: 'Offline only', onlyPhysical: 'Physical only', onlyPhysicalTip: 'Hide accounts, online services and loose sensors: only things you can touch',
-      summary: 'Summary', devices: 'devices', found: 'devices found', none: 'Nothing matches.', allOnline: 'Everything is online.',
-      offlineNow: 'Offline now', model: 'Model', area: 'Area', status: 'Status', online: 'Online', hub: 'Hub', integration: 'Integration',
-      path: 'Path to Home Assistant', open: 'Open device', seeAll: 'Show all of', back: 'Back to summary', device: 'Device',
-      otherCloud: 'Other cloud services', otherLocal: 'Other local devices', otherRadio: 'Other radio devices', otherCloudDev: 'Other cloud devices', otherLocalSvc: 'Other local services',
-      hubDesc: 'Bridge or hub: its devices talk to it, and it talks to Home Assistant.',
-      intDesc: 'Devices handled directly by this integration.',
-      otherDesc: 'Integrations with only a few devices, grouped together.',
-      summaryText: 'Each dot is a device. Lines show the path its data takes to Home Assistant.',
-      zoomIn: 'Zoom in', zoomOut: 'Zoom out', fit: 'Fit', nodata: 'No devices to show.',
-      meshNodes: 'nodes', coordinator: 'Zigbee coordinator', repeater: 'repeater', connectedTo: 'Connected to', signal: 'Signal (LQI)',
-      role: 'Role', roleRouter: 'Router / repeater', roleEnd: 'End device', host: 'Host', os: 'System', runsOn: 'Runs on', vm: 'Virtual machine',
-      disk: 'Disk', version: 'Version', hostname: 'Hostname', infraLocal: 'Every local device and hub reaches Home Assistant through this network.',
-      infraRadio: 'Radio devices talk to this coordinator, directly or through a router (repeater).', coreDesc: 'The machine that runs Home Assistant.',
-      meshNote: 'Zigbee routes come from the Zigbee2MQTT network map.', status2: 'Status',
-      network: 'Network', wired: 'Ethernet', wifi: 'Wi-Fi', ip: 'IP address', cable: 'Cable', connectedHere: 'Connected to this node',
-      routerDesc: 'Access point / mesh node of your network.', backhaul: 'Link to main router',
-      away: 'Off the network', awayLong: 'Not connected to the network right now (off or sleeping)', mobile: 'Mobile devices', remote: 'Away · via internet', remoteLong: 'Away from your network: reaches Home Assistant over the internet', mobileData: 'Mobile data',
-      sortName: 'Sort: name', sortArea: 'Sort: area', parentDev: 'Part of', entity: 'Entity', openEntity: 'Open entity', noRoomAp1: '1 access point is not drawn: there is no room for it without crossing links.', noRoomAp: 'access points are not drawn: there is no room for them without crossing links.', noRoomSee: 'See them in the router panel',
-      noRoomName1: '1 label is hidden at this zoom: there is no room for it.', noRoomName: 'labels are hidden at this zoom: there is no room for them.', noRoomZoom: 'Zoom in to see them', notDrawn: 'Not drawn',
-      layoutBtn: 'Switch between the detailed and the compact map', exportBtn: 'Save the map as an image', exportAnon: 'Image without names', exportFull: 'Image with names',
+      ago: '{t} ago',
+      allAreas: 'All areas',
+      allOnline: 'Everything is online.',
+      alsoAs: 'Also set up as',
+      area: 'Area',
+      areaTip: 'devices in this area. Click to show only this area.',
+      away: 'Off the network',
+      awayLong: 'Not connected to the network right now (off or sleeping)',
+      back: 'Back to summary',
+      backhaul: 'Link to main router',
+      bluetooth: 'Bluetooth',
+      bridgeItself: 'The bridge itself',
+      btAdapter: 'Bluetooth adapter',
+      btDesc: 'Bluetooth devices: Home Assistant hears them directly or through a Bluetooth proxy.',
+      btHeard: 'Devices that this Bluetooth receiver hears best right now.',
+      btProxy: 'Bluetooth proxy',
+      btSignal: 'Signal (RSSI)',
+      cable: 'Cable',
+      close: 'Close',
+      cloud: 'Internet',
+      cloudSub: 'Cloud integrations',
+      connectedHere: 'Connected to this node',
+      connectedTo: 'Connected to',
+      coordinator: 'Zigbee coordinator',
+      coreDesc: 'The machine that runs Home Assistant.',
+      details: 'Details',
+      device: 'Device',
+      devices: 'devices',
+      diagBtn: 'Copy diagnostics',
+      diagCopied: 'Copied',
+      diagCopy: 'Copy',
+      diagHint: 'It has no names, addresses or entity IDs: only counts and how each group was classified. Paste it in a GitHub issue.',
+      diagTitle: 'Diagnostics',
+      disk: 'Disk',
+      dupDiff: 'No, they are different',
+      dupGroup: 'Group',
+      dupLater: 'Decide later',
+      dupNote: 'devices may be on the map twice.',
+      dupNote1: '1 device may be on the map twice.',
+      dupOf: 'of',
+      dupReset: 'Ask me again about duplicates',
+      dupReview: 'Review',
+      dupSame: 'Yes, draw it once',
+      dupTitle: 'Is this one device?',
+      dupWhyApp: 'The companion app runs on a device with the same name.',
+      dupWhyName: 'Two integrations report a device with the same name and maker.',
+      entity: 'Entity',
+      errHint: 'The last map that worked is still shown.',
+      errTitle: 'The map could not be updated.',
+      exportAnon: 'Image without names',
+      exportBtn: 'Save the map as an image',
+      exportFull: 'Image with names',
       exportHint: 'Without names, hubs, routers and devices are numbered: safe to share.',
-      bridgeItself: 'The bridge itself', areaTip: 'devices in this area. Click to show only this area.',
+      fit: 'Fit',
+      found: 'devices found',
+      host: 'Host',
+      hostname: 'Hostname',
+      hub: 'Hub',
+      hubDesc: 'Bridge or hub: its devices talk to it, and it talks to Home Assistant.',
+      infraLocal: 'Every local device and hub reaches Home Assistant through this network.',
+      infraRadio: 'Radio devices talk to this coordinator, directly or through a router (repeater).',
+      intDesc: 'Devices handled directly by this integration.',
+      integration: 'Integration',
+      ip: 'IP address',
+      layoutBtn: 'Switch between the detailed and the compact map',
+      loading: 'Loading devices…',
+      local: 'Local network',
+      localSub: 'LAN / Wi-Fi',
+      meshNodes: 'nodes',
+      meshNote: 'Zigbee routes come from the Zigbee2MQTT network map.',
+      mobile: 'Mobile devices',
+      mobileData: 'Mobile data',
+      model: 'Model',
+      mqttManual: 'MQTT entity without a device',
+      nEntities: 'entities without a device',
+      network: 'Network',
+      nodata: 'No devices to show.',
+      noEntities: 'No entities in Home Assistant',
+      none: 'Nothing matches.',
+      noRoomAp: 'access points are not drawn: there is no room for them without crossing links.',
+      noRoomAp1: '1 access point is not drawn: there is no room for it without crossing links.',
+      noRoomName: 'labels are hidden at this zoom: there is no room for them.',
+      noRoomName1: '1 label is hidden at this zoom: there is no room for it.',
+      noRoomSee: 'See them in the router panel',
+      noRoomZoom: 'Zoom in to see them',
+      notDrawn: 'Not drawn',
+      offline: 'Offline',
+      offlineNow: 'Offline now',
+      online: 'Online',
+      onlyOffline: 'Offline only',
+      onlyPhysical: 'Physical only',
+      onlyPhysicalTip: 'Hide accounts, online services and loose sensors: only things you can touch',
+      open: 'Open device',
+      openEntity: 'Open entity',
+      openIntegration: 'Open integration',
+      os: 'System',
+      otherCloud: 'Other cloud services',
+      otherCloudDev: 'Other cloud devices',
+      otherDesc: 'Integrations with only a few devices, grouped together.',
+      otherLocal: 'Other local devices',
+      otherLocalSvc: 'Other local services',
+      otherRadio: 'Other radio devices',
+      parentDev: 'Part of',
+      path: 'Path to Home Assistant',
+      radio: 'Local radio',
+      radioSub: 'Zigbee · Z-Wave',
+      recent: 'Seen recently',
+      recentLong: 'Not answering now. Battery device, last seen',
+      recentNow: 'Seen recently',
+      remote: 'Away · via internet',
+      remoteLong: 'Away from your network: reaches Home Assistant over the internet',
+      repeater: 'repeater',
+      role: 'Role',
+      roleEnd: 'End device',
+      roleRouter: 'Router / repeater',
+      routerDesc: 'Access point / mesh node of your network.',
+      runsOn: 'Runs on',
+      search: 'Search device, model or area…',
+      seeAll: 'Show all of',
+      signal: 'Signal (LQI)',
+      skipped: 'devices could not be read and were left out.',
+      skipped1: '1 device could not be read and was left out.',
+      sortArea: 'Sort: area',
+      sortName: 'Sort: name',
+      status: 'Status',
+      status2: 'Status',
+      summary: 'Summary',
+      summaryText: 'Each dot is a device. Lines show the path its data takes to Home Assistant.',
       threadBr: 'Thread border router',
-      alsoAs: 'Also set up as', noEntities: 'No entities in Home Assistant', nEntities: 'entities without a device', openIntegration: 'Open integration',
-      recent: 'Seen recently', recentLong: 'Not answering now. Battery device, last seen', ago: '{t} ago', recentNow: 'Seen recently',
-      bluetooth: 'Bluetooth', btDesc: 'Bluetooth devices: Home Assistant hears them directly or through a Bluetooth proxy.', btProxy: 'Bluetooth proxy', btAdapter: 'Bluetooth adapter', btSignal: 'Signal (RSSI)',
-      btHeard: 'Devices that this Bluetooth receiver hears best right now.', threadDesc: 'Matter devices on the Thread mesh. They reach Home Assistant through a Thread border router.', mqttManual: 'MQTT entity without a device'
+      threadDesc: 'Matter devices on the Thread mesh. They reach Home Assistant through a Thread border router.',
+      title: 'Connection map',
+      version: 'Version',
+      vm: 'Virtual machine',
+      wifi: 'Wi-Fi',
+      wired: 'Ethernet',
+      zoomIn: 'Zoom in',
+      zoomOut: 'Zoom out'
     },
     es: {
-      title: 'Mapa de conexiones', loading: 'Cargando equipos…', cloud: 'Internet', local: 'Red local', radio: 'Radio local',
-      cloudSub: 'Integraciones en la nube', localSub: 'LAN / Wi-Fi', radioSub: 'Zigbee · Z-Wave',
-      offline: 'Sin conexión', search: 'Buscar equipo, modelo o pieza…', allAreas: 'Todas las piezas', onlyOffline: 'Solo sin conexión', onlyPhysical: 'Solo físicos', onlyPhysicalTip: 'Oculta cuentas, servicios en línea y sensores sueltos: solo cosas que se pueden tocar',
-      summary: 'Resumen', devices: 'equipos', found: 'equipos encontrados', none: 'Nada coincide.', allOnline: 'Todo conectado.',
-      offlineNow: 'Sin conexión ahora', model: 'Modelo', area: 'Pieza', status: 'Estado', online: 'Conectado', hub: 'Hub', integration: 'Integración',
-      path: 'Camino hasta Home Assistant', open: 'Abrir equipo', seeAll: 'Ver todo', back: 'Volver al resumen', device: 'Equipo',
-      otherCloud: 'Otros servicios en la nube', otherLocal: 'Otros equipos locales', otherRadio: 'Otros equipos por radio', otherCloudDev: 'Otros equipos en la nube', otherLocalSvc: 'Otros servicios locales',
-      hubDesc: 'Puente o hub: sus equipos le hablan a él, y él le habla a Home Assistant.',
-      intDesc: 'Equipos que maneja directamente esta integración.',
-      otherDesc: 'Integraciones con pocos equipos, agrupadas.',
-      summaryText: 'Cada punto es un equipo. Las líneas muestran el camino que siguen sus datos hasta Home Assistant.',
-      zoomIn: 'Acercar', zoomOut: 'Alejar', fit: 'Ver todo', nodata: 'No hay equipos para mostrar.',
-      meshNodes: 'nodos', coordinator: 'Coordinador Zigbee', repeater: 'repetidor', connectedTo: 'Conectado a', signal: 'Señal (LQI)',
-      role: 'Rol', roleRouter: 'Router / repetidor', roleEnd: 'Equipo final', host: 'Host', os: 'Sistema', runsOn: 'Corre en', vm: 'Máquina virtual',
-      disk: 'Disco', version: 'Versión', hostname: 'Nombre', infraLocal: 'Todos los equipos y hubs locales llegan a Home Assistant por esta red.',
-      infraRadio: 'Los equipos por radio le hablan a este coordinador, directo o a través de un router (repetidor).', coreDesc: 'La máquina donde corre Home Assistant.',
-      meshNote: 'Las rutas Zigbee vienen del mapa de red de Zigbee2MQTT.', status2: 'Estado',
-      network: 'Red', wired: 'Cable (Ethernet)', wifi: 'Wi-Fi', ip: 'Dirección IP', cable: 'Cable', connectedHere: 'Conectados a este nodo',
-      routerDesc: 'Punto de acceso / nodo de la red.', backhaul: 'Enlace al router principal',
-      away: 'Fuera de la red', awayLong: 'No está conectado a la red ahora (apagado o en reposo)', mobile: 'Dispositivos móviles', remote: 'Fuera de casa · vía internet', remoteLong: 'Fuera de tu red: llega a Home Assistant por internet', mobileData: 'Datos móviles',
-      sortName: 'Orden: nombre', sortArea: 'Orden: pieza', parentDev: 'Parte de', entity: 'Entidad', openEntity: 'Abrir entidad', noRoomAp1: '1 punto de acceso no se dibuja: no hay espacio para él sin cruzar líneas.', noRoomAp: 'puntos de acceso no se dibujan: no hay espacio para ellos sin cruzar líneas.', noRoomSee: 'Verlos en el panel del router',
-      noRoomName1: '1 etiqueta está oculta con este zoom: no hay espacio para ella.', noRoomName: 'etiquetas están ocultas con este zoom: no hay espacio para ellas.', noRoomZoom: 'Acerca el mapa para verlas', notDrawn: 'No dibujado',
-      layoutBtn: 'Cambiar entre el mapa detallado y el compacto', exportBtn: 'Guardar el mapa como imagen', exportAnon: 'Imagen sin nombres', exportFull: 'Imagen con nombres',
+      ago: 'hace {t}',
+      allAreas: 'Todas las piezas',
+      allOnline: 'Todo conectado.',
+      alsoAs: 'También configurado como',
+      area: 'Pieza',
+      areaTip: 'equipos en esta pieza. Clic para ver solo esta pieza.',
+      away: 'Fuera de la red',
+      awayLong: 'No está conectado a la red ahora (apagado o en reposo)',
+      back: 'Volver al resumen',
+      backhaul: 'Enlace al router principal',
+      bluetooth: 'Bluetooth',
+      bridgeItself: 'El puente mismo',
+      btAdapter: 'Adaptador Bluetooth',
+      btDesc: 'Equipos Bluetooth: Home Assistant los escucha directo o a través de un proxy Bluetooth.',
+      btHeard: 'Equipos que este receptor Bluetooth escucha mejor en este momento.',
+      btProxy: 'Proxy Bluetooth',
+      btSignal: 'Señal (RSSI)',
+      cable: 'Cable',
+      close: 'Cerrar',
+      cloud: 'Internet',
+      cloudSub: 'Integraciones en la nube',
+      connectedHere: 'Conectados a este nodo',
+      connectedTo: 'Conectado a',
+      coordinator: 'Coordinador Zigbee',
+      coreDesc: 'La máquina donde corre Home Assistant.',
+      details: 'Detalles',
+      device: 'Equipo',
+      devices: 'equipos',
+      diagBtn: 'Copiar diagnóstico',
+      diagCopied: 'Copiado',
+      diagCopy: 'Copiar',
+      diagHint: 'No lleva nombres, direcciones ni IDs de entidades: solo cantidades y cómo se clasificó cada grupo. Pégalo en un issue de GitHub.',
+      diagTitle: 'Diagnóstico',
+      disk: 'Disco',
+      dupDiff: 'No, son distintos',
+      dupGroup: 'Grupo',
+      dupLater: 'Decidir después',
+      dupNote: 'equipos pueden estar dos veces en el mapa.',
+      dupNote1: '1 equipo puede estar dos veces en el mapa.',
+      dupOf: 'de',
+      dupReset: 'Volver a preguntar por duplicados',
+      dupReview: 'Revisar',
+      dupSame: 'Sí, dibujarlo una vez',
+      dupTitle: '¿Es un solo equipo?',
+      dupWhyApp: 'La app móvil corre en un equipo con el mismo nombre.',
+      dupWhyName: 'Dos integraciones informan un equipo con el mismo nombre y fabricante.',
+      entity: 'Entidad',
+      errHint: 'Se sigue mostrando el último mapa que funcionó.',
+      errTitle: 'No se pudo actualizar el mapa.',
+      exportAnon: 'Imagen sin nombres',
+      exportBtn: 'Guardar el mapa como imagen',
+      exportFull: 'Imagen con nombres',
       exportHint: 'Sin nombres, los hubs, routers y equipos van numerados: se puede compartir.',
-      bridgeItself: 'El puente mismo', areaTip: 'equipos en esta pieza. Clic para ver solo esta pieza.',
+      fit: 'Ver todo',
+      found: 'equipos encontrados',
+      host: 'Host',
+      hostname: 'Nombre',
+      hub: 'Hub',
+      hubDesc: 'Puente o hub: sus equipos le hablan a él, y él le habla a Home Assistant.',
+      infraLocal: 'Todos los equipos y hubs locales llegan a Home Assistant por esta red.',
+      infraRadio: 'Los equipos por radio le hablan a este coordinador, directo o a través de un router (repetidor).',
+      intDesc: 'Equipos que maneja directamente esta integración.',
+      integration: 'Integración',
+      ip: 'Dirección IP',
+      layoutBtn: 'Cambiar entre el mapa detallado y el compacto',
+      loading: 'Cargando equipos…',
+      local: 'Red local',
+      localSub: 'LAN / Wi-Fi',
+      meshNodes: 'nodos',
+      meshNote: 'Las rutas Zigbee vienen del mapa de red de Zigbee2MQTT.',
+      mobile: 'Dispositivos móviles',
+      mobileData: 'Datos móviles',
+      model: 'Modelo',
+      mqttManual: 'Entidad MQTT sin dispositivo',
+      nEntities: 'entidades sin dispositivo',
+      network: 'Red',
+      nodata: 'No hay equipos para mostrar.',
+      noEntities: 'Sin entidades en Home Assistant',
+      none: 'Nada coincide.',
+      noRoomAp: 'puntos de acceso no se dibujan: no hay espacio para ellos sin cruzar líneas.',
+      noRoomAp1: '1 punto de acceso no se dibuja: no hay espacio para él sin cruzar líneas.',
+      noRoomName: 'etiquetas están ocultas con este zoom: no hay espacio para ellas.',
+      noRoomName1: '1 etiqueta está oculta con este zoom: no hay espacio para ella.',
+      noRoomSee: 'Verlos en el panel del router',
+      noRoomZoom: 'Acerca el mapa para verlas',
+      notDrawn: 'No dibujado',
+      offline: 'Sin conexión',
+      offlineNow: 'Sin conexión ahora',
+      online: 'Conectado',
+      onlyOffline: 'Solo sin conexión',
+      onlyPhysical: 'Solo físicos',
+      onlyPhysicalTip: 'Oculta cuentas, servicios en línea y sensores sueltos: solo cosas que se pueden tocar',
+      open: 'Abrir equipo',
+      openEntity: 'Abrir entidad',
+      openIntegration: 'Abrir integración',
+      os: 'Sistema',
+      otherCloud: 'Otros servicios en la nube',
+      otherCloudDev: 'Otros equipos en la nube',
+      otherDesc: 'Integraciones con pocos equipos, agrupadas.',
+      otherLocal: 'Otros equipos locales',
+      otherLocalSvc: 'Otros servicios locales',
+      otherRadio: 'Otros equipos por radio',
+      parentDev: 'Parte de',
+      path: 'Camino hasta Home Assistant',
+      radio: 'Radio local',
+      radioSub: 'Zigbee · Z-Wave',
+      recent: 'Visto hace poco',
+      recentLong: 'No responde ahora. Equipo a batería, visto por última vez',
+      recentNow: 'Vistos hace poco',
+      remote: 'Fuera de casa · vía internet',
+      remoteLong: 'Fuera de tu red: llega a Home Assistant por internet',
+      repeater: 'repetidor',
+      role: 'Rol',
+      roleEnd: 'Equipo final',
+      roleRouter: 'Router / repetidor',
+      routerDesc: 'Punto de acceso / nodo de la red.',
+      runsOn: 'Corre en',
+      search: 'Buscar equipo, modelo o pieza…',
+      seeAll: 'Ver todo',
+      signal: 'Señal (LQI)',
+      skipped: 'equipos no se pudieron leer y quedaron fuera.',
+      skipped1: '1 equipo no se pudo leer y quedó fuera.',
+      sortArea: 'Orden: pieza',
+      sortName: 'Orden: nombre',
+      status: 'Estado',
+      status2: 'Estado',
+      summary: 'Resumen',
+      summaryText: 'Cada punto es un equipo. Las líneas muestran el camino que siguen sus datos hasta Home Assistant.',
       threadBr: 'Router de borde Thread',
-      alsoAs: 'También configurado como', noEntities: 'Sin entidades en Home Assistant', nEntities: 'entidades sin dispositivo', openIntegration: 'Abrir integración',
-      recent: 'Visto hace poco', recentLong: 'No responde ahora. Equipo a batería, visto por última vez', ago: 'hace {t}', recentNow: 'Vistos hace poco',
-      bluetooth: 'Bluetooth', btDesc: 'Equipos Bluetooth: Home Assistant los escucha directo o a través de un proxy Bluetooth.', btProxy: 'Proxy Bluetooth', btAdapter: 'Adaptador Bluetooth', btSignal: 'Señal (RSSI)',
-      btHeard: 'Equipos que este receptor Bluetooth escucha mejor en este momento.', threadDesc: 'Equipos Matter en la malla Thread. Llegan a Home Assistant a través de un border router Thread.', mqttManual: 'Entidad MQTT sin dispositivo'
+      threadDesc: 'Equipos Matter en la malla Thread. Llegan a Home Assistant a través de un border router Thread.',
+      title: 'Mapa de conexiones',
+      version: 'Versión',
+      vm: 'Máquina virtual',
+      wifi: 'Wi-Fi',
+      wired: 'Cable (Ethernet)',
+      zoomIn: 'Acercar',
+      zoomOut: 'Alejar'
     }
   };
 
@@ -96,6 +314,11 @@
   var VIRT = { oracle: 'VirtualBox', kvm: 'KVM', qemu: 'QEMU', vmware: 'VMware', microsoft: 'Hyper-V', xen: 'Xen', parallels: 'Parallels', lxc: 'LXC', docker: 'Docker' };
   var CLOUD_GUESS = ['smartthings', 'tuya', 'spotify', 'met', 'google_translate', 'anthropic', 'openai_conversation', 'nest',
     'ring', 'tesla_fleet', 'netatmo', 'ecobee', 'alexa', 'google_assistant', 'cloud', 'waze_travel_time', 'openweathermap'];
+  // Every option the card takes. Names are stable from 1.0; the replaced ones keep working.
+  var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'sort', 'group_by_area', 'group_small', 'physical_only', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'minimap', 'device_labels', 'animations',
+    'colors', 'lines', 'sizes', 'names', 'overrides', 'exclude_integrations', 'exclude_devices', 'merge_duplicates', 'entities_without_device', 'devices_without_entities', 'recent_hours',
+    'router_name', 'coordinator_name', 'z2m_base_topic', 'grid_options', 'layout_options', 'view_layout', 'visibility', 'card_mod'];
+  var DEPRECATED = { core_size: 'sizes.core', mqtt_entities: 'entities_without_device' };
   var NS = 'http://www.w3.org/2000/svg';
 
   // "/dev/serial/by-id/usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_ab12...-if00-port0" -> "ITead Sonoff Zigbee 3.0 USB Dongle Plus"
@@ -276,6 +499,12 @@
     '.zoom{position:absolute;right:8px;top:8px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:132px}.zoom .btn.on{border-color:var(--cm-core);color:var(--cm-core)}',
     '.xmenu{position:absolute;right:8px;top:84px;z-index:4;display:none;flex-direction:column;gap:6px;background:var(--cm-bg);border:1px solid var(--cm-line);border-radius:12px;padding:10px;max-width:230px;box-shadow:0 2px 10px rgba(0,0,0,.18)}',
     '.xmenu p{margin:0;font-size:12px;color:var(--cm-muted)}.xmenu .btn{text-align:left;cursor:pointer}',
+    'ha-card{position:relative}.modal{position:fixed;inset:0;z-index:9;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);padding:16px}',
+    '.dlg{background:var(--cm-bg);color:var(--cm-ink);border-radius:16px;padding:18px;max-width:560px;width:100%;max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 30px rgba(0,0,0,.35)}',
+    '.dlg h2{margin:0;font-size:18px;font-weight:600}.dlg p{margin:0;font-size:13px;color:var(--cm-muted)}.dlg .acts{display:flex;flex-wrap:wrap;gap:8px}.dlg .btn{cursor:pointer}.dlg .btn.go{border-color:var(--cm-core);color:var(--cm-core);font-weight:600}',
+    '.dlg .pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}.dlg .one{border:1px solid var(--cm-line);border-radius:12px;padding:10px;min-width:0}.dlg .one b{display:block;font-size:14px;overflow-wrap:anywhere}',
+    '.dlg textarea{font:12px/1.4 ui-monospace,monospace;width:100%;height:240px;box-sizing:border-box;border:1px solid var(--cm-line);border-radius:10px;background:var(--cm-faint);color:var(--cm-ink);padding:8px;resize:vertical}',
+    '@media (max-width:520px){.dlg .pair{grid-template-columns:1fr}}',
     '.hub.offline .disc{stroke:var(--cm-bad)!important}.anode{fill:var(--cm-bg);stroke-width:1.6;cursor:pointer}.dl.al{font-weight:600;fill:var(--cm-muted)}',
     '.badge{fill:var(--cm-bad)}.badget{fill:#fff;font-weight:700}',
     // overview map: only shown while part of the map is outside the view
@@ -343,6 +572,16 @@
   class ConnectionMapCard extends HTMLElement {
     static getStubConfig() { return {}; }
     setConfig(config) {
+      // Option names are stable from 1.0. The ones that were replaced keep working and are reported once in the console.
+      var given = Object.assign({}, config || {}), self0 = this; this._optNotes = [];
+      Object.keys(given).forEach(function (k) {
+        if (DEPRECATED[k]) self0._optNotes.push('deprecated: ' + k + ' -> ' + DEPRECATED[k]);
+        else if (OPTIONS.indexOf(k) < 0) self0._optNotes.push('unknown: ' + k);
+      });
+      if (given.core_size === 'compact' && !(given.sizes && given.sizes.core != null)) given.sizes = Object.assign({ core: 28 }, given.sizes || {});
+      var noteKey = this._optNotes.join(';');
+      if (noteKey && noteKey !== ConnectionMapCard._warned) { ConnectionMapCard._warned = noteKey; console.warn('connection-map-card options — ' + this._optNotes.join(', ')); }
+      this._given = given; config = given;
       this._cfg = Object.assign({
         title: null, group_small: 1, exclude_integrations: [], exclude_devices: [], show_trackers: false,
         show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', physical_only: false, group_by_area: false, mqtt_entities: true, entities_without_device: true, devices_without_entities: true, merge_duplicates: true, recent_hours: 24, layout: 'detailed', show_export: true
@@ -390,7 +629,7 @@
       if (!this._root) this._skeleton();
       if (!this._built && !this._loading) { this._load(); return; }
       var now = Date.now();
-      if (this._built && now - (this._last || 0) > 5000) { this._last = now; if (!this._roam()) { this._status(); this._marks(); } }
+      if (this._built && now - (this._last || 0) > 5000) { this._last = now; try { if (!this._roam()) { this._status(); this._marks(); } } catch (e) { this._fail('update', e); } }
     }
 
     _t(k) { var l = ((this._cfg && this._cfg.language) || (this._hass && this._hass.language) || 'en').slice(0, 2); return (STR[l] || STR.en)[k] || STR.en[k]; }
@@ -401,7 +640,7 @@
         '<div class="tools"><input id="q" type="search"><select id="area"></select><button class="btn" id="offBtn" aria-pressed="false"></button><button class="btn" id="physBtn" aria-pressed="false"></button></div>' +
         '<div class="main" id="main"><div class="map" id="map"><svg id="svg" viewBox="0 0 1000 700" role="img"></svg><div class="tip" id="tip"></div><div class="mini" id="mini"></div>' +
         '<div class="note" id="note" role="status"></div><div class="legend" id="legend"></div><div class="xmenu" id="xmenu"></div><div class="zoom"><button class="btn" id="zin">+</button><button class="btn" id="zout">−</button><button class="btn" id="zfit">⤢</button><button class="btn" id="zlay">◎</button><button class="btn" id="zexp">⤓</button></div></div>' +
-        '<aside class="panel" id="panel"><div class="msg" id="loading"></div></aside></div></div></ha-card>';
+        '<aside class="panel" id="panel"><div class="msg" id="loading"></div></aside></div></div><div class="modal" id="modal" role="dialog" aria-modal="true"></div></ha-card>';
       var self = this;
       this._ro = new ResizeObserver(function (en) { var w = en[0].contentRect.width; self._$('main').classList.toggle('wide', w > 860 && self._cfg.show_panel !== false); if (self._vb) requestAnimationFrame(function () { self._setVB(); }); });
       this._ro.observe(this._$('main'));
@@ -421,6 +660,7 @@
       // which integration each entity comes from, including YAML entities that are not in the entity registry
       this._src = {};
       try { this._src = (await this._hass.callWS({ type: 'entity/source' })) || {}; } catch (e) { /* older versions: registry only */ }
+      await this._loadAnswers();
       this._model();
       this._loading = false;
       if (key !== this._modelKey) { this._load(); return; } // the configuration changed while loading
@@ -549,6 +789,75 @@
       this._remodel(); return true;
     }
     // build the model again and draw it, keeping the Zigbee mesh that was already loaded
+    // ---- the user's answers (is this one device?) are kept with their Home Assistant user, so every browser sees them
+    async _loadAnswers() {
+      this._ans = { dup: {} };
+      if (this._hass.demo) return;
+      try { var r = await this._hass.callWS({ type: 'frontend/get_user_data', key: 'connection_map_card' }); if (r && r.value && r.value.dup) this._ans = { dup: Object.assign({}, r.value.dup) }; return; } catch (e) { /* fall back to this browser */ }
+      try { var raw = JSON.parse(localStorage.getItem('connection-map-card') || '{}'); if (raw && raw.dup) this._ans = { dup: raw.dup }; } catch (e) { /* no storage */ }
+    }
+    _saveAnswers() {
+      if (this._hass.demo) return;
+      var v = { dup: this._ans.dup };
+      try { localStorage.setItem('connection-map-card', JSON.stringify(v)); } catch (e) { /* no storage */ }
+      try { var p = this._hass.callWS({ type: 'frontend/set_user_data', key: 'connection_map_card', value: v }); if (p && p.catch) p.catch(function () { }); } catch (e) { /* kept in this browser only */ }
+    }
+    _modal(html) { var m = this._$('modal'); m.innerHTML = '<div class="dlg">' + html + '</div>'; m.style.display = 'flex'; var b = m.querySelector('button'); if (b) b.focus(); return m; }
+    _closeModal() { var m = this._$('modal'); m.style.display = 'none'; m.innerHTML = ''; }
+    // Two entries that look like one device: the user decides, one pair at a time
+    _dupAsk(i) {
+      var self = this, t = this._t.bind(this), list = this._dupPending || [];
+      if (!list.length) { this._closeModal(); return; }
+      i = Math.max(0, Math.min(i, list.length - 1)); var q = list[i];
+      var one = function (x) { return '<div class="one"><b>' + esc(x.n) + '</b><dl class="kv"><dt>' + esc(t('integration')) + '</dt><dd>' + esc(x.as) + '</dd>' + (x.mo ? '<dt>' + esc(t('model')) + '</dt><dd>' + esc(x.mo) + '</dd>' : '') + (x.a ? '<dt>' + esc(t('area')) + '</dt><dd>' + esc(x.a) + '</dd>' : '') + '<dt>' + esc(t('dupGroup')) + '</dt><dd>' + esc(x.g) + '</dd></dl></div>'; };
+      var m = this._modal('<h2>' + esc(t('dupTitle')) + (list.length > 1 ? ' · ' + (i + 1) + ' ' + esc(t('dupOf')) + ' ' + list.length : '') + '</h2><p>' + esc(t(q.why === 'app' ? 'dupWhyApp' : 'dupWhyName')) + '</p>' +
+        '<div class="pair">' + one(q.a) + one(q.b) + '</div><div class="acts"><button class="btn go" id="dSame">' + esc(t('dupSame')) + '</button><button class="btn" id="dDiff">' + esc(t('dupDiff')) + '</button><button class="btn" id="dLater">' + esc(t('dupLater')) + '</button></div>');
+      var answer = function (v) { self._ans.dup[q.key] = v; self._saveAnswers(); self._remodel(); self._dupAsk(i); };
+      m.querySelector('#dSame').onclick = function () { answer(true); };
+      m.querySelector('#dDiff').onclick = function () { answer(false); };
+      m.querySelector('#dLater').onclick = function () { if (i + 1 < list.length) self._dupAsk(i + 1); else self._closeModal(); };
+      m.onclick = function (e) { if (e.target === m) self._closeModal(); };
+    }
+    // ---- diagnostics: what the card found and how it classified it, with nothing that identifies the home
+    _diagnostics() {
+      var self = this, H = this._hass || {}, cfg = this._given || {}, hubs = this._hubs || [], devs = this._devs || [], man = this._man || {};
+      var ENUM = ['layout', 'sort', 'language', 'demo', 'merge_duplicates', 'core_size'], conf = {};
+      Object.keys(cfg).sort().forEach(function (k) {
+        var v = cfg[k];
+        conf[k] = typeof v === 'boolean' || typeof v === 'number' ? v : typeof v === 'string' ? (ENUM.indexOf(k) >= 0 ? v : '<text>') : Array.isArray(v) ? v.length + ' items'
+          : v && typeof v === 'object' ? (['colors', 'lines', 'sizes'].indexOf(k) >= 0 ? v : Object.keys(v).length + ' entries') : String(v);
+      });
+      var ints = {};
+      devs.forEach(function (d) { var i = ints[d.p] = ints[d.p] || { iot_class: (man[d.p] || {}).iot_class || null, type: (man[d.p] || {}).integration_type || null, devices: 0 }; i.devices++; if (d.svc) i.services = (i.services || 0) + 1; if (d.bare) i.no_entities = (i.no_entities || 0) + 1; if (d.entity || d.integration) i.entity_only = (i.entity_only || 0) + 1; if (d.off) i.offline = (i.offline || 0) + 1; if (d.also && d.also.length) i.merged = (i.merged || 0) + d.also.length; });
+      var ci = this._coordInfo, port = (ci && ci.port) || '';
+      return {
+        card: VERSION, home_assistant: (H.config && H.config.version) || null, language: H.language || null, user_is_admin: !!(H.user && H.user.is_admin), screen: (this._$('map').getBoundingClientRect().width | 0) + 'px',
+        config: conf, option_notes: this._optNotes || [],
+        totals: { devices: devs.length, groups: hubs.length, offline: devs.filter(function (d) { return d.off; }).length, routers: (this._routers || []).length, access_points_not_drawn: (this._offMap || []).length, labels_hidden: this._hiddenNames || 0, link_problems: this._linkProblems || 0 },
+        groups: hubs.map(function (h) { return { integration: h.p || null, kind: h.kind, medium: h.m, devices: h.dv.length, services: h.dv.filter(function (d) { return d.svc; }).length,
+          flags: ['own', 'plain', 'bt', 'rx', 'thread', 'otbr', 'direct', 'tree'].filter(function (k) { return h[k]; }).concat(h.areas && h.areas.length ? ['areas:' + h.areas.length] : []),
+          link: h.from && h.from.router ? 'access point' : h.direct ? 'home assistant' : h.m }; }),
+        integrations: ints,
+        sources: { integration_list: Object.keys(man).length > 0, entity_sources: Object.keys(this._src || {}).length > 0, bluetooth: !!this._bt, matter: !!this._matter, zha: !!this._hasZha, zigbee_mesh: !!(this._rawMesh || this._rawZha),
+          otbr: ((H.config && H.config.components) || []).indexOf('otbr') >= 0, stick_role: this._otbr ? 'thread border router' : this._coordFromDev ? 'zigbee coordinator' : 'none',
+          zigbee2mqtt_adapter: !port ? null : /^(tcp|socket):/i.test(port) ? 'network' : 'serial' },
+        duplicates: { mode: cfg.merge_duplicates == null ? 'ask' : cfg.merge_duplicates, merged: devs.reduce(function (n, d) { return n + ((d.also && d.also.length) || 0); }, 0), waiting_for_an_answer: (this._dupPending || []).length, answers: Object.keys((this._ans && this._ans.dup) || {}).length },
+        skipped_devices: this._skipped || [], error: this._error || null
+      };
+    }
+    _diagDialog() {
+      var self = this, t = this._t.bind(this), text = '';
+      try { text = JSON.stringify(this._diagnostics(), null, 1); } catch (e) { text = 'diagnostics failed: ' + e; }
+      var m = this._modal('<h2>' + esc(t('diagTitle')) + '</h2><p>' + esc(t('diagHint')) + '</p><textarea readonly id="dgText"></textarea><div class="acts"><button class="btn go" id="dgCopy">' + esc(t('diagCopy')) + '</button><button class="btn" id="dgClose">' + esc(t('close')) + '</button></div>');
+      var ta = m.querySelector('#dgText'); ta.value = '```json\n' + text + '\n```';
+      m.querySelector('#dgCopy').onclick = function () {
+        var done = function () { m.querySelector('#dgCopy').textContent = t('diagCopied'); };
+        ta.focus(); ta.select();
+        try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(done, function () { document.execCommand('copy'); done(); }); else { document.execCommand('copy'); done(); } } catch (e) { /* the text is selected: copy by hand */ }
+      };
+      m.querySelector('#dgClose').onclick = function () { self._closeModal(); };
+      m.onclick = function (e) { if (e.target === m) self._closeModal(); };
+    }
     _remodel() {
       this._model();
       if (this._rawMesh) this._applyMesh(this._rawMesh); if (this._rawZha) this._applyZhaMesh(this._rawZha);
@@ -648,7 +957,18 @@
       return CLOUD_GUESS.indexOf(p) >= 0 ? 'cloud' : 'local';
     }
 
-    _model() {
+    // A map that fails to build must not leave an empty card: the error is shown, and what was drawn stays.
+    _model() { try { this._modelRaw(); this._modelBad = false; } catch (e) { this._modelBad = true; this._fail('model', e); } }
+    _render() {
+      if (this._modelBad) return;
+      try { this._renderRaw(); if (this._error) { this._error = null; this._note(); } } catch (e) { this._fail(this._inLayout ? 'layout' : 'draw', e); }
+    }
+    _fail(where, e) {
+      this._error = { where: where, message: String((e && e.message) || e).slice(0, 300), stack: String((e && e.stack) || '').split('\n').slice(0, 4).join(' | ').slice(0, 600) };
+      console.error('connection-map-card', where, e);
+      try { this._note(); var p = this._$('loading'); if (p) p.textContent = this._t('errTitle') + ' ' + this._error.message; } catch (x) { /* nothing to show it in yet */ }
+    }
+    _modelRaw() {
       var H = this._hass, cfg = this._cfg, self = this, t = this._t.bind(this);
       var devices = H.devices || {}, entities = H.entities || {}, areas = H.areas || {};
       var byDev = {};
@@ -752,7 +1072,8 @@
         if (!hubs[key]) hubs[key] = { key: key, n: name, m: medium, kind: kind, p: p, dv: [] };
         return hubs[key];
       }
-      Object.keys(devices).forEach(function (id) {
+      var skipped = this._skipped = [];
+      var one = function (id) {
         var d = devices[id];
         if (d.disabled_by || cfg.exclude_devices.indexOf(id) >= 0) return;
         if (d.entry_type === 'service' && d.via_device_id) return; // virtual rooms/zones/groups exposed by a hub
@@ -814,18 +1135,31 @@
         // only Zigbee goes through the Zigbee coordinator: Z-Wave, EnOcean, 433 MHz... have a radio of their own
         if (hub.m === 'radio' && !hub.own && ZIGBEE.indexOf(p) < 0 && p !== 'mqtt') hub.own = hub.plain = true;
         var made = mk(id, d, es, p, hub); if (hub.own && !hub.plain) made.via = self._intName(p); if (rssi != null) made.rssi = rssi;
+      };
+      Object.keys(devices).forEach(function (id) {
+        try { one(id); } catch (e) { skipped.push({ integration: platOf(id) || '?', error: String((e && e.message) || e).slice(0, 160) }); }
       });
       // One physical device is often set up through several integrations, each with its own entry in the device registry:
       // a TV through its own integration and through the companion app, for example. They are drawn as one dot.
       // Two entries are the same device when the router knows them by the same address, or when one of them is the
       // companion app and it has the same name as the other, or was matched to the same client of the router.
-      if (cfg.merge_duplicates !== false) {
+      var dupMode = cfg.merge_duplicates === false || cfg.merge_duplicates === 'off' ? 'off' : cfg.merge_duplicates === 'auto' ? 'auto' : 'ask', answers = (this._ans && this._ans.dup) || {}, pending = this._dupPending = [];
+      if (dupMode !== 'off') {
         var groups = [], gOf = {};
         var join = function (a, b) {
           var ga = gOf[a.id], gb = gOf[b.id];
           if (ga && gb) { if (ga !== gb) { gb.forEach(function (x) { ga.push(x); gOf[x.id] = ga; }); gb.length = 0; } }
           else if (ga) { ga.push(b); gOf[b.id] = ga; } else if (gb) { gb.push(a); gOf[a.id] = gb; }
           else { var g = [a, b]; groups.push(g); gOf[a.id] = gOf[b.id] = g; }
+        };
+        // Two entries known to the router by the same address are the same device: merged without asking. Entries that
+        // only look alike (same name) are a suspicion: the user is asked once, and the answer is remembered.
+        var brief = function (x) { return { id: x.id, n: x.n, as: self._intName(x.p), mo: x.mo, a: x.a, g: x.hub.n }; };
+        var suspect = function (a, b, why) {
+          if (gOf[a.id] && gOf[a.id] === gOf[b.id]) return;
+          var key = [a.id, b.id].sort().join('|');
+          if (dupMode === 'auto' || answers[key] === true) join(a, b);
+          else if (answers[key] !== false && !pending.some(function (q) { return q.key === key; })) pending.push({ key: key, why: why, a: brief(a), b: brief(b) });
         };
         var byTrk = {}, byName = {}, byBase = {};
         devs.forEach(function (x) {
@@ -836,7 +1170,7 @@
         devs.forEach(function (x) {
           if (x.p !== 'mobile_app') return;
           var same = (byName[slug(x.n)] || [])[0] || (x.trk && devs.filter(function (y) { return y !== x && y.p !== 'mobile_app' && y.trk === x.trk; })[0]);
-          if (same) join(same, x);
+          if (same) suspect(same, x, 'app');
         });
         // The same thing through two integrations of the same maker (a TV through its local integration and through the
         // maker's cloud): the same name, give or take a model in brackets. A shared name alone is not enough ("Living
@@ -846,7 +1180,7 @@
           for (var i = 0; i < l.length; i++) for (var j = i + 1; j < l.length; j++) {
             var a = l[i], b = l[j]; if (a.p === b.p) continue;
             var ma = a.mf.split(/\s+/)[0].toLowerCase(), mb = b.mf.split(/\s+/)[0].toLowerCase();
-            if (ma && mb ? ma === mb : (k.split('_').length >= 3 || /\d/.test(k))) join(a, b);
+            if (ma && mb ? ma === mb : (k.split('_').length >= 3 || /\d/.test(k))) suspect(a, b, 'name');
           }
         });
         groups.forEach(function (g) {
@@ -1197,7 +1531,7 @@
       if (!v || (old && Math.abs(v.x - old.x) + Math.abs(v.y - old.y) + Math.abs(v.w - old.w) + Math.abs(v.h - old.h) < 1)) this._vb = Object.assign({}, this._vb0);
     }
 
-    _render() {
+    _renderRaw() {
       var self = this, t = this._t.bind(this), svg = this._$('svg');
       var M = { cloud: 'var(--cm-cloud)', local: 'var(--cm-local)', radio: 'var(--cm-radio)', core: 'var(--cm-core)' };
       this._M = M;
@@ -1213,7 +1547,7 @@
       this._$('zlay').title = t('layoutBtn'); this._$('zexp').title = t('exportBtn'); this._$('zexp').style.display = this._cfg.show_export === false ? 'none' : '';
       this._$('zin').title = t('zoomIn'); this._$('zout').title = t('zoomOut'); this._$('zfit').title = t('fit');
       if (!this._devs.length) { this._$('panel').innerHTML = '<div class="msg">' + esc(t('nodata')) + '</div>'; return; }
-      this._layout();
+      this._inLayout = true; this._layout(); this._inLayout = false;
       svg.innerHTML = ''; svg.classList.remove('foc'); this._on = [];
       // pointing at (or tabbing to) something: highlight its path and show a tooltip. Touch has no hover: a tap selects.
       function hov(g, target, x, y, tip) {
@@ -1376,10 +1710,13 @@
       this._$('zexp').onclick = function (e) {
         e.stopPropagation(); var m = self._$('xmenu'), t = self._t.bind(self);
         if (m.style.display === 'flex') { m.style.display = 'none'; return; }
-        m.innerHTML = '<button class="btn" id="xa">' + esc(t('exportAnon')) + '</button><button class="btn" id="xf">' + esc(t('exportFull')) + '</button><p>' + esc(t('exportHint')) + '</p>';
+        m.innerHTML = '<button class="btn" id="xa">' + esc(t('exportAnon')) + '</button><button class="btn" id="xf">' + esc(t('exportFull')) + '</button><p>' + esc(t('exportHint')) + '</p>' +
+          '<button class="btn" id="xd">' + esc(t('diagBtn')) + '</button>' + (Object.keys((self._ans && self._ans.dup) || {}).length ? '<button class="btn" id="xr">' + esc(t('dupReset')) + '</button>' : '');
         m.style.display = 'flex';
         m.querySelector('#xa').onclick = function () { m.style.display = 'none'; self._export(true); };
         m.querySelector('#xf').onclick = function () { m.style.display = 'none'; self._export(false); };
+        m.querySelector('#xd').onclick = function () { m.style.display = 'none'; self._diagDialog(); };
+        var xr = m.querySelector('#xr'); if (xr) xr.onclick = function () { m.style.display = 'none'; self._ans.dup = {}; self._saveAnswers(); self._remodel(); };
       };
       this._$('map').addEventListener('click', function () { self._$('xmenu').style.display = 'none'; });
       this._$('zin').onclick = function () { self._zoom(0.75); };
@@ -1602,11 +1939,17 @@
     // Anything left off the map for lack of room is said out loud, under the map.
     _note() {
       var t = this._t.bind(this), self = this, el = this._$('note'), a = (this._offMap || []).length, n = this._hiddenNames || 0, h = '';
+      var er = this._error, sk = (this._skipped || []).length, du = (this._dupPending || []).length;
+      if (er) h += '<div><span>⚠ ' + esc(t('errTitle')) + ' ' + esc(t('errHint')) + '</span><button id="noteDiag">' + esc(t('details')) + '</button></div>';
+      if (sk) h += '<div><span>⚠ ' + (sk === 1 ? esc(t('skipped1')) : sk + ' ' + esc(t('skipped'))) + '</span><button id="noteDiag2">' + esc(t('details')) + '</button></div>';
+      if (du) h += '<div><span>⚠ ' + (du === 1 ? esc(t('dupNote1')) : du * 2 + ' ' + esc(t('dupNote'))) + '</span><button id="noteDup">' + esc(t('dupReview')) + '</button></div>';
       if (a) h += '<div><span>⚠ ' + (a === 1 ? esc(t('noRoomAp1')) : a + ' ' + esc(t('noRoomAp'))) + '</span><button id="noteAp">' + esc(t('noRoomSee')) + '</button></div>';
       if (n) h += '<div><span>⚠ ' + (n === 1 ? esc(t('noRoomName1')) : n + ' ' + esc(t('noRoomName'))) + '</span><button id="noteZoom">' + esc(t('noRoomZoom')) + '</button></div>';
       if (el.innerHTML !== h) el.innerHTML = h;
       el.style.display = h ? 'block' : 'none';
       var b1 = el.querySelector('#noteAp'), b2 = el.querySelector('#noteZoom');
+      ['#noteDiag', '#noteDiag2'].forEach(function (q) { var b = el.querySelector(q); if (b) b.onclick = function () { self._diagDialog(); }; });
+      var b3 = el.querySelector('#noteDup'); if (b3) b3.onclick = function () { self._dupAsk(0); };
       if (b1) b1.onclick = function () { self._selRouter(self._router); };
       if (b2) b2.onclick = function () { self._zoom(0.7); };
     }
@@ -1866,23 +2209,128 @@
   // ---------------------------------------------------------------------------------------------------------------
   // Visual editor. Plain inputs, no Home Assistant components, so it does not depend on what the frontend has loaded.
   // A value equal to its default is removed from the configuration, to keep the YAML short.
+  // Texts of the visual editor. Same rules as STR above.
   var ED = {
-    en: { general: 'General', title: 'Title', language: 'Language', auto: 'Automatic', sort: 'Order of the lists', byArea: 'By area', byName: 'By name',
-      group_by_area: 'Group the devices of each hub by area', layout: 'Map', detailed: 'Detailed: every device is a dot', compact: 'Compact: one bubble per hub', show_export: 'Button to save the map as an image', show_panel: 'Side panel', animations: 'Animations', minimap: 'Overview map when the whole map is not in view', device_labels: 'Device names when zoomed in',
-      colors: 'Colours', cloud: 'Internet', local: 'Local network', radio: 'Local radio', core: 'Home Assistant', offline: 'Offline', away: 'Off the network', crecent: 'Seen recently', reset: 'Default',
-      lines: 'Lines', lcloud: 'Internet links', llocal: 'Cable links', lradio: 'Radio links', lwifi: 'Wi-Fi links', solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted', width: 'Line width',
-      sizes: 'Bubble sizes', score: 'Home Assistant', snetwork: 'Network nodes (router, coordinator, internet)', shub: 'Hubs and integrations', sdevice: 'Devices',
-      content: 'What is shown', group_small: 'Group integrations with this many devices or fewer', show_trackers: 'Devices that only have a device tracker', show_mesh: 'Zigbee mesh routes',
-      physical_only: 'Physical devices only (no accounts, services or loose sensors)', mqtt_entities: 'MQTT entities without a device', merge_duplicates: 'Draw a device set up through several integrations as one', entities_without_device: 'Entities of device integrations that have no device', devices_without_entities: 'Devices that have no entities', recent_hours: 'Hours a silent battery device counts as seen recently (0: never)', exclude_integrations: 'Hidden integrations (domains, separated by commas)', router_name: 'Name of the local network node',
-      coordinator_name: 'Name of the radio coordinator', demo: 'Demo installation', none: 'None (my installation)', yaml: 'names, overrides, exclude_devices and z2m_base_topic are edited in YAML.' },
-    es: { general: 'General', title: 'Título', language: 'Idioma', auto: 'Automático', sort: 'Orden de las listas', byArea: 'Por pieza', byName: 'Por nombre',
-      group_by_area: 'Agrupar por pieza los equipos de cada hub', layout: 'Mapa', detailed: 'Detallado: cada equipo es un punto', compact: 'Compacto: una burbuja por hub', show_export: 'Botón para guardar el mapa como imagen', show_panel: 'Panel lateral', animations: 'Animaciones', minimap: 'Mini-mapa cuando no se ve el mapa completo', device_labels: 'Nombres de los equipos al acercar',
-      colors: 'Colores', cloud: 'Internet', local: 'Red local', radio: 'Radio local', core: 'Home Assistant', offline: 'Sin conexión', away: 'Fuera de la red', crecent: 'Visto hace poco', reset: 'Por defecto',
-      lines: 'Líneas', lcloud: 'Enlaces por internet', llocal: 'Enlaces por cable', lradio: 'Enlaces por radio', lwifi: 'Enlaces Wi-Fi', solid: 'Continua', dashed: 'Segmentada', dotted: 'Punteada', width: 'Grosor de línea',
-      sizes: 'Tamaño de las burbujas', score: 'Home Assistant', snetwork: 'Nodos de red (router, coordinador, internet)', shub: 'Hubs e integraciones', sdevice: 'Equipos',
-      content: 'Qué se muestra', group_small: 'Agrupar integraciones con esta cantidad de equipos o menos', show_trackers: 'Equipos que solo tienen device tracker', show_mesh: 'Rutas de la malla Zigbee',
-      physical_only: 'Solo equipos físicos (sin cuentas, servicios ni sensores sueltos)', mqtt_entities: 'Entidades MQTT sin dispositivo', merge_duplicates: 'Dibujar como uno solo un equipo configurado en varias integraciones', entities_without_device: 'Entidades sin dispositivo de integraciones de equipos', devices_without_entities: 'Dispositivos que no tienen entidades', recent_hours: 'Horas en que un equipo a batería sin respuesta cuenta como visto hace poco (0: nunca)', exclude_integrations: 'Integraciones ocultas (dominios, separados por comas)', router_name: 'Nombre del nodo de red local',
-      coordinator_name: 'Nombre del coordinador de radio', demo: 'Instalación de demostración', none: 'Ninguna (mi instalación)', yaml: 'names, overrides, exclude_devices y z2m_base_topic se editan en YAML.' }
+    en: {
+      animations: 'Animations',
+      auto: 'Automatic',
+      away: 'Off the network',
+      byArea: 'By area',
+      byName: 'By name',
+      cloud: 'Internet',
+      colors: 'Colours',
+      compact: 'Compact: one bubble per hub',
+      content: 'What is shown',
+      coordinator_name: 'Name of the radio coordinator',
+      core: 'Home Assistant',
+      crecent: 'Seen recently',
+      dashed: 'Dashed',
+      demo: 'Demo installation',
+      detailed: 'Detailed: every device is a dot',
+      device_labels: 'Device names when zoomed in',
+      devices_without_entities: 'Devices that have no entities',
+      dotted: 'Dotted',
+      dupAsk: 'Ask me',
+      dupAuto: 'Draw it once',
+      dupOff: 'Leave both',
+      entities_without_device: 'Entities of device integrations that have no device',
+      exclude_integrations: 'Hidden integrations (domains, separated by commas)',
+      general: 'General',
+      group_by_area: 'Group the devices of each hub by area',
+      group_small: 'Group integrations with this many devices or fewer',
+      language: 'Language',
+      layout: 'Map',
+      lcloud: 'Internet links',
+      lines: 'Lines',
+      llocal: 'Cable links',
+      local: 'Local network',
+      lradio: 'Radio links',
+      lwifi: 'Wi-Fi links',
+      merge_duplicates: 'A device that looks set up twice',
+      minimap: 'Overview map when the whole map is not in view',
+      mqtt_entities: 'MQTT entities without a device',
+      none: 'None (my installation)',
+      offline: 'Offline',
+      physical_only: 'Physical devices only (no accounts, services or loose sensors)',
+      radio: 'Local radio',
+      recent_hours: 'Hours a silent battery device counts as seen recently (0: never)',
+      reset: 'Default',
+      router_name: 'Name of the local network node',
+      score: 'Home Assistant',
+      sdevice: 'Devices',
+      show_export: 'Button to save the map as an image',
+      show_mesh: 'Zigbee mesh routes',
+      show_panel: 'Side panel',
+      show_trackers: 'Devices that only have a device tracker',
+      shub: 'Hubs and integrations',
+      sizes: 'Bubble sizes',
+      snetwork: 'Network nodes (router, coordinator, internet)',
+      solid: 'Solid',
+      sort: 'Order of the lists',
+      title: 'Title',
+      width: 'Line width',
+      yaml: 'names, overrides, exclude_devices and z2m_base_topic are edited in YAML.'
+    },
+    es: {
+      animations: 'Animaciones',
+      auto: 'Automático',
+      away: 'Fuera de la red',
+      byArea: 'Por pieza',
+      byName: 'Por nombre',
+      cloud: 'Internet',
+      colors: 'Colores',
+      compact: 'Compacto: una burbuja por hub',
+      content: 'Qué se muestra',
+      coordinator_name: 'Nombre del coordinador de radio',
+      core: 'Home Assistant',
+      crecent: 'Visto hace poco',
+      dashed: 'Segmentada',
+      demo: 'Instalación de demostración',
+      detailed: 'Detallado: cada equipo es un punto',
+      device_labels: 'Nombres de los equipos al acercar',
+      devices_without_entities: 'Dispositivos que no tienen entidades',
+      dotted: 'Punteada',
+      dupAsk: 'Preguntarme',
+      dupAuto: 'Dibujarlo una vez',
+      dupOff: 'Dejar ambos',
+      entities_without_device: 'Entidades sin dispositivo de integraciones de equipos',
+      exclude_integrations: 'Integraciones ocultas (dominios, separados por comas)',
+      general: 'General',
+      group_by_area: 'Agrupar por pieza los equipos de cada hub',
+      group_small: 'Agrupar integraciones con esta cantidad de equipos o menos',
+      language: 'Idioma',
+      layout: 'Mapa',
+      lcloud: 'Enlaces por internet',
+      lines: 'Líneas',
+      llocal: 'Enlaces por cable',
+      local: 'Red local',
+      lradio: 'Enlaces por radio',
+      lwifi: 'Enlaces Wi-Fi',
+      merge_duplicates: 'Un equipo que parece estar dos veces',
+      minimap: 'Mini-mapa cuando no se ve el mapa completo',
+      mqtt_entities: 'Entidades MQTT sin dispositivo',
+      none: 'Ninguna (mi instalación)',
+      offline: 'Sin conexión',
+      physical_only: 'Solo equipos físicos (sin cuentas, servicios ni sensores sueltos)',
+      radio: 'Radio local',
+      recent_hours: 'Horas en que un equipo a batería sin respuesta cuenta como visto hace poco (0: nunca)',
+      reset: 'Por defecto',
+      router_name: 'Nombre del nodo de red local',
+      score: 'Home Assistant',
+      sdevice: 'Equipos',
+      show_export: 'Botón para guardar el mapa como imagen',
+      show_mesh: 'Rutas de la malla Zigbee',
+      show_panel: 'Panel lateral',
+      show_trackers: 'Equipos que solo tienen device tracker',
+      shub: 'Hubs e integraciones',
+      sizes: 'Tamaño de las burbujas',
+      snetwork: 'Nodos de red (router, coordinador, internet)',
+      solid: 'Continua',
+      sort: 'Orden de las listas',
+      title: 'Título',
+      width: 'Grosor de línea',
+      yaml: 'names, overrides, exclude_devices y z2m_base_topic se editan en YAML.'
+    }
   };
   var LINE = ['solid', 'dashed', 'dotted'];
   var FIELDS = [
@@ -1895,7 +2343,7 @@
     { p: 'lines.wifi', k: 'select', o: LINE, d: 'dotted', l: 'lwifi' }, { p: 'lines.radio', k: 'select', o: LINE, d: 'solid', l: 'lradio' }, { p: 'lines.width', k: 'range', min: 0.5, max: 6, step: 0.5, d: 2, l: 'width' },
     { sec: 'sizes' }, { p: 'sizes.core', k: 'range', min: 20, max: 80, step: 1, d: 56, l: 'score' }, { p: 'sizes.network', k: 'range', min: 16, max: 40, step: 1, d: 28, l: 'snetwork' },
     { p: 'sizes.hub', k: 'range', min: 14, max: 34, step: 1, d: 22, l: 'shub' }, { p: 'sizes.device', k: 'range', min: 3, max: 9, step: 0.2, d: 6.2, l: 'sdevice' },
-    { sec: 'content' }, { p: 'physical_only', k: 'bool', d: false }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'mqtt_entities', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'bool', d: true }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
+    { sec: 'content' }, { p: 'physical_only', k: 'bool', d: false }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'select', o: [['ask', 'dupAsk'], ['auto', 'dupAuto'], ['off', 'dupOff']], d: 'ask' }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
     { p: 'exclude_integrations', k: 'list' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
     { p: 'demo', k: 'select', o: [['', 'none'], ['unifi', 'UniFi'], ['fritz', 'FRITZ!Box'], ['large', '350']], d: '' }
   ];
@@ -1957,6 +2405,7 @@
       FIELDS.forEach(function (f, i) {
         if (f.sec) return; var e = root.getElementById('f' + i), r = root.getElementById('f' + i + 'r'), o = root.getElementById('f' + i + 'o'), v = self._get(f.p);
         if (f.p === 'sizes.core' && v === undefined && self._c.core_size === 'compact') v = 28;
+        if (f.p === 'merge_duplicates') v = v === false ? 'off' : v === true ? undefined : v;
         if (r) r.disabled = v === undefined;
         if (e !== act) {
           if (f.k === 'bool') e.checked = v === undefined ? f.d : !!v;
@@ -1971,6 +2420,7 @@
   if (!customElements.get('connection-map-card-editor')) customElements.define('connection-map-card-editor', ConnectionMapCardEditor);
 
   if (!customElements.get('connection-map-card')) customElements.define('connection-map-card', ConnectionMapCard);
+  window.__connectionMapCardTexts = function () { return { card: STR, editor: ED }; }; // for the tests: every language must have the texts of English
   window.customCards = window.customCards || [];
   window.customCards.push({ type: 'connection-map-card', name: 'Connection Map Card', description: 'Shows how every device reaches Home Assistant: cloud, local network, hubs and local radio.', preview: false, documentationURL: 'https://github.com/Ctuna89/ha-connection-map-card' });
   console.info('%c CONNECTION-MAP-CARD %c v' + VERSION + ' ', 'color:#fff;background:#0f9f8a;font-weight:700', 'color:#0f9f8a;background:#fff');

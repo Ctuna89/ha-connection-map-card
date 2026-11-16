@@ -209,7 +209,7 @@ test('a device set up through several integrations is drawn once', async () => {
       speaker: by('Kitchen speaker').map((d) => d.also.map((o) => o.n)), groups: c._hubs.map((h) => h.n).sort(),
       frame: c._devs.filter((d) => /Frame/.test(d.n)).map((d) => ({ n: d.n, as: c._intName(d.p), also: d.also.map((o) => o.as) })), rooms: by('Living room').length };
   }, config);
-  const r = await mount({});
+  const r = await mount({ merge_duplicates: 'auto' }); // 'auto' draws look-alikes once without asking; the default asks (next test)
   assert.deepEqual(r.names, ['Kitchen speaker', 'Lamp', 'Lamp', 'Living room', 'Living room', 'Pixel 9', 'Samsung The Frame 65 (QN65LS03BAGXZS)', 'Sony XR-55A84L']);
   assert.deepEqual(r.frame, [{ n: 'Samsung The Frame 65 (QN65LS03BAGXZS)', as: 'Samsung TV', also: ['SmartThings'] }], 'the local entry stays, the cloud one is folded into it');
   assert.equal(r.rooms, 2);
@@ -533,5 +533,121 @@ test('physical_only: accounts, services and loose sensors are left out, and the 
   await mount({});
   assert.equal((await names()).names.length, 10);
   assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+// ---- shared by the tests below: a small home with a TV set up twice, a phone set up twice and a speaker known by one address
+async function mountDupHome(page, config, extra) {
+  await page.evaluate(async ([config, extra]) => {
+    const devices = {}, entities = {}, states = {};
+    const dev = (id, name, o = {}) => { devices[id] = { id, name, manufacturer: o.mf || '', model: o.mo || '', via_device_id: null, connections: o.mac ? [['mac', o.mac]] : [], identifiers: [], disabled_by: null, area_id: null }; };
+    const ent = (eid, device_id, platform, state, attributes) => { entities[eid] = { entity_id: eid, device_id, platform }; states[eid] = { entity_id: eid, state, attributes: attributes || {} }; };
+    dev('gw', 'UDM Gateway', { mac: 'aa:00:00:00:00:01' }); ent('sensor.gw_a', 'gw', 'unifi', '1'); ent('sensor.gw_b', 'gw', 'unifi', '1');
+    dev('fr1', 'Samsung The Frame 65 (QN65LS03BAGXZS)', { mf: 'Samsung' }); ent('media_player.frame', 'fr1', 'samsungtv', 'on');
+    dev('fr2', 'Samsung The Frame 65', { mf: 'Samsung Electronics' }); ent('media_player.frame_st', 'fr2', 'smartthings', 'on');
+    dev('ph1', 'Pixel 9'); for (let i = 0; i < 3; i++) ent('sensor.pixel_9_' + i, 'ph1', 'mobile_app', '1'); dev('ph2', 'Pixel 9'); ent('media_player.pixel_adb', 'ph2', 'androidtv', 'on');
+    dev('spk1', 'Kitchen speaker', { mac: 'aa:00:00:00:00:10' }); ent('media_player.spk1', 'spk1', 'cast', 'on'); ent('sensor.spk1', 'spk1', 'cast', 'on');
+    dev('spk2', 'Nest Mini', { mac: 'aa:00:00:00:00:10' }); ent('media_player.spk2', 'spk2', 'dlna_dmr', 'on');
+    ent('device_tracker.kitchen_speaker', null, 'unifi', 'home', { mac: 'aa:00:00:00:00:10' });
+    for (let i = 0; i < 3; i++) { dev('p' + i, 'Plug ' + i); ent('switch.p' + i, 'p' + i, 'shelly', 'on'); }
+    if (extra === 'odd-device') dev('odd', 12345); // a name that is not text: this one entry cannot be read
+    if (extra === 'odd-device') ent('switch.odd', 'odd', 'shelly', 'on');
+    const man = ['unifi', 'samsungtv', 'smartthings', 'mobile_app', 'androidtv', 'cast', 'dlna_dmr', 'shelly'].map((d) => ({ domain: d, name: d, iot_class: d === 'smartthings' ? 'cloud_push' : 'local_push' }));
+    window.saved = window.saved || null; window.calls = [];
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig(Object.assign({ animations: false, group_small: 0 }, config)); host.appendChild(c); window.card = c;
+    window.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '2026.11.1' }, user: { is_admin: true }, connection: { subscribeMessage: async () => () => {} },
+      callWS: async (m) => { if (m.type === 'manifest/list') return man; if (m.type === 'frontend/get_user_data') return { value: window.saved };
+        if (m.type === 'frontend/set_user_data') { window.saved = JSON.parse(JSON.stringify(m.value)); window.calls.push(m.key); return null; } throw new Error('not in test'); } };
+    c.hass = window.hass;
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+  }, [config || {}, extra || '']);
+}
+const dupState = (page) => page.evaluate(() => { const c = window.card, m = c.shadowRoot.getElementById('modal');
+  return { names: c._devs.map((d) => d.n).sort(), pending: c._dupPending.length, note: c.shadowRoot.getElementById('note').innerText.replace(/\s+/g, ' '), modal: m.style.display === 'flex' ? m.innerText.replace(/\s+/g, ' ') : null }; });
+
+test('a suspected duplicate is the user\'s call: asked once, remembered for that user', async () => {
+  const page = await H.newPage(browser);
+  await page.evaluate(() => { window.saved = null; });
+  await mountDupHome(page, {});
+  let r = await dupState(page);
+  assert.equal(r.pending, 2, 'the TV and the phone are suspicions');
+  assert.ok(r.names.includes('Samsung The Frame 65') && r.names.includes('Samsung The Frame 65 (QN65LS03BAGXZS)'), 'until answered, both entries are drawn');
+  assert.ok(!r.names.includes('Nest Mini'), 'the speaker is known by one address: merged without asking');
+  assert.match(r.note, /4 devices may be on the map twice\. Review/);
+  // the note opens the question
+  await page.evaluate(() => window.card.shadowRoot.getElementById('noteDup').click());
+  r = await dupState(page);
+  assert.match(r.modal, /Is this one device\? · 1 of 2/); assert.match(r.modal, /Pixel 9 .*androidtv.*Pixel 9 .*Mobile devices/);
+  // "no": both stay, and it is not asked again
+  await page.evaluate(() => window.card.shadowRoot.getElementById('dDiff').click());
+  r = await dupState(page);
+  assert.equal(r.pending, 1); assert.equal(r.names.filter((n) => n === 'Pixel 9').length, 2);
+  assert.match(r.modal, /Samsung The Frame 65 .*Samsung TV.*smartthings/, 'the next one is asked right away');
+  // "yes": drawn once from now on
+  await page.evaluate(() => window.card.shadowRoot.getElementById('dSame').click());
+  r = await dupState(page);
+  assert.equal(r.pending, 0); assert.equal(r.modal, null); assert.doesNotMatch(r.note, /twice/);
+  assert.ok(!r.names.includes('Samsung The Frame 65'), 'the cloud entry is folded into the local one');
+  assert.deepEqual(await page.evaluate(() => [window.calls, Object.values(window.saved.dup).sort()]), [['connection_map_card', 'connection_map_card'], [false, true]]);
+  // a new card (another browser, a reload) gets the answers from Home Assistant
+  await mountDupHome(page, {});
+  r = await dupState(page);
+  assert.equal(r.pending, 0); assert.ok(!r.names.includes('Samsung The Frame 65')); assert.equal(r.names.filter((n) => n === 'Pixel 9').length, 2);
+  // "ask me again" from the menu
+  await page.evaluate(() => { const c = window.card; c.shadowRoot.getElementById('zexp').click(); c.shadowRoot.getElementById('xr').click(); });
+  assert.equal((await dupState(page)).pending, 2);
+  // never ask, never merge look-alikes
+  await mountDupHome(page, { merge_duplicates: false });
+  r = await dupState(page);
+  assert.equal(r.pending, 0); assert.ok(r.names.includes('Nest Mini'));
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('one entry that cannot be read is left out and reported; a failed update keeps the last map', async () => {
+  const page = await H.newPage(browser);
+  await page.evaluate(() => { window.saved = null; });
+  await mountDupHome(page, { merge_duplicates: 'auto' }, 'odd-device');
+  let r = await page.evaluate(() => { const c = window.card; return { devs: c._devs.length, skipped: c._skipped, note: c.shadowRoot.getElementById('note').innerText.replace(/\s+/g, ' '), dots: c.shadowRoot.querySelectorAll('svg .dev').length }; });
+  assert.equal(r.skipped.length, 1); assert.equal(r.skipped[0].integration, 'shelly');
+  assert.match(r.note, /1 device could not be read and was left out\. Details/);
+  assert.ok(r.dots >= 5, 'the rest of the map is there');
+  // now something breaks the whole model: the error is shown and the map that was drawn stays
+  r = await page.evaluate(() => { const c = window.card, dots = c.shadowRoot.querySelectorAll('svg .dev').length;
+    window.hass.devices.p0.connections = 7; c._remodel();
+    const out = { before: dots, after: c.shadowRoot.querySelectorAll('svg .dev').length, error: c._error && c._error.where, note: c.shadowRoot.getElementById('note').innerText.replace(/\s+/g, ' ') };
+    window.hass.devices.p0.connections = []; c._remodel(); out.cleared = c._error; out.noteAfter = c.shadowRoot.getElementById('note').innerText.replace(/\s+/g, ' '); return out; });
+  assert.equal(r.error, 'model'); assert.equal(r.after, r.before);
+  assert.match(r.note, /The map could not be updated\. The last map that worked is still shown\. Details/);
+  assert.equal(r.cleared, null); assert.doesNotMatch(r.noteAfter, /could not be updated/);
+  await page.close();
+});
+
+test('diagnostics describe the map without naming anything in the home', async () => {
+  const page = await H.newPage(browser);
+  await page.evaluate(() => { window.saved = null; });
+  await mountDupHome(page, { title: 'Casa de Jaime', router_name: 'Mi router', core_size: 'compact', colour: 'red' });
+  const r = await page.evaluate(() => { const c = window.card; c.shadowRoot.getElementById('zexp').click(); c.shadowRoot.getElementById('xd').click();
+    return { text: c.shadowRoot.getElementById('dgText').value, d: c._diagnostics(), core: c._sz.core, notes: c._optNotes }; });
+  for (const secret of ['Samsung', 'Frame', 'Pixel', 'Kitchen', 'Plug 0', 'UDM', 'aa:00', 'media_player.', 'sensor.', 'Casa de Jaime', 'Mi router']) assert.ok(!r.text.includes(secret), 'diagnostics must not contain ' + secret);
+  assert.equal(r.d.card.length > 0, true); assert.equal(r.d.home_assistant, '2026.11.1'); assert.equal(r.d.user_is_admin, true);
+  assert.equal(r.d.totals.devices, 8); assert.equal(r.d.duplicates.waiting_for_an_answer, 2); assert.equal(r.d.duplicates.merged, 1);
+  assert.deepEqual(r.d.config.title, '<text>'); assert.equal(r.d.integrations.shelly.devices, 3);
+  assert.ok(r.d.groups.some((g) => g.integration === 'shelly' && g.devices === 3 && g.medium === 'local'));
+  // option names: the replaced one still works and is reported, a typo is reported
+  assert.deepEqual(r.notes, ['deprecated: core_size -> sizes.core', 'unknown: colour']);
+  assert.deepEqual(r.d.option_notes, r.notes); assert.equal(r.core, 28);
+  await page.close();
+});
+
+test('every language has the same texts as English', async () => {
+  const page = await H.newPage(browser);
+  const r = await page.evaluate(() => window.__connectionMapCardTexts());
+  for (const set of ['card', 'editor']) for (const lang of Object.keys(r[set])) {
+    if (lang === 'en') continue;
+    assert.deepEqual(Object.keys(r[set][lang]).sort(), Object.keys(r[set].en).sort(), set + ' texts in ' + lang);
+    for (const k of Object.keys(r[set][lang])) assert.ok(String(r[set][lang][k]).trim(), set + '.' + lang + '.' + k + ' is empty');
+  }
   await page.close();
 });

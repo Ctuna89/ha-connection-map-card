@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Is this one device?** Two entries that only look alike (same name and maker, or the companion app on a device with the same name) are no longer merged on the card's own judgement. A notice under the map opens a question that shows both side by side; the answer is remembered for your Home Assistant user, on every browser, and can be asked again from the ⤓ menu. Entries the router knows by the same address are still merged without asking. `merge_duplicates` takes `ask` (default), `auto` or `off`.
+- **Copy diagnostics**, in the ⤓ menu: what the card found and how it classified each group, with no names, addresses or entity IDs. Meant to be pasted in an issue.
+- **A safety net.** If the map cannot be built from an unexpected piece of data, the card says so under the map and keeps the last map that worked, instead of going blank. A single device that cannot be read is left out, counted in the notice, and listed in the diagnostics.
+- **Option names are stable from 1.0.** Options that were replaced keep working and are reported in the browser console, as are options the card does not know.
+
+### Changed
+
+- `merge_duplicates` now asks by default. Set `merge_duplicates: auto` for the behaviour of 0.7.x.
+- Replaced options: `core_size: compact` → `sizes: { core: 28 }`; `mqtt_entities: false` → `entities_without_device: false`. Both keep working.
+- The texts of the card and of the editor are one per line, in the same order in every language, with a test that fails when a language is missing one. See *Translating* in the README.
+- README rewritten: how to use the map, options grouped by purpose, what needs an admin user, what to do when something looks wrong, and a new screenshot.
+
 ## 0.7.5 — 2026-11-16
 
 ### Added
