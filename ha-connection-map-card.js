@@ -18,7 +18,7 @@
       summary: 'Summary', devices: 'devices', found: 'devices found', none: 'Nothing matches.', allOnline: 'Everything is online.',
       offlineNow: 'Offline now', model: 'Model', area: 'Area', status: 'Status', online: 'Online', hub: 'Hub', integration: 'Integration',
       path: 'Path to Home Assistant', open: 'Open device', seeAll: 'Show all of', back: 'Back to summary', device: 'Device',
-      otherCloud: 'Other cloud services', otherLocal: 'Other local devices', otherRadio: 'Other radio devices',
+      otherCloud: 'Other cloud services', otherLocal: 'Other local devices', otherRadio: 'Other radio devices', otherCloudDev: 'Other cloud devices', otherLocalSvc: 'Other local services',
       hubDesc: 'Bridge or hub: its devices talk to it, and it talks to Home Assistant.',
       intDesc: 'Devices handled directly by this integration.',
       otherDesc: 'Integrations with only a few devices, grouped together.',
@@ -50,7 +50,7 @@
       summary: 'Resumen', devices: 'equipos', found: 'equipos encontrados', none: 'Nada coincide.', allOnline: 'Todo conectado.',
       offlineNow: 'Sin conexión ahora', model: 'Modelo', area: 'Pieza', status: 'Estado', online: 'Conectado', hub: 'Hub', integration: 'Integración',
       path: 'Camino hasta Home Assistant', open: 'Abrir equipo', seeAll: 'Ver todo', back: 'Volver al resumen', device: 'Equipo',
-      otherCloud: 'Otros servicios en la nube', otherLocal: 'Otros equipos locales', otherRadio: 'Otros equipos por radio',
+      otherCloud: 'Otros servicios en la nube', otherLocal: 'Otros equipos locales', otherRadio: 'Otros equipos por radio', otherCloudDev: 'Otros equipos en la nube', otherLocalSvc: 'Otros servicios locales',
       hubDesc: 'Puente o hub: sus equipos le hablan a él, y él le habla a Home Assistant.',
       intDesc: 'Equipos que maneja directamente esta integración.',
       otherDesc: 'Integraciones con pocos equipos, agrupadas.',
@@ -724,13 +724,14 @@
       this._findTrk = findTrk;
       function mk(id, d, es, p, hub) {
         var x = {
-          id: id, n: (d.name_by_user || d.name || id).trim(), mo: [d.manufacturer, d.model].filter(Boolean).join(' · '),
+          id: id, n: (d.name_by_user || d.name || id).trim(), mo: [d.manufacturer, d.model].filter(Boolean).join(' · '), mf: String(d.manufacturer || '').trim(),
           a: d.area_id && areas[d.area_id] ? areas[d.area_id].name : '', p: p, hub: hub, ents: es.filter(function (e) { return !e.hidden; }).map(function (e) { return e.entity_id; })
         };
         if (!x.ents.length) x.ents = es.map(function (e) { return e.entity_id; });
         var ie = (d.identifiers || []).map(function (i) { return String(i[1] || ''); }).filter(function (s) { return s.indexOf('zigbee2mqtt_0x') === 0; })[0];
         x.ieee = ie ? ie.slice(12) : null;
         x.trk = x.ieee ? null : findTrk(d); x.trkSure = !!x.trk && findTrk.sure; x.also = []; x.bare = !es.length;
+        x.svc = d.entry_type === 'service' || ['service', 'virtual', 'system', 'entity', 'helper'].indexOf((self._man[p] || {}).integration_type) >= 0;
         // the companion app reports how the phone is connected (Android: network_type, iOS: connection_type)
         if (p === 'mobile_app') x.net = (es.filter(function (e) { return /^sensor\..*_(network|connection)_type$/.test(e.entity_id); })[0] || {}).entity_id || null;
         // battery devices sleep between reports: see _status
@@ -820,20 +821,32 @@
           else if (ga) { ga.push(b); gOf[b.id] = ga; } else if (gb) { gb.push(a); gOf[a.id] = gb; }
           else { var g = [a, b]; groups.push(g); gOf[a.id] = gOf[b.id] = g; }
         };
-        var byTrk = {}, byName = {};
+        var byTrk = {}, byName = {}, byBase = {};
         devs.forEach(function (x) {
           if (x.trk && x.trkSure) { if (byTrk[x.trk]) join(byTrk[x.trk], x); else byTrk[x.trk] = x; }
           if (x.p !== 'mobile_app') (byName[slug(x.n)] = byName[slug(x.n)] || []).push(x);
+          if (x.p !== 'mobile_app' && !x.svc) { var bk = slug(x.n.replace(/\s*\([^)]*\)\s*$/, '')); if (bk) (byBase[bk] = byBase[bk] || []).push(x); }
         });
         devs.forEach(function (x) {
           if (x.p !== 'mobile_app') return;
           var same = (byName[slug(x.n)] || [])[0] || (x.trk && devs.filter(function (y) { return y !== x && y.p !== 'mobile_app' && y.trk === x.trk; })[0]);
           if (same) join(same, x);
         });
+        // The same thing through two integrations of the same maker (a TV through its local integration and through the
+        // maker's cloud): the same name, give or take a model in brackets. A shared name alone is not enough ("Living
+        // room" can be a speaker and a thermostat), so the makers must agree, or the name must be a specific one.
+        Object.keys(byBase).forEach(function (k) {
+          var l = byBase[k]; if (l.length < 2) return;
+          for (var i = 0; i < l.length; i++) for (var j = i + 1; j < l.length; j++) {
+            var a = l[i], b = l[j]; if (a.p === b.p) continue;
+            var ma = a.mf.split(/\s+/)[0].toLowerCase(), mb = b.mf.split(/\s+/)[0].toLowerCase();
+            if (ma && mb ? ma === mb : (k.split('_').length >= 3 || /\d/.test(k))) join(a, b);
+          }
+        });
         groups.forEach(function (g) {
           if (g.length < 2) return;
           // the entry that stays is the one Home Assistant controls the device through, not the app running on it
-          var main = g.slice().sort(function (a, b) { return (a.p === 'mobile_app') - (b.p === 'mobile_app') || b.ents.length - a.ents.length; })[0];
+          var main = g.slice().sort(function (a, b) { return (a.p === 'mobile_app') - (b.p === 'mobile_app') || (a.hub.m === 'cloud') - (b.hub.m === 'cloud') || b.ents.length - a.ents.length; })[0]; // local before cloud
           g.forEach(function (o) {
             if (o === main) return;
             main.also.push({ id: o.id, n: o.n, as: self._intName(o.p) });
@@ -899,12 +912,17 @@
       // Merge small integration groups into one "other" node per medium.
       var small = Math.max(0, cfg.group_small | 0);
       // big installations: fold more tiny integrations together so the map stays readable
-      var intCount = Object.keys(hubs).filter(function (k) { return hubs[k].kind === 'int'; }).length;
+      // only groups of real devices count towards a crowded map: services are folded on their own anyway
+      var virtual = function (h) { return h.dv.length > 0 && h.dv.every(function (d) { return d.svc; }); };
+      var intCount = Object.keys(hubs).filter(function (k) { return hubs[k].kind === 'int' && !virtual(hubs[k]); }).length;
       if (cfg.group_small == null || cfg.group_small === 1) { if (intCount > 30) small = Math.max(small, 3); else if (intCount > 18) small = Math.max(small, 2); }
       Object.keys(hubs).forEach(function (k) {
         var h = hubs[k];
         if (h.kind === 'int' && h.dv.length <= small && h.m !== 'radio' && h.p !== 'mobile_app') {
-          var o = hubFor('other:' + h.m, t(h.m === 'cloud' ? 'otherCloud' : h.m === 'radio' ? 'otherRadio' : 'otherLocal'), h.m, 'other', null);
+          // services (a Spotify account, a translation API) and things in the house (an air conditioner that reports
+          // through its maker's cloud) are different kinds of connection: they are never folded into the same group
+          var vs = virtual(h);
+          var o = hubFor('other:' + h.m + (vs ? ':svc' : ''), t(h.m === 'cloud' ? (vs ? 'otherCloud' : 'otherCloudDev') : h.m === 'radio' ? 'otherRadio' : (vs ? 'otherLocalSvc' : 'otherLocal')), h.m, 'other', null);
           h.dv.forEach(function (d) { d.hub = o; d.via = self._intName(h.p); o.dv.push(d); });
           delete hubs[k];
         }

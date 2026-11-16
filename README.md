@@ -81,7 +81,7 @@ views:
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `title` | string | `Connection map` | Card title. |
-| `group_small` | number | `1` | Integrations with this many devices or fewer (and no hub) are grouped into "Other cloud services" / "Other local devices". Use `0` to never group. Radio integrations (Z-Wave, Zigbee, …) and mobile devices are never grouped. With more than 18 integrations the card raises this to 2, and with more than 30 to 3, unless you set it yourself. |
+| `group_small` | number | `1` | Integrations with this many devices or fewer (and no hub) are grouped into an "Other …" group. Services (accounts, APIs) and physical devices are never folded together: there is "Other cloud services" and "Other cloud devices", and the same for local ones. Use `0` to never group. Radio integrations (Z-Wave, Zigbee, …) and mobile devices are never grouped. With more than 18 integrations of physical devices the card raises this to 2, and with more than 30 to 3, unless you set it yourself. |
 | `exclude_integrations` | list | `[]` | Integration domains to hide, for example `[mobile_app, bambu_lab]`. |
 | `exclude_devices` | list | `[]` | Device IDs to hide. An entity ID hides an MQTT entity that has no device. |
 | `show_trackers` | boolean | `false` | Show devices that only have `device_tracker` entities (for example, every phone and laptop your router reports). |
@@ -143,7 +143,7 @@ A device is drawn behind a **hub** when it has a `via_device` and that parent de
 
 A parent that is just another device of the same integration, such as a power strip and its outlets, is not treated as a hub when the integration has at least as many devices of its own: the strip and its outlets are drawn together inside the integration's group, and the outlet's path shows the strip.
 
-**One device, several integrations.** A TV set up through its own integration and through the companion app, or a phone known to two integrations, has several entries in Home Assistant's device registry. The card draws them as one dot, and its panel says what else it is set up as. Two entries are taken as the same device when the router knows them by the same address, or when one of them is the companion app and has the same name as the other. Turn it off with `merge_duplicates: false`.
+**One device, several integrations.** A TV set up through its own integration and through the companion app, or a phone known to two integrations, has several entries in Home Assistant's device registry. The card draws them as one dot, and its panel says what else it is set up as. Two entries are taken as the same device when the router knows them by the same address, when one of them is the companion app and has the same name as the other, or when two integrations of the same maker give it the same name (a model in brackets aside). The local entry is the one that stays. Turn it off with `merge_duplicates: false`.
 
 **MQTT entities without a device**, the ones written by hand in YAML without a `device` block, are drawn as one dot each in the MQTT group. Tapping one opens the entity instead of a device page.
 

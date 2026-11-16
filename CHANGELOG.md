@@ -5,6 +5,9 @@
 ### Fixed
 
 - All mobile devices were drawn on the main router, whatever access point they were on. Each one is now drawn on the access point it is on right now, in a "Mobile devices" group of its own per access point, and the map follows it when it roams to another one.
+- Small integrations folded into "Other cloud services" mixed accounts and APIs (Spotify, a translation service) with things in the house that report through their maker's cloud (an air conditioner, a litter box). They are folded separately now: services into "Other cloud services", devices into "Other cloud devices"; the same for local ones.
+- Services no longer count towards a crowded map. Since 0.7.1 they pushed homes over the limit where groups of two or three devices get folded too, so a pair of air conditioners lost its own group.
+- The same device through two integrations of one maker (a TV through its local integration and through SmartThings) was drawn twice. They are merged when the names match, give or take a model in brackets, and the makers agree; the local entry stays.
 
 ## 0.7.3 — 2026-11-15
 
