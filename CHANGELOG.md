@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `separate_services` (default `true`). Set it to `false` to fold small integrations of services and of physical devices into one "Other …" group per side, as before 0.7.4, for a map with fewer nodes.
+
 ## 0.8.0 — 2026-11-16
 
 The release that prepares 1.0: nothing is merged on a guess any more, and the card explains itself when something goes wrong.

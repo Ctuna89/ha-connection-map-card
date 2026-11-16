@@ -327,7 +327,7 @@
   var CLOUD_GUESS = ['smartthings', 'tuya', 'spotify', 'met', 'google_translate', 'anthropic', 'openai_conversation', 'nest',
     'ring', 'tesla_fleet', 'netatmo', 'ecobee', 'alexa', 'google_assistant', 'cloud', 'waze_travel_time', 'openweathermap'];
   // Every option the card takes. Names are stable from 1.0; the replaced ones keep working.
-  var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'sort', 'group_by_area', 'group_small', 'physical_only', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'minimap', 'device_labels', 'animations',
+  var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'sort', 'group_by_area', 'group_small', 'separate_services', 'physical_only', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'minimap', 'device_labels', 'animations',
     'colors', 'lines', 'sizes', 'names', 'overrides', 'exclude_integrations', 'exclude_devices', 'merge_duplicates', 'entities_without_device', 'devices_without_entities', 'recent_hours',
     'router_name', 'coordinator_name', 'z2m_base_topic', 'grid_options', 'layout_options', 'view_layout', 'visibility', 'card_mod'];
   var DEPRECATED = { core_size: 'sizes.core', mqtt_entities: 'entities_without_device' };
@@ -1306,8 +1306,8 @@
         if (h.kind === 'int' && h.dv.length <= small && h.m !== 'radio' && h.p !== 'mobile_app') {
           // services (a Spotify account, a translation API) and things in the house (an air conditioner that reports
           // through its maker's cloud) are different kinds of connection: they are never folded into the same group
-          var vs = virtual(h);
-          var o = hubFor('other:' + h.m + (vs ? ':svc' : ''), t(h.m === 'cloud' ? (vs ? 'otherCloud' : 'otherCloudDev') : h.m === 'radio' ? 'otherRadio' : (vs ? 'otherLocalSvc' : 'otherLocal')), h.m, 'other', null);
+          var vs = cfg.separate_services !== false && virtual(h); // separate_services: false folds everything into one group per side
+          var o = hubFor('other:' + h.m + (vs ? ':svc' : ''), t(h.m === 'cloud' ? (vs || cfg.separate_services === false ? 'otherCloud' : 'otherCloudDev') : h.m === 'radio' ? 'otherRadio' : (vs ? 'otherLocalSvc' : 'otherLocal')), h.m, 'other', null);
           h.dv.forEach(function (d) { d.hub = o; d.via = self._intName(h.p); o.dv.push(d); });
           delete hubs[k];
         }
@@ -2298,6 +2298,7 @@
       none: 'None (my installation)',
       offline: 'Offline',
       physical_only: 'Physical devices only (no accounts, services or loose sensors)',
+      separate_services: 'Keep services apart from devices in the "Other" groups',
       radio: 'Local radio',
       recent_hours: 'Hours a silent battery device counts as seen recently (0: never)',
       reset: 'Default',
@@ -2358,6 +2359,7 @@
       none: 'Ninguna (mi instalación)',
       offline: 'Sin conexión',
       physical_only: 'Solo equipos físicos (sin cuentas, servicios ni sensores sueltos)',
+      separate_services: 'Mantener los servicios aparte de los equipos en los grupos "Otros"',
       radio: 'Radio local',
       recent_hours: 'Horas en que un equipo a batería sin respuesta cuenta como visto hace poco (0: nunca)',
       reset: 'Por defecto',
@@ -2389,7 +2391,7 @@
     { p: 'lines.wifi', k: 'select', o: LINE, d: 'dotted', l: 'lwifi' }, { p: 'lines.radio', k: 'select', o: LINE, d: 'solid', l: 'lradio' }, { p: 'lines.width', k: 'range', min: 0.5, max: 6, step: 0.5, d: 2, l: 'width' },
     { sec: 'sizes' }, { p: 'sizes.core', k: 'range', min: 20, max: 80, step: 1, d: 56, l: 'score' }, { p: 'sizes.network', k: 'range', min: 16, max: 40, step: 1, d: 28, l: 'snetwork' },
     { p: 'sizes.hub', k: 'range', min: 14, max: 34, step: 1, d: 22, l: 'shub' }, { p: 'sizes.device', k: 'range', min: 3, max: 9, step: 0.2, d: 6.2, l: 'sdevice' },
-    { sec: 'content' }, { p: 'physical_only', k: 'bool', d: false }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'select', o: [['ask', 'dupAsk'], ['auto', 'dupAuto'], ['off', 'dupOff']], d: 'ask' }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
+    { sec: 'content' }, { p: 'physical_only', k: 'bool', d: false }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'separate_services', k: 'bool', d: true }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'select', o: [['ask', 'dupAsk'], ['auto', 'dupAuto'], ['off', 'dupOff']], d: 'ask' }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
     { p: 'exclude_integrations', k: 'list' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
     { p: 'demo', k: 'select', o: [['', 'none'], ['unifi', 'UniFi'], ['fritz', 'FRITZ!Box'], ['large', '350']], d: '' }
   ];

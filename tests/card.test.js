@@ -491,6 +491,11 @@ test('services and physical devices are never folded into the same "Other" group
   assert.equal(r.litter, 'Other cloud devices', 'a single Tuya device is folded, but with other devices, not with accounts');
   assert.equal(r.air, 'Hisense'); assert.equal(r.air2, 'Hisense', 'two air conditioners keep their own group: 25 services do not make the map crowded');
   assert.deepEqual(r.mixed, ['Other cloud devices:devices', 'Other cloud services:services']);
+  // separate_services: false puts them back in one group, for a map with fewer nodes
+  const one = await page.evaluate(async () => { const c = window.card; c.setConfig({ animations: false, separate_services: false }); c.hass = c._hass;
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((res) => setTimeout(res, 25));
+    const g = (name) => c._devs.find((x) => x.n === name).hub.n; return { litter: g('Ti Pro25 Smart Litter Box'), account: g('Account 3'), others: c._hubs.filter((h) => h.kind === 'other').map((h) => h.n).sort() }; });
+  assert.equal(one.litter, one.account); assert.deepEqual(one.others, ['Other cloud services']);
   await page.close();
 });
 
