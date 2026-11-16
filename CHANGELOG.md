@@ -5,6 +5,13 @@
 ### Added
 
 - `separate_services` (default `true`). Set it to `false` to fold small integrations of services and of physical devices into one "Other …" group per side, as before 0.7.4, for a map with fewer nodes.
+- Sagemcom F@st gateways (`sagemcom_fast`, the HACS integration for Bell, Sky and other providers' boxes) are recognised as routers: the gateway is drawn as the network node, its clients show cable or Wi-Fi, and the clients it lists are not mistaken for devices of the home ([#10](https://github.com/Ctuna89/ha-connection-map-card/issues/10)).
+- `main_router`: the device name or the integration of the main router, for when the card picks the wrong one. Also in the visual editor.
+
+### Fixed
+
+- With two routers, the main one was chosen by its name alone, so a second router called "… Router" won over the provider's gateway. A router that is itself a client of another router is no longer picked as the main one.
+- A router or gateway with no entities was left out of the map.
 
 ## 0.8.0 — 2026-11-16
 

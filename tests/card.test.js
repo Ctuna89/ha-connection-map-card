@@ -174,6 +174,47 @@ test('Netgear / Orbi: clients are placed behind the satellite named by their acc
   await page.close();
 });
 
+test('Sagemcom gateway: it is the main router, not the second router behind it that is called "Router"', async () => {
+  const page = await H.newPage(browser);
+  const mount = (config) => page.evaluate(async (config) => {
+    const devices = {}, entities = {}, states = {};
+    const dev = (id, name, mac, via, idf) => { devices[id] = { id, name, via_device_id: via || null, connections: mac ? [['mac', mac]] : [], identifiers: idf ? [idf] : [], disabled_by: null, area_id: null }; };
+    const ent = (eid, device_id, platform, state, attributes) => { entities[eid] = { entity_id: eid, device_id, platform }; states[eid] = { entity_id: eid, state, attributes: attributes || {} }; };
+    // the second router comes first in the registry and its name says "Router"
+    dev('tpl', 'Archer AX55 Router', 'aa:00:00:00:00:02'); ent('sensor.archer_clients', 'tpl', 'tplink_router', '4'); ent('switch.archer_guest', 'tpl', 'tplink_router', 'off');
+    ent('device_tracker.archer_ax55', 'tpl', 'sagemcom_fast', 'home', { mac: 'aa:00:00:00:00:02', interface_type: 'Ethernet' }); // ...and it is a client of the gateway
+    // the provider's gateway: a device with no entities at all
+    dev('gw', 'Home Hub 4000', 'aa:00:00:00:00:01', null, ['sagemcom_fast', 'SN1']);
+    // clients that only the gateway knows
+    dev('pc', 'Desktop', 'aa:00:00:00:00:09', 'gw', ['sagemcom_fast', '9']); ent('device_tracker.desktop', 'pc', 'sagemcom_fast', 'home', { mac: 'aa:00:00:00:00:09', interface_type: 'Ethernet' });
+    // devices of another integration that the gateway also tracks
+    for (let i = 0; i < 3; i++) { const id = 'plug' + i, mac = 'aa:00:00:00:01:0' + i;
+      dev(id, 'Plug ' + i, mac); ent('switch.plug_' + i, id, 'shelly', 'on'); ent('sensor.plug_' + i + '_power', id, 'shelly', '3'); ent('sensor.plug_' + i + '_energy', id, 'shelly', '3');
+      ent('device_tracker.plug_' + i, id, 'sagemcom_fast', 'home', { mac, interface_type: i ? 'WiFi' : 'Ethernet' }); }
+    const man = [{ domain: 'sagemcom_fast', name: 'Sagemcom F@st', iot_class: 'local_polling' }, { domain: 'tplink_router', name: 'TP-Link Router', iot_class: 'local_polling' }, { domain: 'shelly', name: 'Shelly', iot_class: 'local_push' }];
+    document.getElementById('host').innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig(Object.assign({ animations: false, group_small: 0 }, config)); document.getElementById('host').appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+    return { routers: c._routers.map((x) => x.n).sort(), main: c._router.n, drawn: c._devs.map((d) => d.n).sort(), hubs: c._hubs.map((h) => h.n),
+      wired: c._pathOf(c._devs.find((d) => d.n === 'Plug 0')).join(' > '), wifi: c._pathOf(c._devs.find((d) => d.n === 'Plug 1')).join(' > ') };
+  }, config);
+  let r = await mount({});
+  assert.deepEqual(r.routers, ['Archer AX55 Router', 'Home Hub 4000'], 'the gateway counts as a router even with no entities');
+  assert.equal(r.main, 'Home Hub 4000', 'the router that is a client of the gateway is not the main one');
+  assert.deepEqual(r.drawn, ['Plug 0', 'Plug 1', 'Plug 2'], 'clients that only the gateway knows are not devices of the map');
+  assert.deepEqual(r.hubs, ['Shelly']);
+  assert.match(r.wired, /Ethernet/); assert.match(r.wifi, /Wi-Fi/);
+  assert.deepEqual(await H.linkProblems(page), []);
+  r = await mount({ devices_without_entities: false });
+  assert.equal(r.main, 'Home Hub 4000', 'still there when devices without entities are hidden');
+  r = await mount({ main_router: 'Archer AX55 Router' });
+  assert.equal(r.main, 'Archer AX55 Router', 'main_router: by device name');
+  r = await mount({ main_router: 'sagemcom_fast' });
+  assert.equal(r.main, 'Home Hub 4000', 'main_router: by integration');
+  await page.close();
+});
+
 test('a device set up through several integrations is drawn once', async () => {
   const page = await H.newPage(browser);
   const mount = (config) => page.evaluate(async (config) => {

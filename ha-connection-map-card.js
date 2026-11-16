@@ -314,7 +314,7 @@
   var ZIGBEE = ['zha', 'zigbee2mqtt', 'deconz'];
   var RADIO = ['zha', 'zwave_js', 'zwave_me', 'deconz', 'insteon', 'zigbee2mqtt', 'enocean', 'rfxtrx'];
   // Integrations for routers / access points: drawn as the local network itself, not as devices.
-  var ROUTER_INTS = ['huawei_mesh_router', 'huawei_lte', 'unifi', 'fritz', 'tplink_omada', 'tplink_router', 'tplink_deco', 'asuswrt',
+  var ROUTER_INTS = ['huawei_mesh_router', 'huawei_lte', 'unifi', 'fritz', 'tplink_omada', 'tplink_router', 'tplink_deco', 'asuswrt', 'sagemcom_fast',
     'netgear', 'keenetic_ndms2', 'mikrotik', 'openwrt', 'luci', 'ubus', 'eero', 'google_wifi', 'synology_srm', 'ruckus_unleashed',
     'vodafone_station', 'sfr_box', 'freebox', 'bbox', 'orbi', 'linksys_smart', 'aruba', 'cisco_ios', 'ddwrt', 'tomato', 'opnsense', 'pfsense'];
   // Radio coordinators (USB sticks / built-in radios).
@@ -327,9 +327,11 @@
   var CLOUD_GUESS = ['smartthings', 'tuya', 'spotify', 'met', 'google_translate', 'anthropic', 'openai_conversation', 'nest',
     'ring', 'tesla_fleet', 'netatmo', 'ecobee', 'alexa', 'google_assistant', 'cloud', 'waze_travel_time', 'openweathermap'];
   // Every option the card takes. Names are stable from 1.0; the replaced ones keep working.
+  // Router integrations that register every client of the network as a device of its own, linked to the gateway.
+  var CLIENTS_AS_DEVICES = ['netgear', 'sagemcom_fast'];
   var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'sort', 'group_by_area', 'group_small', 'separate_services', 'physical_only', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'minimap', 'device_labels', 'animations',
     'colors', 'lines', 'sizes', 'names', 'overrides', 'exclude_integrations', 'exclude_devices', 'merge_duplicates', 'entities_without_device', 'devices_without_entities', 'recent_hours',
-    'router_name', 'coordinator_name', 'z2m_base_topic', 'grid_options', 'layout_options', 'view_layout', 'visibility', 'card_mod'];
+    'main_router', 'router_name', 'coordinator_name', 'z2m_base_topic', 'grid_options', 'layout_options', 'view_layout', 'visibility', 'card_mod'];
   var DEPRECATED = { core_size: 'sizes.core', mqtt_entities: 'entities_without_device' };
   var NS = 'http://www.w3.org/2000/svg';
 
@@ -953,6 +955,7 @@
       var wired = /^(lan|eth|ethernet|wired|cable)\b/i.test(raw);
       if (!raw && !band && plat === 'unifi' && !a.essid && !a.ap_mac && s.state === 'home') wired = true;
       var via = a.connected_via || a.connected_to || a.ap_name || a.access_point || null;
+      if (!via && !a.ap_mac && this._gw && this._gw[plat]) via = this._gw[plat]; // a gateway that says nothing else: its clients are on it
       if (!via && a.ap_mac) via = (this._macName || {})[String(a.ap_mac).toLowerCase()] || a.ap_mac;
       var wifi = !wired && !!(band || /w-?lan|wi-?fi|wireless|802\.11/i.test(raw) || a.essid || a.ssid);
       return { via: via, iface: wired ? 'LAN' : band, wired: wired, wifi: wifi, ssid: a.essid || a.ssid || null, rssi: a.rssi || a.signal_strength || null, ip: a.ip || a.ip_address || null, home: s.state === 'home' };
@@ -1116,7 +1119,8 @@
           // No entities (the integration creates none for it, or they are all disabled): a remote that only sends events,
           // a lock the integration cannot control. It is still a device of that integration.
           p = platOf(id); bare = true;
-          if (es.length || !p || cfg.devices_without_entities === false || d.entry_type === 'service' || p === 'bluetooth') return;
+          if (es.length || !p) return;
+          if (ROUTER_INTS.indexOf(p) < 0 && (cfg.devices_without_entities === false || d.entry_type === 'service' || p === 'bluetooth')) return; // a gateway without entities is still the gateway
         }
         var nm = (d.name_by_user || d.name || id).trim();
         if (COORD_INTS.indexOf(p) >= 0) { coords.push(nm.replace(/\s*\([^)]*\)\s*$/, '').replace(/^Home Assistant\s+/, '')); return; }
@@ -1127,12 +1131,12 @@
         if (SKIP.indexOf(p) >= 0 || cfg.exclude_integrations.indexOf(p) >= 0) return;
         // Netgear registers every client as a device of its own: only the router and the satellites that clients name as
         // their access point are network nodes; the rest are plain clients
-        if (p === 'netgear' && d.via_device_id && !(d.connections || []).some(function (c) { return c[0] === 'mac' && ngAps[String(c[1]).toLowerCase()]; })) { if (!cfg.show_trackers) return; }
+        if (CLIENTS_AS_DEVICES.indexOf(p) >= 0 && d.via_device_id && !(d.connections || []).some(function (c) { return c[0] === 'mac' && ngAps[String(c[1]).toLowerCase()]; })) { if (!cfg.show_trackers) return; }
         else if (ROUTER_INTS.indexOf(p) >= 0) { routers.push({ id: id, n: nm, p: p, ents: es.map(function (e) { return e.entity_id; }) }); return; }
         if ((children[id] || 0) > 0 && isHubDevice(d)) return; // the hub itself is drawn as a hub node
         if (zwHub(id) === d) return; // so is a Z-Wave controller with nodes of its own
         var v = d.via_device_id ? devices[d.via_device_id] : null;
-        if (v && ROUTER_INTS.indexOf(primary(byDev[v.id] || [])) >= 0) v = null; // "via the router" is the network, not a hub
+        if (v && ROUTER_INTS.indexOf(platOf(v.id)) >= 0) v = null; // "via the router" is the network, not a hub
         var zw = !v && zwHub(id); if (zw) v = zw;
         var medium = self._medium(p);
         if (p === 'mqtt' && v && /zigbee2mqtt/i.test((v.manufacturer || '') + ' ' + (v.name || ''))) medium = 'radio';
@@ -1283,7 +1287,16 @@
       });
       routers.forEach(function (r) { r.trk = findTrk(devices[r.id]); });
       this._routers = routers;
-      this._router = routers.filter(function (r) { return /primary|main|principal|gateway|router|udm|dream|ucg|usg|fritz!?\s?box|box/i.test(r.n); })[0] || routers[0] || null;
+      var gws = this._gw = {}; // the gateway of the integrations that only say "this is one of my clients"
+      routers.forEach(function (r) { if (r.p === 'sagemcom_fast' && !(devices[r.id] || {}).via_device_id) gws[r.p] = r.n; });
+      // The main router: the one the user names (main_router: a device name or an integration); otherwise one that is
+      // not itself a client of another router integration (a second router behind the provider's gateway is), and
+      // among those the one whose name says so.
+      var want = String(cfg.main_router || '').trim().toLowerCase();
+      var up = routers.filter(function (r) { return !(r.trk && (entities[r.trk] || {}).platform && entities[r.trk].platform !== r.p); });
+      if (!up.length) up = routers;
+      this._router = (want && routers.filter(function (r) { return r.n.toLowerCase() === want || r.p === want; })[0]) ||
+        up.filter(function (r) { return /primary|main|principal|gateway|router|udm|dream|ucg|usg|fritz!?\s?box|box/i.test(r.n); })[0] || up[0] || null;
       // a mobile group "on" the main router, or on something that is not one of the access points, is the plain one
       Object.keys(hubs).forEach(function (k) {
         var h = hubs[k]; if (!h.apHint) return;
@@ -2302,6 +2315,7 @@
       radio: 'Local radio',
       recent_hours: 'Hours a silent battery device counts as seen recently (0: never)',
       reset: 'Default',
+      main_router: 'Main router (device name or integration), when the card picks the wrong one',
       router_name: 'Name of the local network node',
       score: 'Home Assistant',
       sdevice: 'Devices',
@@ -2363,6 +2377,7 @@
       radio: 'Radio local',
       recent_hours: 'Horas en que un equipo a batería sin respuesta cuenta como visto hace poco (0: nunca)',
       reset: 'Por defecto',
+      main_router: 'Router principal (nombre del equipo o integración), si la tarjeta elige mal',
       router_name: 'Nombre del nodo de red local',
       score: 'Home Assistant',
       sdevice: 'Equipos',
@@ -2392,7 +2407,7 @@
     { sec: 'sizes' }, { p: 'sizes.core', k: 'range', min: 20, max: 80, step: 1, d: 56, l: 'score' }, { p: 'sizes.network', k: 'range', min: 16, max: 40, step: 1, d: 28, l: 'snetwork' },
     { p: 'sizes.hub', k: 'range', min: 14, max: 34, step: 1, d: 22, l: 'shub' }, { p: 'sizes.device', k: 'range', min: 3, max: 9, step: 0.2, d: 6.2, l: 'sdevice' },
     { sec: 'content' }, { p: 'physical_only', k: 'bool', d: false }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'separate_services', k: 'bool', d: true }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'select', o: [['ask', 'dupAsk'], ['auto', 'dupAuto'], ['off', 'dupOff']], d: 'ask' }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
-    { p: 'exclude_integrations', k: 'list' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
+    { p: 'exclude_integrations', k: 'list' }, { p: 'main_router', k: 'text' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
     { p: 'demo', k: 'select', o: [['', 'none'], ['unifi', 'UniFi'], ['fritz', 'FRITZ!Box'], ['large', '350']], d: '' }
   ];
   var ECSS = ':host{display:block}details{border:1px solid var(--divider-color,rgba(0,0,0,.12));border-radius:10px;margin:0 0 10px;padding:0 12px}' +
