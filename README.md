@@ -139,6 +139,7 @@ Option names are **stable from 1.0**: they will not be renamed or removed withou
 | --- | --- | --- | --- |
 | `physical_only` | boolean | `false` | Leave out everything that is not a physical device: entries that integrations register as services (accounts, APIs, weather) and the plain sensors of integrations without devices. The "Physical only" button switches it. |
 | `group_small` | number | `1` | Integrations with this many devices or fewer (and no hub) are folded into an "Other …" group. Services and physical devices are never folded together, and radio integrations and mobile devices are never folded. `0` never folds. With more than 18 integrations of physical devices the card raises this to 2, and with more than 30 to 3, unless you set it yourself. |
+| `separate_services` | boolean | `true` | Fold small integrations of services (accounts, APIs, a ping or a media server) and small integrations of physical devices into separate "Other …" groups. `false` folds them into one group per side, with fewer nodes on the map. |
 | `merge_duplicates` | string | `ask` | What to do with two entries that look like the same device: `ask` (a question, remembered), `auto` (draw it once without asking) or `off` (leave both). Entries known by the same network address are merged in `ask` and `auto`. |
 | `entities_without_device` | boolean | `true` | Draw the entities of device integrations that give them no device, MQTT entities written by hand included. |
 | `devices_without_entities` | boolean | `true` | Draw devices that have no entities (a remote that only sends events, a lock its integration cannot control). |
@@ -154,6 +155,7 @@ Option names are **stable from 1.0**: they will not be renamed or removed withou
 | --- | --- | --- | --- |
 | `names` | map | `{}` | Rename integrations or groups, by integration domain or by the name shown. Example: `hisense_ac_plugin: Air conditioners`. |
 | `overrides` | map | `{}` | Force an integration into a group: `cloud`, `local` or `radio`. Example: `bambu_lab: cloud` for a printer that talks to Home Assistant through its maker's cloud. |
+| `main_router` | string | | The main router, when the card picks the wrong one: the device name as shown in Home Assistant, or the integration (`sagemcom_fast`, `unifi`, ...). |
 | `router_name` | string | | Name shown for the local network node. |
 | `coordinator_name` | string | | Name shown for the radio coordinator node. |
 | `z2m_base_topic` | string | `zigbee2mqtt` | Zigbee2MQTT MQTT base topic. |
@@ -226,6 +228,7 @@ The card reads what router integrations report about their clients. Only Huawei 
 | UniFi Network | `ap_mac` → AP device | wired clients have no `essid` | `radio` (ng / na / 6e) | Untested on real hardware |
 | AVM FRITZ!Box Tools | `connected_to` | `connection_type` (LAN / WLAN) | no | Untested on real hardware |
 | NETGEAR / Orbi | *Access point MAC* sensor of each client (disabled by default: enable it) | *Link type* sensor (also disabled by default) | from the link type | Untested on real hardware |
+| Sagemcom F@st (HACS `sagemcom_fast`; Bell, Sky, ...) | the gateway itself (it reports no access points) | `interface_type` of each tracker | not reported | Untested on real hardware |
 | TP-Link Omada, ASUSWRT, OpenWrt (luci / ubus), Nmap, Ping | — | — | — | Routers and access points appear; clients are not linked to an access point because these integrations don't report it |
 
 A client is matched to its device by MAC address, by the IP in the device's configuration URL, or by name.
