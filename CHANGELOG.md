@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- All mobile devices were drawn on the main router, whatever access point they were on. Each one is now drawn on the access point it is on right now, in a "Mobile devices" group of its own per access point, and the map follows it when it roams to another one.
+
 ## 0.7.3 — 2026-11-15
 
 ### Fixed

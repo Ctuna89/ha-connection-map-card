@@ -423,3 +423,35 @@ test('group_by_area also works in a group with power strips: singles by area, ea
   assert.deepEqual(await H.labelProblems(page), []);
   await page.close();
 });
+
+test('each mobile device is drawn on the access point it is on, and follows it when it roams', async () => {
+  const page = await H.newPage(browser);
+  await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {}; let n = 0;
+    const dev = (name, dom, mac) => { const id = 'd' + (++n); devices[id] = { id, name, via_device_id: null, connections: mac ? [['mac', mac]] : [], identifiers: [[dom, id]], disabled_by: null, area_id: null };
+      for (let k = 0; k < 2; k++) { const e = 'sensor.e' + n + '_' + k; entities[e] = { entity_id: e, device_id: id, platform: dom }; states[e] = { entity_id: e, state: 'on', attributes: {} }; } return id; };
+    const trk = (slug, via, kind) => { const e = 'device_tracker.' + slug; entities[e] = { entity_id: e, device_id: null, platform: 'huawei_mesh_router' }; states[e] = { entity_id: e, state: 'home', attributes: { connected_via: via, interface_type: kind } }; };
+    dev('Primary router', 'huawei_mesh_router', 'aa:00:00:00:00:01'); dev('Wifi auxiliar living', 'huawei_mesh_router', 'aa:00:00:00:00:02');
+    dev('Pixel 9', 'mobile_app'); dev('Galaxy Tab', 'mobile_app'); dev('iPhone de Ana', 'mobile_app');
+    trk('pixel_9', 'Primary router', '5GHz'); trk('galaxy_tab', 'Primary router', '5GHz'); trk('iphone_de_ana', 'Wifi auxiliar living', '2.4GHz');
+    for (let i = 0; i < 3; i++) dev('Plug ' + i, 'shelly');
+    const man = [['huawei_mesh_router', 'Huawei Mesh Router'], ['mobile_app', 'Mobile App'], ['shelly', 'Shelly']].map((m) => ({ domain: m[0], name: m[1], iot_class: 'local_push' }));
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false }); document.getElementById('host').appendChild(c); window.card = c;
+    window.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    c.hass = window.hass;
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+  });
+  const look = () => page.evaluate(() => { const c = window.card; return c._hubs.filter((h) => h.p === 'mobile_app').map((h) => h.dv.map((d) => d.n).sort().join('+') + ' @ ' + (h.from.router ? h.from.router.n : 'Primary router')).sort(); });
+  assert.deepEqual(await look(), ['Galaxy Tab+Pixel 9 @ Primary router', 'iPhone de Ana @ Wifi auxiliar living']);
+  assert.equal(await page.evaluate(() => window.card._pathOf(window.card._devs.find((d) => d.n === 'iPhone de Ana')).join(' > ')), 'iPhone de Ana > Mobile devices > Wifi auxiliar living (Wi-Fi 2.4 GHz) > Primary router > Home Assistant');
+  assert.deepEqual(await H.linkProblems(page), []);
+  // the tablet walks to the living room: on the next update it is drawn there
+  await page.evaluate(() => { window.hass.states['device_tracker.galaxy_tab'].attributes.connected_via = 'Wifi auxiliar living'; window.card._last = 0; window.card.hass = window.hass; });
+  assert.deepEqual(await look(), ['Galaxy Tab+iPhone de Ana @ Wifi auxiliar living', 'Pixel 9 @ Primary router']);
+  // everybody back on the main router: one group again
+  await page.evaluate(() => { for (const e of ['galaxy_tab', 'iphone_de_ana']) window.hass.states['device_tracker.' + e].attributes.connected_via = 'Primary router'; window.card._last = 0; window.card.hass = window.hass; });
+  assert.deepEqual(await look(), ['Galaxy Tab+Pixel 9+iPhone de Ana @ Primary router']);
+  assert.deepEqual(await H.linkProblems(page), []);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});

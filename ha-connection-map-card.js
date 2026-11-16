@@ -390,7 +390,7 @@
       if (!this._root) this._skeleton();
       if (!this._built && !this._loading) { this._load(); return; }
       var now = Date.now();
-      if (this._built && now - (this._last || 0) > 5000) { this._last = now; this._status(); this._marks(); }
+      if (this._built && now - (this._last || 0) > 5000) { this._last = now; if (!this._roam()) { this._status(); this._marks(); } }
     }
 
     _t(k) { var l = ((this._cfg && this._cfg.language) || (this._hass && this._hass.language) || 'en').slice(0, 2); return (STR[l] || STR.en)[k] || STR.en[k]; }
@@ -508,6 +508,7 @@
     }
     // ZHA: every device lists its neighbours with their relationship (Parent / Child / Sibling) and LQI
     _applyZhaMesh(list) {
+      this._rawZha = list;
       if (!Array.isArray(list) || !list.length) return;
       var byIeee = {}, byReg = {}, types = {}, parent = {}, lqi = {}, own = {}, coord = null;
       (this._devs || []).forEach(function (d) { byReg[d.id] = d; });
@@ -537,7 +538,21 @@
       if (coord && !this._coordFromDev && !this._cfg.coordinator_name) this._coord = [coord.manufacturer, coord.model].filter(Boolean).join(' ') || this._coord;
       this._mesh = true;
     }
+    // Which access point each mobile device is on. When it changes (someone walked to another room, came home, left)
+    // the groups are rebuilt; the Zigbee mesh already loaded is drawn again, not asked for again.
+    _mobSig() {
+      var self = this;
+      return (this._devs || []).filter(function (d) { return d.p === 'mobile_app'; }).map(function (d) { var c = self._conn(d.trk); return d.id + '=' + (c && c.via && c.home !== false ? c.via : ''); }).join('|');
+    }
+    _roam() {
+      if (this._mobSig() === this._mobKey) return false;
+      this._model();
+      if (this._rawMesh) this._applyMesh(this._rawMesh); if (this._rawZha) this._applyZhaMesh(this._rawZha);
+      if (this._S && this._S.sel && !this._S.sel.core) this._S.sel = null;
+      this._render(); return true;
+    }
     _applyMesh(v) {
+      this._rawMesh = v;
       if (!v || !v.nodes) return;
       var byIeee = {}, types = {}, coord = null, parent = {}, lqi = {};
       (this._devs || []).forEach(function (d) { if (d.ieee) byIeee[d.ieee] = d; });
@@ -600,7 +615,7 @@
     _hubConn(h) {
       // a hub's own connection, or the most common one among its devices
       if (h.trk) return this._conn(h.trk);
-      if (h.p === 'mobile_app') return null; // phones and tablets roam between access points: hang them off the main router
+      if (h.p === 'mobile_app') return h.apHint ? this._conn(h.dv[0] && h.dv[0].trk) : null; // one group of mobile devices per access point
       var cnt = {}, best = null, self = this;
       h.dv.forEach(function (d) { var c = self._conn(d.trk); if (c && c.via) { cnt[c.via] = (cnt[c.via] || 0) + 1; if (!best || cnt[c.via] > cnt[best.via]) best = c; } });
       return best;
@@ -784,7 +799,9 @@
           hub = hubFor('thread', self._otbr || 'Thread', 'radio', 'other', null); hub.thread = hub.own = true; hub.net = self._matter[id].name || hub.net || '';
           hub.otbr = !!self._otbr; hub.sub = hub.otbr ? t('threadBr') + (hub.net ? ' · ' + hub.net : '') : hub.net;
         } else {
-          hub = hubFor('int:' + p + ':' + medium, self._intName(p), medium, 'int', p);
+          // phones and tablets roam: each one is drawn on the access point it is on right now (see _mobSig)
+          var ap = ''; if (p === 'mobile_app' && medium === 'local') { var mc = self._conn(findTrk(d)); ap = mc && mc.via && mc.home !== false ? String(mc.via) : ''; }
+          hub = hubFor('int:' + p + ':' + medium + (ap ? '@' + ap : ''), self._intName(p), medium, 'int', p); if (ap) hub.apHint = ap;
           hub.sub = self._intName(p);
         }
         // only Zigbee goes through the Zigbee coordinator: Z-Wave, EnOcean, 433 MHz... have a radio of their own
@@ -869,6 +886,13 @@
       routers.forEach(function (r) { r.trk = findTrk(devices[r.id]); });
       this._routers = routers;
       this._router = routers.filter(function (r) { return /primary|main|principal|gateway|router|udm|dream|ucg|usg|fritz!?\s?box|box/i.test(r.n); })[0] || routers[0] || null;
+      // a mobile group "on" the main router, or on something that is not one of the access points, is the plain one
+      Object.keys(hubs).forEach(function (k) {
+        var h = hubs[k]; if (!h.apHint) return;
+        if (routers.some(function (r) { return r.n === h.apHint && r !== self._router; })) return;
+        var base = hubFor('int:mobile_app:' + h.m, h.n, h.m, 'int', 'mobile_app'); base.sub = h.sub;
+        h.dv.forEach(function (d) { d.hub = base; base.dv.push(d); }); delete hubs[k];
+      });
       if (this._router && cfg.router_name) this._router.n = cfg.router_name;
       this._coord = cfg.coordinator_name || (stickZigbee && coords[0]) || netName || (ad && (ad.name || ad.type)) || null;
       this._coordFromDev = stickZigbee && !!coords[0];
@@ -891,6 +915,7 @@
       var byName = cfg.sort === 'name';
       this._hubs.forEach(function (h) { h.dv.sort(function (a, b) { return (byName ? 0 : (a.a || '~').localeCompare(b.a || '~')) || a.n.localeCompare(b.n); }); });
       this._devs = devs;
+      this._mobKey = this._mobSig();
       this._status();
     }
 

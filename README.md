@@ -151,7 +151,7 @@ A parent that is just another device of the same integration, such as a power st
 
 **Devices without entities**, such as a remote that only sends events or a lock its integration cannot control, are drawn in their integration's group. The card cannot know their status, so they are never shown as offline.
 
-**Mobile devices** are the phones, tablets and watches that run the Home Assistant companion app. At home they are shown on the access point they use. When the app reports mobile data, or your router reports the device as away, the path becomes `Device → Mobile devices → Mobile data → Internet → Home Assistant`. The card cannot tell which remote access method the device uses (Home Assistant Cloud, a VPN such as Tailscale, or an exposed port), so it only says *Internet*.
+**Mobile devices** are the phones, tablets and watches that run the Home Assistant companion app. At home each one is drawn on the access point it is on right now, with a group of mobile devices per access point, and the map follows it when it moves to another one. This needs a router integration that reports the access point of each client, and a client whose name matches the device. When the app reports mobile data, or your router reports the device as away, the path becomes `Device → Mobile devices → Mobile data → Internet → Home Assistant`. The card cannot tell which remote access method the device uses (Home Assistant Cloud, a VPN such as Tailscale, or an exposed port), so it only says *Internet*.
 
 Helpers and system integrations (template, group, Supervisor, Sun, Backup, HACS and similar) are ignored. Devices whose only entities are `update` entities are ignored as well.
 
