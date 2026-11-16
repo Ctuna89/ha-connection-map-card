@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — 2026-11-16
+
+The release that prepares 1.0: nothing is merged on a guess any more, and the card explains itself when something goes wrong.
 
 ### Added
 
@@ -16,6 +18,14 @@
 - Replaced options: `core_size: compact` → `sizes: { core: 28 }`; `mqtt_entities: false` → `entities_without_device: false`. Both keep working.
 - The texts of the card and of the editor are one per line, in the same order in every language, with a test that fails when a language is missing one. See *Translating* in the README.
 - README rewritten: how to use the map, options grouped by purpose, what needs an admin user, what to do when something looks wrong, and a new screenshot.
+
+### Upgrading from 0.7.x
+
+Devices that 0.7.x merged because of their name show up as two dots again, with a notice under the map asking whether they are one device. Answer once, or set `merge_duplicates: auto` to keep the old behaviour.
+
+### Not verified on real hardware
+
+The question, merging by hand and the diagnostics were tested with simulated installations and a simulated Home Assistant for storing the answers. If storing them with the user is not available, they are kept in the browser only.
 
 ## 0.7.5 — 2026-11-16
 
