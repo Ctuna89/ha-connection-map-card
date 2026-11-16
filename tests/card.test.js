@@ -651,3 +651,32 @@ test('every language has the same texts as English', async () => {
   }
   await page.close();
 });
+
+test('two entries can be merged by hand, and merged ones split again', async () => {
+  const page = await H.newPage(browser);
+  await page.evaluate(() => { window.saved = null; });
+  await mountDupHome(page, { merge_duplicates: 'auto' });
+  const names = () => page.evaluate(() => window.card._devs.map((d) => d.n).sort());
+  assert.ok((await names()).includes('Plug 0') && (await names()).includes('Plug 1'));
+  // open a device, choose "Merge with another device", search and pick
+  let r = await page.evaluate(() => { const c = window.card; c._selDev(c._devs.find((d) => d.n === 'Plug 0')); c.shadowRoot.getElementById('mergeb').click();
+    const q = c.shadowRoot.getElementById('mgQ'); q.value = 'plug 1'; q.dispatchEvent(new Event('input'));
+    const rows = [...c.shadowRoot.querySelectorAll('#mgList [data-mid]')].map((b) => b.innerText.replace(/\s+/g, ' ')); c.shadowRoot.querySelector('#mgList [data-mid]').click();
+    return { rows, modal: c.shadowRoot.getElementById('modal').style.display, panel: c.shadowRoot.getElementById('panel').innerText.replace(/\s+/g, ' ') }; });
+  assert.deepEqual(r.rows, ['Plug 1 shelly']); assert.equal(r.modal, 'none');
+  assert.match(r.panel, /Also set up as shelly/); assert.match(r.panel, /Split merged devices/);
+  assert.equal((await names()).filter((n) => /^Plug [01]$/.test(n)).length, 1, 'one dot for the two entries');
+  assert.equal(await page.evaluate(() => Object.values(window.saved.dup).filter((v) => v === true).length), 1, 'remembered like any other answer');
+  // split them again
+  await page.evaluate(() => window.card.shadowRoot.getElementById('splitb').click());
+  assert.equal((await names()).filter((n) => /^Plug [01]$/.test(n)).length, 2);
+  // the speaker is merged because the router knows both entries by one address: that can be split too
+  assert.ok(!(await names()).includes('Nest Mini'));
+  await page.evaluate(() => { const c = window.card; c._selDev(c._devs.find((d) => d.n === 'Kitchen speaker')); c.shadowRoot.getElementById('splitb').click(); });
+  assert.ok((await names()).includes('Nest Mini'));
+  // with merging turned off there is nothing to merge by hand
+  await mountDupHome(page, { merge_duplicates: 'off' });
+  assert.equal(await page.evaluate(() => { const c = window.card; c._selDev(c._devs.find((d) => d.n === 'Plug 2')); return !!c.shadowRoot.getElementById('mergeb'); }), false);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});

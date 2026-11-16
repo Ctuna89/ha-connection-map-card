@@ -107,6 +107,8 @@ The card never leaves something out silently. A strip under the map tells you wh
 
 One physical device is often set up through two integrations: a TV through its own integration and through its maker's cloud, a phone through the companion app and something else. When two entries only *look* alike (same name and maker), the card asks you, shows both side by side, and remembers your answer for your Home Assistant user, on every browser. Entries the router knows by the same network address are merged without asking, because that is certain. You can ask again from the ⤓ menu, or change the behaviour with `merge_duplicates`.
 
+When the card does not notice, do it yourself: tap either device, choose **Merge with another device…** and pick the other one. A merged device has a **Split merged devices** button, which also undoes a merge the card made on its own.
+
 ## Options
 
 Everything works without options. All of them can be set from the visual editor of the card, except `names`, `overrides`, `exclude_devices` and `z2m_base_topic`.

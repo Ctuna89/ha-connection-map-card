@@ -5,6 +5,7 @@
 ### Added
 
 - **Is this one device?** Two entries that only look alike (same name and maker, or the companion app on a device with the same name) are no longer merged on the card's own judgement. A notice under the map opens a question that shows both side by side; the answer is remembered for your Home Assistant user, on every browser, and can be asked again from the ⤓ menu. Entries the router knows by the same address are still merged without asking. `merge_duplicates` takes `ask` (default), `auto` or `off`.
+- **Merge and split by hand.** The panel of a device has *Merge with another device…*, for the same device set up twice under names the card would never connect, and *Split merged devices*, which also undoes a merge the card made on its own. Both are remembered like the answers to the question.
 - **Copy diagnostics**, in the ⤓ menu: what the card found and how it classified each group, with no names, addresses or entity IDs. Meant to be pasted in an issue.
 - **A safety net.** If the map cannot be built from an unexpected piece of data, the card says so under the map and keeps the last map that worked, instead of going blank. A single device that cannot be read is left out, counted in the notice, and listed in the diagnostics.
 - **Option names are stable from 1.0.** Options that were replaced keep working and are reported in the browser console, as are options the card does not know.

@@ -84,6 +84,11 @@
       loading: 'Loading devices…',
       local: 'Local network',
       localSub: 'LAN / Wi-Fi',
+      mergeHint: 'They will be drawn as one device. You can split them again from the panel of the device.',
+      mergeNone: 'No device matches.',
+      mergeSearch: 'Search device…',
+      mergeTitle: 'Merge with which device?',
+      mergeWith: 'Merge with another device…',
       meshNodes: 'nodes',
       meshNote: 'Zigbee routes come from the Zigbee2MQTT network map.',
       mobile: 'Mobile devices',
@@ -140,6 +145,7 @@
       skipped1: '1 device could not be read and was left out.',
       sortArea: 'Sort: area',
       sortName: 'Sort: name',
+      splitMerged: 'Split merged devices',
       status: 'Status',
       status2: 'Status',
       summary: 'Summary',
@@ -223,6 +229,11 @@
       loading: 'Cargando equipos…',
       local: 'Red local',
       localSub: 'LAN / Wi-Fi',
+      mergeHint: 'Se dibujarán como un solo equipo. Puedes separarlos después desde el panel del equipo.',
+      mergeNone: 'Ningún equipo coincide.',
+      mergeSearch: 'Buscar equipo…',
+      mergeTitle: '¿Con qué equipo unirlo?',
+      mergeWith: 'Unir con otro equipo…',
       meshNodes: 'nodos',
       meshNote: 'Las rutas Zigbee vienen del mapa de red de Zigbee2MQTT.',
       mobile: 'Dispositivos móviles',
@@ -279,6 +290,7 @@
       skipped1: '1 equipo no se pudo leer y quedó fuera.',
       sortArea: 'Orden: pieza',
       sortName: 'Orden: nombre',
+      splitMerged: 'Separar equipos unidos',
       status: 'Estado',
       status2: 'Estado',
       summary: 'Resumen',
@@ -503,6 +515,7 @@
     '.dlg{background:var(--cm-bg);color:var(--cm-ink);border-radius:16px;padding:18px;max-width:560px;width:100%;max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 30px rgba(0,0,0,.35)}',
     '.dlg h2{margin:0;font-size:18px;font-weight:600}.dlg p{margin:0;font-size:13px;color:var(--cm-muted)}.dlg .acts{display:flex;flex-wrap:wrap;gap:8px}.dlg .btn{cursor:pointer}.dlg .btn.go{border-color:var(--cm-core);color:var(--cm-core);font-weight:600}',
     '.dlg .pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}.dlg .one{border:1px solid var(--cm-line);border-radius:12px;padding:10px;min-width:0}.dlg .one b{display:block;font-size:14px;overflow-wrap:anywhere}',
+    '.dlg input[type=search]{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--cm-line);border-radius:10px;background:var(--cm-bg);color:var(--cm-ink)}.dlg .list{max-height:300px}',
     '.dlg textarea{font:12px/1.4 ui-monospace,monospace;width:100%;height:240px;box-sizing:border-box;border:1px solid var(--cm-line);border-radius:10px;background:var(--cm-faint);color:var(--cm-ink);padding:8px;resize:vertical}',
     '@media (max-width:520px){.dlg .pair{grid-template-columns:1fr}}',
     '.hub.offline .disc{stroke:var(--cm-bad)!important}.anode{fill:var(--cm-bg);stroke-width:1.6;cursor:pointer}.dl.al{font-weight:600;fill:var(--cm-muted)}',
@@ -816,6 +829,27 @@
       m.querySelector('#dSame').onclick = function () { answer(true); };
       m.querySelector('#dDiff').onclick = function () { answer(false); };
       m.querySelector('#dLater').onclick = function () { if (i + 1 < list.length) self._dupAsk(i + 1); else self._closeModal(); };
+      m.onclick = function (e) { if (e.target === m) self._closeModal(); };
+    }
+    // Merge by hand: for the same device set up twice under names the card would never connect
+    _mergeDialog(d) {
+      var self = this, t = this._t.bind(this);
+      var m = this._modal('<h2>' + esc(t('mergeTitle')) + '</h2><p><b>' + esc(d.n) + '</b> · ' + esc(this._intName(d.p)) + '</p><input id="mgQ" type="search" placeholder="' + esc(t('mergeSearch')) + '"><div class="list" id="mgList"></div><p>' + esc(t('mergeHint')) + '</p><div class="acts"><button class="btn" id="mgClose">' + esc(t('close')) + '</button></div>');
+      var q = m.querySelector('#mgQ'), list = m.querySelector('#mgList');
+      var fill = function () {
+        var k = q.value.trim().toLowerCase();
+        var rows = self._devs.filter(function (x) { return x !== d && (!k || (x.n + ' ' + x.mo + ' ' + x.a + ' ' + self._intName(x.p)).toLowerCase().indexOf(k) >= 0); })
+          .sort(function (a, b) { return a.n.localeCompare(b.n); }).slice(0, 60);
+        list.innerHTML = rows.map(function (x) { return '<button class="item" data-mid="' + esc(x.id) + '"><i style="background:' + self._M[x.hub.m] + '"></i><span class="nm">' + esc(x.n) + '</span><small>' + esc(self._intName(x.p)) + (x.a ? ' · ' + esc(x.a) : '') + '</small></button>'; }).join('') || '<p>' + esc(t('mergeNone')) + '</p>';
+        list.querySelectorAll('[data-mid]').forEach(function (b) {
+          b.onclick = function () {
+            self._ans.dup[[d.id, b.dataset.mid].sort().join('|')] = true; self._saveAnswers(); self._closeModal(); self._remodel();
+            var kept = self._devs.filter(function (x) { return x.id === d.id || x.id === b.dataset.mid; })[0]; if (kept) self._selDev(kept);
+          };
+        });
+      };
+      q.addEventListener('input', fill); fill(); q.focus();
+      m.querySelector('#mgClose').onclick = function () { self._closeModal(); };
       m.onclick = function (e) { if (e.target === m) self._closeModal(); };
     }
     // ---- diagnostics: what the card found and how it classified it, with nothing that identifies the home
@@ -1163,7 +1197,7 @@
         };
         var byTrk = {}, byName = {}, byBase = {};
         devs.forEach(function (x) {
-          if (x.trk && x.trkSure) { if (byTrk[x.trk]) join(byTrk[x.trk], x); else byTrk[x.trk] = x; }
+          if (x.trk && x.trkSure) { if (!byTrk[x.trk]) byTrk[x.trk] = x; else if (answers[[byTrk[x.trk].id, x.id].sort().join('|')] !== false) join(byTrk[x.trk], x); }
           if (x.p !== 'mobile_app') (byName[slug(x.n)] = byName[slug(x.n)] || []).push(x);
           if (x.p !== 'mobile_app' && !x.svc) { var bk = slug(x.n.replace(/\s*\([^)]*\)\s*$/, '')); if (bk) (byBase[bk] = byBase[bk] || []).push(x); }
         });
@@ -1182,6 +1216,11 @@
             var ma = a.mf.split(/\s+/)[0].toLowerCase(), mb = b.mf.split(/\s+/)[0].toLowerCase();
             if (ma && mb ? ma === mb : (k.split('_').length >= 3 || /\d/.test(k))) suspect(a, b, 'name');
           }
+        });
+        Object.keys(answers).forEach(function (key) {
+          if (answers[key] !== true) return;
+          var ids = key.split('|'), a = devs.filter(function (x) { return x.id === ids[0]; })[0], b = devs.filter(function (x) { return x.id === ids[1]; })[0];
+          if (a && b && !(gOf[a.id] && gOf[a.id] === gOf[b.id])) join(a, b);
         });
         groups.forEach(function (g) {
           if (g.length < 2) return;
@@ -2178,7 +2217,8 @@
           return '<dt>' + esc(t('network')) + '</dt><dd>' + esc((own ? '' : h.n + ' → ') + [c.via, self._ifaceText(c)].filter(Boolean).join(' · ')) + '</dd>' + (own && c.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(c.ip) + '</dd>' : '');
         })() + '</dl>' +
         '<div class="eyebrow" style="color:var(--cm-muted)">' + esc(t('path')) + '</div>' + this._route(this._pathOf(d)) +
-        '<button class="btn" id="open">' + esc(t(d.entity ? 'openEntity' : d.integration ? 'openIntegration' : 'open')) + '</button><button class="btn" id="hubb">' + esc(t('seeAll')) + ' ' + esc(h.n) + '</button><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
+        '<button class="btn" id="open">' + esc(t(d.entity ? 'openEntity' : d.integration ? 'openIntegration' : 'open')) + '</button>' +
+        (this._cfg.merge_duplicates === false || this._cfg.merge_duplicates === 'off' ? '' : '<button class="btn" id="mergeb">' + esc(t('mergeWith')) + '</button>' + (d.also && d.also.length ? '<button class="btn" id="splitb">' + esc(t('splitMerged')) + '</button>' : '')) + '<button class="btn" id="hubb">' + esc(t('seeAll')) + ' ' + esc(h.n) + '</button><button class="btn" id="back">← ' + esc(t('back')) + '</button>';
       this._bind();
       this._$('panel').querySelector('#open').onclick = function () {
         if (self._hass.demo) return;
@@ -2187,6 +2227,12 @@
         window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
       };
       this._$('panel').querySelector('#hubb').onclick = function () { self._selHub(h); };
+      var mb = this._$('panel').querySelector('#mergeb'), sb = this._$('panel').querySelector('#splitb');
+      if (mb) mb.onclick = function () { self._mergeDialog(d); };
+      if (sb) sb.onclick = function () {
+        d.also.forEach(function (o) { self._ans.dup[[d.id, o.id].sort().join('|')] = false; });
+        self._saveAnswers(); self._remodel(); var again = self._devs.filter(function (x) { return x.id === d.id; })[0]; if (again) self._selDev(again);
+      };
     }
     _selCore() {
       var t = this._t.bind(this), h = this._host, cfg = this._hass.config || {};
