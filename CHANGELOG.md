@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Physical devices only.** A button next to "Offline only", and the option `physical_only`, leave out accounts, online services and the loose sensors of an integration, so the map shows only things you could put your hand on.
+
 ## 0.7.4 — 2026-11-16
 
 ### Fixed
