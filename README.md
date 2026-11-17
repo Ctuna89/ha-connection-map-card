@@ -144,7 +144,7 @@ Option names are **stable from 1.0**: they will not be renamed or removed withou
 | `entities_without_device` | boolean | `true` | Draw the entities of device integrations that give them no device, MQTT entities written by hand included. |
 | `devices_without_entities` | boolean | `true` | Draw devices that have no entities (a remote that only sends events, a lock its integration cannot control). |
 | `show_trackers` | boolean | `false` | Show devices that only have `device_tracker` entities (every phone and laptop your router reports). |
-| `show_mesh` | boolean | `true` | Load the Zigbee network map (Zigbee2MQTT or ZHA) to show repeaters and link quality. |
+| `show_mesh` | boolean | `true` | Load the Zigbee network map (Zigbee2MQTT or ZHA) and Matter Thread network diagnostics to show repeaters and signal quality. |
 | `recent_hours` | number | `24` | How long a battery device that stopped answering counts as *seen recently* before it is shown as offline. `0` turns it off. The time is taken from when its entities became unavailable, so after a Home Assistant restart it counts from the restart. |
 | `exclude_integrations` | list | `[]` | Integration domains to hide, for example `[mobile_app, bambu_lab]`. |
 | `computers` | list | `[]` | Devices with the companion app that are desktop computers, by device name: they go to a "Computers" group instead of "Mobile devices". iMac, Mac mini, Mac Pro and Macs without a battery are recognised without listing them. `names: { computers: ... }` renames the group. |
@@ -207,7 +207,7 @@ These keep working, and the visual editor writes the new form.
 
 **Zigbee.** The coordinator is the radio node: a Connect ZBT / SkyConnect / Yellow radio, or the adapter Zigbee2MQTT or ZHA reports. A network coordinator (SLZB-06 and the like) is named after the device Home Assistant knows at its address. With `show_mesh`, devices behind a repeater are drawn next to it with their link quality.
 
-**Thread.** Matter devices whose diagnostics report Thread get their own group. A Connect ZBT / SkyConnect stick is drawn as the Thread border router when OpenThread Border Router is set up and no Zigbee stack uses the stick. With ZHA and OTBR both present the card cannot tell, and keeps the stick as the Zigbee coordinator.
+**Thread.** Matter devices on Thread get their own group immediately from their Thread entities and dataset, without waking sleepy battery sensors. With `show_mesh`, cached Matter `ThreadNetworkDiagnostics` neighbour and route tables place sleepy sensors and multi-hop routers behind their Thread repeater with RSSI and LQI. A Connect ZBT / SkyConnect stick is drawn as the Thread border router when OpenThread Border Router is set up and no Zigbee stack uses the stick. With ZHA and OTBR both present the card cannot tell, and keeps the stick as the Zigbee coordinator.
 
 **Z-Wave.** The controller of the network (node 1: a USB stick, a Connect ZWA-2) is the hub of its nodes, linked straight to Home Assistant.
 
@@ -244,7 +244,7 @@ The card works for every user: it reads the device and entity registries the fro
 | Services | Recognised only when the device registry marks the entry as a service; the integration's own type is not available. |
 | Entities without a device | Not drawn, except MQTT entities. |
 | Which Bluetooth adapter or proxy hears each device | One plain *Bluetooth* group. |
-| Which adapter Zigbee2MQTT uses, and the Zigbee mesh | The coordinator is named from the registry; no repeaters. |
+| Which adapter Zigbee2MQTT uses, and the Zigbee / Thread mesh | The coordinator is named from the registry; no repeaters. |
 | Host details (OS, virtual machine) | Not shown. |
 
 ## Rules the map keeps
