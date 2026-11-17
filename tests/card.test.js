@@ -897,3 +897,109 @@ test('Thread mesh places end devices behind their Matter router plug with RSSI a
   assert.deepEqual(page.errors, []);
   await page.close();
 });
+
+test('UniFi / UniFi Insights: switches are SW nodes, bare and blocked clients are filtered, and cached client MACs avoid repeat calls', async () => {
+  const page = await H.newPage(browser);
+  const r = await page.evaluate(async () => {
+    try { localStorage.getItem('probe'); } catch (e) {
+      const mem = {};
+      Object.defineProperty(window, 'localStorage', {
+        value: { getItem: (k) => (k in mem ? mem[k] : null), setItem: (k, v) => { mem[k] = String(v); }, removeItem: (k) => { delete mem[k]; } },
+        configurable: true
+      });
+    }
+    const devices = {}, entities = {}, states = {};
+    const dev = (id, name, o = {}) => {
+      devices[id] = { id, name, model: o.mo || '', entry_type: o.service ? 'service' : null, via_device_id: o.via || null,
+        connections: o.mac ? [['mac', o.mac]] : [], identifiers: [[o.dom || 'unifi', id]], disabled_by: null, area_id: null };
+    };
+    const ent = (eid, device_id, platform, state, attributes) => {
+      entities[eid] = { entity_id: eid, device_id, platform }; states[eid] = { entity_id: eid, state: state || 'on', attributes: attributes || {} };
+    };
+    // Switch comes before gateway in registry; both unifi and unifi_insights register the gateway MAC
+    dev('sw', 'USW Flex Mini', { dom: 'unifi_insights', mo: 'USW Flex Mini', mac: '58:d6:1f:00:00:02' }); ent('binary_sensor.sw_st', 'sw', 'unifi_insights');
+    dev('gw', 'Cloud Gateway Max', { mo: 'UCG-Max', mac: '6c:63:f8:00:00:01' }); ent('sensor.gw_up', 'gw', 'unifi');
+    dev('gw2', 'Cloud Gateway Max', { dom: 'unifi_insights', mo: 'UCG-Max', mac: '6c:63:f8:00:00:01' }); ent('binary_sensor.gw_st', 'gw2', 'unifi_insights');
+    dev('ap', 'U7 Pro XG', { dom: 'unifi_insights', mo: 'U7 Pro XG', mac: '84:78:48:00:00:03' }); ent('binary_sensor.ap_st', 'ap', 'unifi_insights');
+    // UniFi client with block switch, bare 0-entity client (disabled tracker), and virtual WLAN service entry: none are APs
+    dev('cli', 'Laptop', { mac: 'aa:bb:cc:00:00:99' }); ent('device_tracker.laptop', 'cli', 'unifi', 'home', { mac: 'aa:bb:cc:00:00:99' }); ent('switch.laptop_blocked', 'cli', 'unifi', 'on');
+    dev('bare_cli', 'Smartwatch', { mac: 'aa:bb:cc:00:00:88' });
+    dev('wlan', 'IoT WiFi', { mo: 'UniFi WLAN', service: true }); ent('switch.iot_wifi', 'wlan', 'unifi', 'on');
+    dev('fw', 'Firewall policies', { dom: 'unifi_insights', mo: 'UniFi Firewall Policies' });
+    // Hue Bridge (via UniFi Insights), Sonos on U7 Pro XG, and Apple TV wired to port 2 via native unifi sw_mac attributes
+    dev('hue', 'Hue Bridge', { dom: 'hue', mac: 'c4:29:96:00:00:10' }); ent('sensor.hue_st', 'hue', 'hue');
+    for (let i = 0; i < 3; i++) { dev('l' + i, 'Lamp ' + i, { dom: 'hue', via: 'hue' }); ent('light.l' + i, 'l' + i, 'hue'); }
+    dev('sonos', 'Arc Ultra', { dom: 'sonos', mac: 'c4:38:75:00:00:20' }); ent('media_player.arc', 'sonos', 'sonos');
+    dev('atv', 'Living TV Box', { dom: 'apple_tv', mac: 'c0:95:6d:00:00:30' }); ent('media_player.atv', 'atv', 'apple_tv');
+    ent('device_tracker.atv', null, 'unifi', 'home', { mac: 'c0:95:6d:00:00:30', is_wired: true, sw_mac: '58:d6:1f:00:00:02', sw_port: 2, wired_rate_mbps: 1000 });
+    const topo = {
+      nodes: [
+        { id: 'wan1', kind: 'wan', name: 'WAN', ha_device_id: 'gw2' },
+        { id: 'n_gw', kind: 'gateway', name: 'Cloud Gateway Max', state: 'online', ha_device_id: 'gw2' },
+        { id: 'n_sw', kind: 'switch', name: 'USW Flex Mini', state: 'online', ha_device_id: 'sw' },
+        { id: 'n_ap', kind: 'access_point', name: 'U7 Pro XG', state: 'online', ha_device_id: 'ap' },
+        { id: 'c_hue', kind: 'client', name: 'Hue Bridge Pro', state: 'online', connection: 'wired', vlan_id: 3, network_name: 'IoT' },
+        { id: 'c_sonos', kind: 'client', name: 'Arc Ultra', state: 'online', connection: 'wireless', vlan_id: 2, network_name: 'Media' }
+      ],
+      edges: [
+        { source: 'n_gw', target: 'wan1', medium: 'wired' },
+        { source: 'n_sw', target: 'n_gw', medium: 'wired', parent_port: 3, speed_mbps: 1000 },
+        { source: 'n_ap', target: 'n_gw', medium: 'wired', parent_port: 4, speed_mbps: 2500 },
+        { source: 'c_hue', target: 'n_sw', medium: 'wired', parent_port: 4, speed_mbps: 100 },
+        { source: 'c_sonos', target: 'n_ap', medium: 'wireless' }
+      ]
+    };
+    const dets = {
+      c_hue: { kind: 'client', mac_address: 'c4:29:96:00:00:10', ip_address: '192.168.50.84' },
+      c_sonos: { kind: 'client', mac_address: 'c4:38:75:00:00:20', ip_address: '192.168.1.56' }
+    };
+    const man = [['unifi', 'UniFi'], ['unifi_insights', 'UniFi Insights'], ['hue', 'Philips Hue'], ['sonos', 'Sonos'], ['apple_tv', 'Apple TV']].map((d) => ({ domain: d[0], name: d[1], iot_class: 'local_push' }));
+    const asked = [];
+    const makeHass = () => ({
+      language: 'en', user: { id: 'u_unifi_cache', is_admin: true }, states, devices, entities, areas: {}, config: { version: '1', components: ['unifi', 'unifi_insights'] },
+      connection: { subscribeMessage: async () => () => {} },
+      callWS: async (m) => {
+        if (m.type === 'manifest/list') return man;
+        if (m.type === 'unifi_insights/topology/sources') return [{ entry_id: 'e1', sites: [{ id: 's1' }] }];
+        if (m.type === 'unifi_insights/topology/get') return topo;
+        if (m.type === 'unifi_insights/topology/node_details') { asked.push(m.node_id); return dets[m.node_id] || {}; }
+        throw new Error('not in test: ' + m.type);
+      }
+    });
+    const host = document.getElementById('host'); host.innerHTML = '';
+    let c = document.createElement('connection-map-card'); c.setConfig({ animations: false, group_small: 0 }); host.appendChild(c); window.card = c;
+    c.hass = makeHass();
+    for (let i = 0; i < 120 && !(c._built && c._uiClients); i++) await new Promise((res) => setTimeout(res, 25));
+    await new Promise((res) => setTimeout(res, 40));
+    const firstAsked = asked.slice().sort();
+    // Reloading uses cached client MACs: zero node_details calls on second mount
+    asked.length = 0;
+    host.innerHTML = '';
+    c = document.createElement('connection-map-card'); c.setConfig({ animations: false, group_small: 0 }); host.appendChild(c); window.card = c;
+    c.hass = makeHass();
+    for (let i = 0; i < 120 && !(c._built && c._uiClients); i++) await new Promise((res) => setTimeout(res, 25));
+    await new Promise((res) => setTimeout(res, 40));
+    const by = (n) => c._devs.find((d) => d.n === n);
+    return {
+      firstAsked,
+      secondAsked: asked.slice(),
+      main: c._router.n,
+      routers: c._routers.map((x) => x.n + ':' + (x.sw ? 'SW' : 'AP')).sort(),
+      swBadge: c._rnodes['USW Flex Mini'].g.querySelector('text').textContent,
+      huePath: c._pathOf(by('Lamp 0')).join(' > '),
+      atvPath: c._pathOf(by('Living TV Box')).join(' > '),
+      sonosPath: c._pathOf(by('Arc Ultra')).join(' > ')
+    };
+  });
+  assert.deepEqual(r.firstAsked, ['c_hue', 'c_sonos'], 'gateway, switch and AP use ha_device_id MACs without node_details');
+  assert.deepEqual(r.secondAsked, [], 'cached client MACs make zero node_details requests on reload');
+  assert.equal(r.main, 'Cloud Gateway Max');
+  assert.deepEqual(r.routers, ['Cloud Gateway Max:AP', 'U7 Pro XG:AP', 'USW Flex Mini:SW'], 'blocked/bare clients, WLANs and duplicate gateway MACs are excluded');
+  assert.equal(r.swBadge, 'SW');
+  assert.equal(r.huePath, 'Lamp 0 > Hue Bridge > Philips Hue > USW Flex Mini (Ethernet · 100 Mbps · Port 4) > Cloud Gateway Max > Home Assistant');
+  assert.equal(r.atvPath, 'Living TV Box > Apple TV > USW Flex Mini (Ethernet · 1 Gbps · Port 2) > Cloud Gateway Max > Home Assistant');
+  assert.equal(r.sonosPath, 'Arc Ultra > Sonos > U7 Pro XG (Wi-Fi) > Cloud Gateway Max > Home Assistant');
+  assert.deepEqual(await H.linkProblems(page), []);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
