@@ -37,6 +37,7 @@
       close: 'Close',
       cloud: 'Internet',
       cloudSub: 'Cloud integrations',
+      computers: 'Computers',
       connectedHere: 'Connected to this node',
       connectedTo: 'Connected to',
       coordinator: 'Zigbee coordinator',
@@ -182,6 +183,7 @@
       close: 'Cerrar',
       cloud: 'Internet',
       cloudSub: 'Integraciones en la nube',
+      computers: 'Computadores',
       connectedHere: 'Conectados a este nodo',
       connectedTo: 'Conectado a',
       coordinator: 'Coordinador Zigbee',
@@ -330,7 +332,7 @@
   // Router integrations that register every client of the network as a device of its own, linked to the gateway.
   var CLIENTS_AS_DEVICES = ['netgear', 'sagemcom_fast'];
   var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'sort', 'group_by_area', 'group_small', 'separate_services', 'physical_only', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'minimap', 'device_labels', 'animations',
-    'colors', 'lines', 'sizes', 'names', 'overrides', 'exclude_integrations', 'exclude_devices', 'merge_duplicates', 'entities_without_device', 'devices_without_entities', 'recent_hours',
+    'colors', 'lines', 'sizes', 'names', 'overrides', 'exclude_integrations', 'exclude_devices', 'computers', 'merge_duplicates', 'entities_without_device', 'devices_without_entities', 'recent_hours',
     'main_router', 'router_name', 'coordinator_name', 'z2m_base_topic', 'grid_options', 'layout_options', 'view_layout', 'visibility', 'card_mod'];
   var DEPRECATED = { core_size: 'sizes.core', mqtt_entities: 'entities_without_device' };
   var NS = 'http://www.w3.org/2000/svg';
@@ -598,7 +600,7 @@
       if (noteKey && noteKey !== ConnectionMapCard._warned) { ConnectionMapCard._warned = noteKey; console.warn('connection-map-card options — ' + this._optNotes.join(', ')); }
       this._given = given; config = given;
       this._cfg = Object.assign({
-        title: null, group_small: 1, exclude_integrations: [], exclude_devices: [], show_trackers: false,
+        title: null, group_small: 1, exclude_integrations: [], exclude_devices: [], computers: [], show_trackers: false,
         show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', physical_only: false, group_by_area: false, mqtt_entities: true, entities_without_device: true, devices_without_entities: true, merge_duplicates: true, recent_hours: 24, layout: 'detailed', show_export: true
       }, config || {});
       // look-only options are applied by drawing again; anything else needs the model to be rebuilt
@@ -1105,6 +1107,15 @@
       var byConn = {};
       Object.keys(devices).forEach(function (k) { (devices[k].connections || []).forEach(function (c) { if (c[0] === 'mac' || c[0] === 'bluetooth') byConn[String(c[1]).toLowerCase()] = devices[k]; }); });
       function isBt(d) { var c = d.connections || []; return c.some(function (x) { return x[0] === 'bluetooth'; }) && !c.some(function (x) { return x[0] === 'mac'; }); }
+      // A desktop computer running the companion app: named by the user (computers: [...]), or a Mac that is not a laptop
+      // (iMac, Mac mini, Mac Pro; the newer "Mac14,3" style models only when the app reports no battery).
+      var pcNames = (Array.isArray(cfg.computers) ? cfg.computers : []).map(function (x) { return String(x).trim().toLowerCase(); });
+      function isComputer(d, es) {
+        if (pcNames.indexOf(String(d.name_by_user || d.name || '').trim().toLowerCase()) >= 0 || pcNames.indexOf(d.id) >= 0) return true;
+        var mo = String(d.model || '');
+        if (/^(imac|macmini|mac ?mini|macpro|mac ?pro|mac ?studio)/i.test(mo)) return true;
+        return /^mac\d/i.test(mo) && !es.some(function (e) { return /battery/.test(e.entity_id); });
+      }
       function hubFor(key, name, medium, kind, p) {
         if (!hubs[key]) hubs[key] = { key: key, n: name, m: medium, kind: kind, p: p, dv: [] };
         return hubs[key];
@@ -1167,8 +1178,11 @@
         } else {
           // phones and tablets roam: each one is drawn on the access point it is on right now (see _mobSig)
           var ap = ''; if (p === 'mobile_app' && medium === 'local') { var mc = self._conn(findTrk(d)); ap = mc && mc.via && mc.home !== false ? String(mc.via) : ''; }
-          hub = hubFor('int:' + p + ':' + medium + (ap ? '@' + ap : ''), self._intName(p), medium, 'int', p); if (ap) hub.apHint = ap;
-          hub.sub = self._intName(p);
+          // the companion app also runs on desktop computers, which are not "mobile devices": a group of their own
+          var pc = p === 'mobile_app' && isComputer(d, es), hn = pc ? ((cfg.names || {}).computers || t('computers')) : self._intName(p);
+          hub = hubFor('int:' + p + (pc ? '-pc' : '') + ':' + medium + (ap ? '@' + ap : ''), hn, medium, 'int', p); if (ap) hub.apHint = ap;
+          if (pc) hub.pc = true;
+          hub.sub = hn;
         }
         // only Zigbee goes through the Zigbee coordinator: Z-Wave, EnOcean, 433 MHz... have a radio of their own
         if (hub.m === 'radio' && !hub.own && ZIGBEE.indexOf(p) < 0 && p !== 'mqtt') hub.own = hub.plain = true;
@@ -1301,7 +1315,7 @@
       Object.keys(hubs).forEach(function (k) {
         var h = hubs[k]; if (!h.apHint) return;
         if (routers.some(function (r) { return r.n === h.apHint && r !== self._router; })) return;
-        var base = hubFor('int:mobile_app:' + h.m, h.n, h.m, 'int', 'mobile_app'); base.sub = h.sub;
+        var base = hubFor('int:mobile_app' + (h.pc ? '-pc' : '') + ':' + h.m, h.n, h.m, 'int', 'mobile_app'); base.sub = h.sub; if (h.pc) base.pc = true;
         h.dv.forEach(function (d) { d.hub = base; base.dv.push(d); }); delete hubs[k];
       });
       if (this._router && cfg.router_name) this._router.n = cfg.router_name;
@@ -2279,6 +2293,7 @@
       cloud: 'Internet',
       colors: 'Colours',
       compact: 'Compact: one bubble per hub',
+      computers: 'Desktop computers with the companion app (device names, separated by commas)',
       content: 'What is shown',
       coordinator_name: 'Name of the radio coordinator',
       core: 'Home Assistant',
@@ -2341,6 +2356,7 @@
       cloud: 'Internet',
       colors: 'Colores',
       compact: 'Compacto: una burbuja por hub',
+      computers: 'Computadores de escritorio con la app (nombres de equipo, separados por comas)',
       content: 'Qué se muestra',
       coordinator_name: 'Nombre del coordinador de radio',
       core: 'Home Assistant',
@@ -2407,7 +2423,7 @@
     { sec: 'sizes' }, { p: 'sizes.core', k: 'range', min: 20, max: 80, step: 1, d: 56, l: 'score' }, { p: 'sizes.network', k: 'range', min: 16, max: 40, step: 1, d: 28, l: 'snetwork' },
     { p: 'sizes.hub', k: 'range', min: 14, max: 34, step: 1, d: 22, l: 'shub' }, { p: 'sizes.device', k: 'range', min: 3, max: 9, step: 0.2, d: 6.2, l: 'sdevice' },
     { sec: 'content' }, { p: 'physical_only', k: 'bool', d: false }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'separate_services', k: 'bool', d: true }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'select', o: [['ask', 'dupAsk'], ['auto', 'dupAuto'], ['off', 'dupOff']], d: 'ask' }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
-    { p: 'exclude_integrations', k: 'list' }, { p: 'main_router', k: 'text' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
+    { p: 'exclude_integrations', k: 'list' }, { p: 'computers', k: 'list' }, { p: 'main_router', k: 'text' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
     { p: 'demo', k: 'select', o: [['', 'none'], ['unifi', 'UniFi'], ['fritz', 'FRITZ!Box'], ['large', '350']], d: '' }
   ];
   var ECSS = ':host{display:block}details{border:1px solid var(--divider-color,rgba(0,0,0,.12));border-radius:10px;margin:0 0 10px;padding:0 12px}' +

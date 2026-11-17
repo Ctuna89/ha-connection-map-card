@@ -147,6 +147,7 @@ Option names are **stable from 1.0**: they will not be renamed or removed withou
 | `show_mesh` | boolean | `true` | Load the Zigbee network map (Zigbee2MQTT or ZHA) to show repeaters and link quality. |
 | `recent_hours` | number | `24` | How long a battery device that stopped answering counts as *seen recently* before it is shown as offline. `0` turns it off. The time is taken from when its entities became unavailable, so after a Home Assistant restart it counts from the restart. |
 | `exclude_integrations` | list | `[]` | Integration domains to hide, for example `[mobile_app, bambu_lab]`. |
+| `computers` | list | `[]` | Devices with the companion app that are desktop computers, by device name: they go to a "Computers" group instead of "Mobile devices". iMac, Mac mini, Mac Pro and Macs without a battery are recognised without listing them. `names: { computers: ... }` renames the group. |
 | `exclude_devices` | list | `[]` | Device IDs to hide. An entity ID hides an entity that has no device. |
 
 ### Names and corrections

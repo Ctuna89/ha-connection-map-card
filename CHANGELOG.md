@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Desktop computers that run the companion app are drawn in a "Computers" group, not under "Mobile devices". iMac, Mac mini, Mac Pro and Macs that report no battery are recognised on their own; for anything else, list the device names in `computers` (YAML or the visual editor). `names: { computers: ... }` renames the group.
+
 ## 0.8.1 — 2026-11-16
 
 ### Added

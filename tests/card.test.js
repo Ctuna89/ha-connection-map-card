@@ -473,6 +473,32 @@ test('group_by_area also works in a group with power strips: singles by area, ea
   await page.close();
 });
 
+test('desktop computers with the companion app are not "mobile devices"', async () => {
+  const page = await H.newPage(browser);
+  const mount = (config) => page.evaluate(async (config) => {
+    const devices = {}, entities = {}, states = {}; let n = 0;
+    const dev = (name, dom, o = {}) => { const id = 'd' + (++n); devices[id] = { id, name, manufacturer: o.mf || '', model: o.mo || '', via_device_id: null, connections: [], identifiers: [[dom, id]], disabled_by: null, area_id: null };
+      ['a', 'b'].concat(o.battery ? ['battery_level'] : []).forEach((k) => { const e = 'sensor.e' + n + '_' + k; entities[e] = { entity_id: e, device_id: id, platform: dom }; states[e] = { entity_id: e, state: 'on', attributes: {} }; }); return id; };
+    dev('Gateway', 'unifi');
+    dev('Kitchen iMac', 'mobile_app', { mf: 'Apple', mo: 'iMac21,1' }); dev('Mac Studio', 'mobile_app', { mf: 'Apple', mo: 'Mac13,1' });
+    dev('MacBook Air', 'mobile_app', { mf: 'Apple', mo: 'Mac14,2', battery: true }); dev('iPhone', 'mobile_app', { mf: 'Apple', mo: 'iPhone15,2', battery: true });
+    dev('Office PC', 'mobile_app', { mf: 'Dell', mo: 'OptiPlex' });
+    const man = [{ domain: 'mobile_app', name: 'Mobile App', iot_class: 'local_push' }, { domain: 'unifi', name: 'UniFi', iot_class: 'local_polling' }];
+    document.getElementById('host').innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig(Object.assign({ animations: false }, config)); document.getElementById('host').appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+    const g = {}; c._hubs.forEach((h) => { g[h.n] = h.dv.map((d) => d.n).sort(); }); return g;
+  }, config);
+  let g = await mount({});
+  assert.deepEqual(g['Computers'], ['Kitchen iMac', 'Mac Studio'], 'an iMac, and a Mac with no battery');
+  assert.deepEqual(g['Mobile devices'], ['MacBook Air', 'Office PC', 'iPhone'], 'laptops and phones stay mobile');
+  assert.deepEqual(await H.linkProblems(page), []); assert.deepEqual(await H.labelProblems(page), []);
+  g = await mount({ computers: ['office pc'], names: { computers: 'Desktops' } });
+  assert.deepEqual(g['Desktops'], ['Kitchen iMac', 'Mac Studio', 'Office PC'], 'computers: by device name; names.computers renames the group');
+  await page.close();
+});
+
 test('each mobile device is drawn on the access point it is on, and follows it when it roams', async () => {
   const page = await H.newPage(browser);
   await page.evaluate(async () => {
