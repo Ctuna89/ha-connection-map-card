@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.5 — 2026-11-17
+
+### Added
+
+- Devices disabled in Home Assistant ("Enable device" switched off) can be seen: choose "Disabled only" in the status list, or set `show_disabled: true` to keep them on the map. They are drawn as grey dotted rings in the group of their integration. Disabled routers and access points are left out.
+- Devices with no entities (all of them disabled, or none created) are drawn in grey, with their own entry in the legend, instead of looking like any device that is online. `colors: { no_entities: ... }` changes the colour, also in the visual editor.
+
+### Changed
+
+- The "Offline only" button is now a list: all devices, offline only, devices with no entities only, or disabled devices only. `devices_without_entities: false` still hides those for good.
+
 ## 0.8.4 — 2026-11-17
 
 UniFi, by [@HaniKazmi](https://github.com/HaniKazmi) in [#12](https://github.com/Ctuna89/ha-connection-map-card/pull/12), tested on a Cloud Gateway Max, a USW Flex Mini and a U7 Pro XG. Thank you again.
