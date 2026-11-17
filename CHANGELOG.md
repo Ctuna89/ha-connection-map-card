@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+Thread, by [@HaniKazmi](https://github.com/HaniKazmi) ([#11](https://github.com/Ctuna89/ha-connection-map-card/pull/11)).
+
+### Added
+
+- Thread mesh: with `show_mesh`, Matter devices on Thread are drawn behind the Thread router that repeats for them, with dashed links, the role of each one (leader, router, end device), the repeaters in the path to Home Assistant, and signal (RSSI and LQI). It comes from the Matter network diagnostics that Home Assistant already keeps; it needs an admin user.
+- Matter devices on Wi-Fi are matched with the client the router reports (by MAC or IP), so they show their access point.
+
+### Changed
+
+- Thread devices are placed in the Thread group on the first draw, from their Thread entities and the Thread dataset, instead of asking each device: battery sensors that sleep are no longer woken up, which took 5 to 20 seconds each.
+- Bluetooth and Matter details load side by side; one no longer waits for the other.
+
 ## 0.8.2 — 2026-11-17
 
 ### Added

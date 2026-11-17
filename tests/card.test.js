@@ -757,7 +757,8 @@ test('Matter over Thread is classified from the entity registry without waking s
   const page = await H.newPage(browser);
   const r = await page.evaluate(async () => {
     const devices = {}, entities = {}, states = {}, fullReg = [], pinged = [];
-    const dev = (id, name, mac) => { devices[id] = { id, name, via_device_id: null, connections: mac ? [['mac', mac]] : [], identifiers: [['matter', id]], disabled_by: null, area_id: null }; };
+    // only the Matter devices carry a Matter identifier: the gateway and the access point belong to UniFi
+    const dev = (id, name, mac) => { devices[id] = { id, name, via_device_id: null, connections: mac ? [['mac', mac]] : [], identifiers: [[mac ? 'unifi' : 'matter', id]], disabled_by: null, area_id: null }; };
     const ent = (eid, device_id, platform, state, attributes, tk, disabled_by) => {
       const row = { entity_id: eid, device_id, platform, translation_key: tk || null, disabled_by: disabled_by || null };
       fullReg.push(row);
