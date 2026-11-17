@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.8.3 — 2026-11-17
 
-Thread, by [@HaniKazmi](https://github.com/HaniKazmi) ([#11](https://github.com/Ctuna89/ha-connection-map-card/pull/11)).
+Thread gets its own mesh. Everything in this release was contributed by [@HaniKazmi](https://github.com/HaniKazmi) in [#11](https://github.com/Ctuna89/ha-connection-map-card/pull/11). Thank you for the careful work.
 
 ### Added
 
