@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.4 — 2026-11-17
+
+UniFi, by [@HaniKazmi](https://github.com/HaniKazmi) in [#12](https://github.com/Ctuna89/ha-connection-map-card/pull/12), tested on a Cloud Gateway Max, a USW Flex Mini and a U7 Pro XG. Thank you again.
+
+### Added
+
+- Network switches are drawn as `SW` nodes instead of `AP`, with their own description.
+- UniFi Network: wired clients are placed behind their switch (`sw_mac`), with the port and the link speed. Switches and access points show their uplink when the uplink sensors are enabled.
+- UniFi Insights (`unifi_insights`, HACS): the gateway, switches, access points and clients are read from its topology, so the map works without `device_tracker` entities. Needs that integration; details of the clients are kept in the browser so they are asked only once.
+- The port and the link speed of a wired connection are shown wherever the connection is described.
+
+### Fixed
+
+- UniFi: clients were drawn as access points when their tracker was disabled (an entry with no entities, kept since 0.8.1) or when they had a "block" switch. So were Wi-Fi networks and firewall rules. Only gateways, switches and access points are network nodes now; other router integrations are not affected.
+- A device registered by both UniFi Network and UniFi Insights is drawn once.
+- A switch is never picked as the main router.
+
 ## 0.8.3 — 2026-11-17
 
 Thread gets its own mesh. Everything in this release was contributed by [@HaniKazmi](https://github.com/HaniKazmi) in [#11](https://github.com/Ctuna89/ha-connection-map-card/pull/11). Thank you for the careful work.
