@@ -365,6 +365,103 @@ test('a Z-Wave controller is the hub of its network, linked straight to Home Ass
   await page.close();
 });
 
+test('Zigbee and Thread mesh routes are cached across reloads, refreshed on new devices or on demand, and toggled in memory', async () => {
+  const page = await H.newPage(browser);
+  const r = await page.evaluate(async () => {
+    try { localStorage.getItem('probe'); } catch (e) {
+      const mem = {};
+      Object.defineProperty(window, 'localStorage', {
+        value: { getItem: (k) => (k in mem ? mem[k] : null), setItem: (k, v) => { mem[k] = String(v); }, removeItem: (k) => { delete mem[k]; } },
+        configurable: true
+      });
+    }
+    let scans = 0;
+    const makeHass = (extraSensor) => {
+      const devices = {}, entities = {}, states = {};
+      const add = (id, name, ieee, via, mf) => {
+        devices[id] = { id, name, manufacturer: mf || 'Aqara', via_device_id: via || null, connections: [],
+          identifiers: ieee ? [['mqtt', 'zigbee2mqtt_' + ieee]] : [['mqtt', id]], disabled_by: null, area_id: null };
+        const eid = 'sensor.' + id; entities[eid] = { entity_id: eid, device_id: id, platform: 'mqtt' }; states[eid] = { entity_id: eid, state: 'on', attributes: {} };
+      };
+      add('br', 'Zigbee2MQTT Bridge', null, null, 'Zigbee2MQTT');
+      add('plug', 'Hall plug', '0x0011', 'br');
+      add('door', 'Door sensor', '0x0022', 'br');
+      if (extraSensor) add('leak', 'Leak sensor', '0x0033', 'br');
+      const info = { coordinator: { type: 'EmberZNet', meta: { revision: '8.0.2' } }, config: { serial: { port: '/dev/ttyACM0' } } };
+      const map = {
+        nodes: [{ ieeeAddr: '0x0000', type: 'Coordinator' }, { ieeeAddr: '0x0011', type: 'Router' }, { ieeeAddr: '0x0022', type: 'EndDevice' }]
+          .concat(extraSensor ? [{ ieeeAddr: '0x0033', type: 'EndDevice' }] : []),
+        links: [{ source: { ieeeAddr: '0x0022' }, target: { ieeeAddr: '0x0011' }, lqi: 184, relationship: 1 }]
+          .concat(extraSensor ? [{ source: { ieeeAddr: '0x0033' }, target: { ieeeAddr: '0x0011' }, lqi: 162, relationship: 1 }] : [])
+      };
+      let mapCb = null;
+      return {
+        language: 'en', user: { id: 'u_mesh_cache', is_admin: true }, states, devices, entities, areas: {}, config: { version: '2026.11.1' },
+        callWS: async (m) => { if (m.type === 'manifest/list') return [{ domain: 'mqtt', name: 'MQTT', iot_class: 'local_push' }]; throw new Error('not in test'); },
+        callService: async (dom, svc, data) => {
+          if (dom === 'mqtt' && svc === 'publish' && /request\/networkmap$/.test(data.topic)) {
+            scans++;
+            setTimeout(() => { if (mapCb) mapCb({ variables: { trigger: { payload: JSON.stringify({ data: { value: map } }) } } }); }, 20);
+          }
+        },
+        connection: {
+          subscribeMessage: async (cb, msg) => {
+            const topic = (msg.trigger && msg.trigger.topic) || '';
+            if (/bridge\/info$/.test(topic)) setTimeout(() => cb({ variables: { trigger: { payload: JSON.stringify(info) } } }), 10);
+            else if (/response\/networkmap$/.test(topic)) mapCb = cb;
+            return () => {};
+          }
+        }
+      };
+    };
+    const host = document.getElementById('host');
+    host.innerHTML = '';
+    let c = document.createElement('connection-map-card'); c.setConfig({ animations: false }); host.appendChild(c); window.card = c;
+    c.hass = makeHass(false);
+    for (let i = 0; i < 80 && !c._mesh; i++) await new Promise((res) => setTimeout(res, 20));
+    const scans1 = scans, parent1 = c._devs.find((d) => d.n === 'Door sensor').meshParent.n;
+    c.setConfig({ animations: false, show_mesh: false });
+    const hiddenParent = c._devs.find((d) => d.n === 'Door sensor').meshParent || null;
+    c.setConfig({ animations: false, show_mesh: true });
+    const restoredParent = c._devs.find((d) => d.n === 'Door sensor').meshParent.n, scansAfterToggle = scans;
+    host.innerHTML = '';
+    c = document.createElement('connection-map-card'); c.setConfig({ animations: false }); host.appendChild(c); window.card = c;
+    c.hass = makeHass(false);
+    for (let i = 0; i < 40 && !c._built; i++) await new Promise((res) => setTimeout(res, 10));
+    const firstFrameParent = c._devs.find((d) => d.n === 'Door sensor').meshParent.n;
+    await new Promise((res) => setTimeout(res, 60));
+    const scansCached = scans;
+    c.shadowRoot.getElementById('zexp').click();
+    c.shadowRoot.getElementById('xm').click();
+    for (let i = 0; i < 40 && c._meshBusy; i++) await new Promise((res) => setTimeout(res, 20));
+    const scansManual = scans;
+    host.innerHTML = '';
+    c = document.createElement('connection-map-card'); c.setConfig({ animations: false }); host.appendChild(c); window.card = c;
+    c.hass = makeHass(true);
+    for (let i = 0; i < 80 && !(c._built && c._devs.find((d) => d.n === 'Leak sensor') && c._devs.find((d) => d.n === 'Leak sensor').meshParent); i++) {
+      await new Promise((res) => setTimeout(res, 20));
+    }
+    return {
+      scans1, parent1, hiddenParent, restoredParent, scansAfterToggle,
+      firstFrameParent, scansCached, scansManual, scansNewDev: scans,
+      leakParent: c._devs.find((d) => d.n === 'Leak sensor').meshParent.n
+    };
+  });
+  assert.equal(r.scans1, 1);
+  assert.equal(r.parent1, 'Hall plug');
+  assert.equal(r.hiddenParent, null);
+  assert.equal(r.restoredParent, 'Hall plug');
+  assert.equal(r.scansAfterToggle, 1);
+  assert.equal(r.firstFrameParent, 'Hall plug');
+  assert.equal(r.scansCached, 1);
+  assert.equal(r.scansManual, 2);
+  assert.equal(r.scansNewDev, 3);
+  assert.equal(r.leakParent, 'Hall plug');
+  assert.deepEqual(await H.linkProblems(page), []);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
 test('group_by_area: hub -> area -> devices, for areas with more than one device', async () => {
   for (const demo of ['unifi', 'large']) {
     const page = await H.newPage(browser);
