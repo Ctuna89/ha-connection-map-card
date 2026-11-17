@@ -126,6 +126,7 @@
       otherRadio: 'Other radio devices',
       parentDev: 'Part of',
       path: 'Path to Home Assistant',
+      port: 'Port',
       radio: 'Local radio',
       radioSub: 'Zigbee · Z-Wave',
       recent: 'Seen recently',
@@ -152,6 +153,7 @@
       status2: 'Status',
       summary: 'Summary',
       summaryText: 'Each dot is a device. Lines show the path its data takes to Home Assistant.',
+      switchDesc: 'Network switch of your local network.',
       threadBr: 'Thread border router',
       threadDesc: 'Matter devices on the Thread mesh. They reach Home Assistant through a Thread border router.',
       threadMeshNote: 'Thread routes come from Matter network diagnostics.',
@@ -274,6 +276,7 @@
       otherRadio: 'Otros equipos por radio',
       parentDev: 'Parte de',
       path: 'Camino hasta Home Assistant',
+      port: 'Puerto',
       radio: 'Radio local',
       radioSub: 'Zigbee · Z-Wave',
       recent: 'Visto hace poco',
@@ -300,6 +303,7 @@
       status2: 'Estado',
       summary: 'Resumen',
       summaryText: 'Cada punto es un equipo. Las líneas muestran el camino que siguen sus datos hasta Home Assistant.',
+      switchDesc: 'Switch de tu red local.',
       threadBr: 'Router de borde Thread',
       threadDesc: 'Equipos Matter en la malla Thread. Llegan a Home Assistant a través de un border router Thread.',
       threadMeshNote: 'Las rutas Thread vienen del diagnóstico de red Matter.',
@@ -320,7 +324,7 @@
   var ZIGBEE = ['zha', 'zigbee2mqtt', 'deconz'];
   var RADIO = ['zha', 'zwave_js', 'zwave_me', 'deconz', 'insteon', 'zigbee2mqtt', 'enocean', 'rfxtrx'];
   // Integrations for routers / access points: drawn as the local network itself, not as devices.
-  var ROUTER_INTS = ['huawei_mesh_router', 'huawei_lte', 'unifi', 'fritz', 'tplink_omada', 'tplink_router', 'tplink_deco', 'asuswrt', 'sagemcom_fast',
+  var ROUTER_INTS = ['huawei_mesh_router', 'huawei_lte', 'unifi', 'unifi_insights', 'fritz', 'tplink_omada', 'tplink_router', 'tplink_deco', 'asuswrt', 'sagemcom_fast',
     'netgear', 'keenetic_ndms2', 'mikrotik', 'openwrt', 'luci', 'ubus', 'eero', 'google_wifi', 'synology_srm', 'ruckus_unleashed',
     'vodafone_station', 'sfr_box', 'freebox', 'bbox', 'orbi', 'linksys_smart', 'aruba', 'cisco_ios', 'ddwrt', 'tomato', 'opnsense', 'pfsense'];
   // Radio coordinators (USB sticks / built-in radios).
@@ -691,6 +695,7 @@
       var ld = this._$('loading'); if (ld) ld.textContent = t('loading');
       var key = this._modelKey, man = {};
       this._man = man; this._src = {}; this._bt = null; this._mesh = false; this._threadMeshOn = false; this._rawThread = null;
+      this._uiClients = null; this._uiInfra = null; this._uiByMac = null; this._haIps = [];
       await Promise.all([
         H.callWS({ type: 'manifest/list' }).then(function (l) { (l || []).forEach(function (m) { man[m.domain] = m; }); }, function () { /* non-admin: fall back to guesses */ }),
         H.callWS({ type: 'entity/source' }).then(function (s) { self._src = s || {}; }, function () { /* older versions: registry only */ }),
@@ -715,14 +720,26 @@
           self._host = { os: hi.operating_system, chassis: hi.chassis, virt: hi.virtualization, hostname: hi.hostname, disk: [hi.disk_used, hi.disk_total] };
           self._coreText();
         } catch (e) { /* not supervised or not admin */ }
+        var ips = [];
         try {
           var ni = await H.callWS({ type: 'supervisor/api', endpoint: '/network/info', method: 'get' });
           if (gen !== self._gen) return;
-          var ips = []; (ni.interfaces || []).forEach(function (i) { ((i.ipv4 && i.ipv4.address) || []).forEach(function (a) { ips.push(String(a).split('/')[0]); }); });
-          var S = H.states; self._haTrk = (self._trk || []).filter(function (eid) { var a = (S[eid] || {}).attributes || {}; return a.ip && ips.indexOf(a.ip) >= 0; })[0] || null;
-          if (self._haTrk) self._render();
+          (ni.interfaces || []).forEach(function (i) { ((i.ipv4 && i.ipv4.address) || []).forEach(function (a) { var ip = String(a).split('/')[0]; if (ip && ip !== '127.0.0.1' && ips.indexOf(ip) < 0) ips.push(ip); }); });
         } catch (e) { /* not supervised or not admin */ }
+        if (!ips.length && !H.demo) {
+          try {
+            var net = await H.callWS({ type: 'network' });
+            if (gen !== self._gen) return;
+            ((net && net.adapters) || []).forEach(function (ad) { if (!ad.enabled) return; (ad.ipv4 || []).forEach(function (v4) { if (v4.address && v4.address !== '127.0.0.1' && ips.indexOf(v4.address) < 0) ips.push(v4.address); }); });
+          } catch (e) { /* optional */ }
+        }
+        self._haIps = ips;
+        if (ips.length) {
+          self._haTrk = (self._trk || []).filter(function (eid) { var c = self._conn(eid); return c && c.ip && ips.indexOf(c.ip) >= 0; })[0] || null;
+          if (self._haTrk) self._render();
+        }
       })();
+      var uiTask = this._unifiInsights().then(function (ch) { if (ch && gen === self._gen) self._remodel(); });
       var matTask = H.demo ? Promise.resolve() : this._matterInfo().then(function (ch) { if (ch && gen === self._gen) self._remodel(); });
       var btTask = this._btInfo().then(function (ch) { if (ch && gen === self._gen) self._remodel(); });
       var meshTask = (async function () {
@@ -741,7 +758,89 @@
           if (tnodes && gen === self._gen) { self._applyThreadMesh(tnodes); self._render(); }
         }
       })();
-      await Promise.all([hostTask, matTask, btTask, meshTask]);
+      await Promise.all([hostTask, uiTask, matTask, btTask, meshTask]);
+    }
+    // UniFi Insights topology API: switch-port, access-point and multi-VLAN client graph when device_tracker entities are absent.
+    // Infrastructure MACs come from ha_device_id in the registry when present; opaque client node IDs (HMAC of MAC) are cached
+    // in localStorage so reloads make zero node_details requests.
+    async _unifiInsights() {
+      var H = this._hass, devices = (H && H.devices) || {};
+      this._uiClients = null; this._uiInfra = null; this._uiByMac = null;
+      if (!H || !H.callWS || H.demo || (((H.config && H.config.components) || []).indexOf('unifi_insights') < 0)) return false;
+      var ck = H.user && H.user.id ? 'connection-map-card-ui:' + H.user.id : '', cached = {}, dirty = false;
+      if (ck) { try { cached = JSON.parse(localStorage.getItem(ck) || '{}') || {}; } catch (e0) { cached = {}; } }
+      function regMac(devId) {
+        var rd = devId && devices[devId]; if (!rd) return null;
+        var mc = (rd.connections || []).filter(function (c) { return c[0] === 'mac' && c[1]; })[0];
+        return mc ? String(mc[1]).toLowerCase() : null;
+      }
+      try {
+        var srcs = await H.callWS({ type: 'unifi_insights/topology/sources' });
+        if (!Array.isArray(srcs) || !srcs.length) return false;
+        var clients = {}, infra = {}, byMac = {}, found = false;
+        for (var si = 0; si < srcs.length; si++) {
+          var src = srcs[si], sites = (src && src.sites) || [];
+          for (var k = 0; k < sites.length; k++) {
+            var siteId = sites[k].id || sites[k].site_id;
+            if (!src.entry_id || !siteId) continue;
+            var topo = await H.callWS({ type: 'unifi_insights/topology/get', entry_id: src.entry_id, site_id: siteId });
+            if (!topo || !Array.isArray(topo.nodes)) continue;
+            var nodes = {}, edges = {}, details = {}, noDet = false, ask = [];
+            topo.nodes.forEach(function (n) {
+              nodes[n.id] = n;
+              if (n.kind === 'wan') return;
+              var rm = regMac(n.ha_device_id);
+              if (rm) details[n.id] = { mac_address: rm, device_id: n.ha_device_id };
+              else if (cached[n.id]) details[n.id] = { mac_address: cached[n.id].mac || null, ip_address: cached[n.id].ip || null };
+              else if (n.kind !== 'client' || n.state !== 'offline') ask.push(n.id);
+            });
+            (topo.edges || []).forEach(function (e) { if (e.source && e.target) edges[e.source] = e; });
+            ask = ask.slice(0, 64);
+            for (var b = 0; b < ask.length && !noDet; b += 12) {
+              await Promise.all(ask.slice(b, b + 12).map(function (nid) {
+                return H.callWS({ type: 'unifi_insights/topology/node_details', entry_id: src.entry_id, site_id: siteId, node_id: nid }).then(
+                  function (r) {
+                    if (!r) return;
+                    details[nid] = r;
+                    if (r.mac_address || r.ip_address) { cached[nid] = { mac: r.mac_address ? String(r.mac_address).toLowerCase() : null, ip: r.ip_address || null }; dirty = true; }
+                  },
+                  function (err) { if (err && (err.code === 'unauthorized' || err.code === 'unknown_command')) noDet = true; }
+                );
+              }));
+            }
+            topo.nodes.forEach(function (n) {
+              if (n.kind === 'wan') return;
+              var det = details[n.id] || {}, ed = edges[n.id] || {}, par = ed.target ? nodes[ed.target] : null;
+              var mac = det.mac_address ? String(det.mac_address).toLowerCase() : regMac(n.ha_device_id);
+              var parDet = par && details[par.id] ? details[par.id] : null;
+              var parMac = (parDet && parDet.mac_address ? String(parDet.mac_address).toLowerCase() : null) || (par ? regMac(par.ha_device_id) : null);
+              var rec = {
+                id: 'ui:' + (mac || n.id), name: n.name || '', kind: n.kind, mac: mac, ip: det.ip_address || null,
+                haDevId: det.device_id || n.ha_device_id || null,
+                via: par && par.kind !== 'wan' ? par.name : null,
+                viaMac: par && par.kind !== 'wan' ? parMac : null,
+                wired: ed.medium === 'wired' || n.connection === 'wired',
+                wifi: ed.medium === 'wireless' || n.connection === 'wireless',
+                port: ed.parent_port || null, speed: ed.speed_mbps || null,
+                vlan: n.vlan_id || null, netName: n.network_name || null,
+                home: n.state !== 'offline'
+              };
+              if (n.kind === 'gateway' || n.kind === 'switch' || n.kind === 'access_point') {
+                infra[mac || n.name] = rec; if (mac) byMac[mac] = rec; found = true;
+              } else if (n.kind === 'client') {
+                clients[rec.id] = rec; if (mac) byMac[mac] = rec; found = true;
+              }
+            });
+          }
+        }
+        if (dirty && ck) {
+          var cks = Object.keys(cached);
+          if (cks.length > 500) { var trim = {}; cks.slice(cks.length - 500).forEach(function ( xk ) { trim[xk] = cached[xk]; }); cached = trim; }
+          try { localStorage.setItem(ck, JSON.stringify(cached)); } catch (e1) { /* no storage */ }
+        }
+        if (found) { this._uiClients = clients; this._uiInfra = infra; this._uiByMac = byMac; }
+        return found;
+      } catch (e) { return false; }
     }
     _matterIds() {
       var H = this._hass, devices = (H && H.devices) || {}, entities = (H && H.entities) || {}, mat = {};
@@ -1156,7 +1255,7 @@
           flags: ['own', 'plain', 'bt', 'rx', 'thread', 'otbr', 'direct', 'tree'].filter(function (k) { return h[k]; }).concat(h.areas && h.areas.length ? ['areas:' + h.areas.length] : []),
           link: h.from && h.from.router ? 'access point' : h.direct ? 'home assistant' : h.m }; }),
         integrations: ints,
-        sources: { integration_list: Object.keys(man).length > 0, entity_sources: Object.keys(this._src || {}).length > 0, bluetooth: !!this._bt, matter: !!this._matter, zha: !!this._hasZha, zigbee_mesh: !!(this._rawMesh || this._rawZha), thread_mesh: !!this._rawThread,
+        sources: { integration_list: Object.keys(man).length > 0, entity_sources: Object.keys(this._src || {}).length > 0, bluetooth: !!this._bt, matter: !!this._matter, unifi_insights: !!this._uiClients, zha: !!this._hasZha, zigbee_mesh: !!(this._rawMesh || this._rawZha), thread_mesh: !!this._rawThread,
           otbr: ((H.config && H.config.components) || []).indexOf('otbr') >= 0, stick_role: this._otbr ? 'thread border router' : this._coordFromDev ? 'zigbee coordinator' : 'none',
           zigbee2mqtt_adapter: !port ? null : /^(tcp|socket):/i.test(port) ? 'network' : 'serial' },
         duplicates: { mode: cfg.merge_duplicates == null ? 'ask' : cfg.merge_duplicates, merged: devs.reduce(function (n, d) { return n + ((d.also && d.also.length) || 0); }, 0), waiting_for_an_answer: (this._dupPending || []).length, answers: Object.keys((this._ans && this._ans.dup) || {}).length },
@@ -1233,6 +1332,16 @@
         var md = this._matter && this._matter[eid.slice(7)]; if (!md) return null;
         return { via: null, iface: '', wired: md.net === 'ethernet', wifi: md.net === 'wifi', ssid: md.name || null, rssi: null, ip: md.ip || null, home: true };
       }
+      if (eid.indexOf('ui:') === 0) {
+        var uic = (this._uiClients && this._uiClients[eid]) || (this._uiInfra && this._uiInfra[eid.slice(3)]);
+        if (!uic) return null;
+        var uvia = (uic.viaMac && this._macName && this._macName[uic.viaMac]) || uic.via || null;
+        return { via: uvia, iface: uic.wired ? 'LAN' : '', wired: !!uic.wired, wifi: !!uic.wifi, ssid: uic.netName || null, rssi: null, ip: uic.ip || null, port: uic.port || null, speed: uic.speed || null, home: uic.home !== false };
+      }
+      if (eid.indexOf('uplink:') === 0) {
+        var um = eid.slice(7), uv = (this._macName && this._macName[um]) || um;
+        return { via: uv, iface: 'LAN', wired: true, wifi: false, ssid: null, rssi: null, ip: null, port: null, speed: null, home: true };
+      }
       var s = this._hass.states[eid]; if (!s) return null; var a = s.attributes || {};
       var ent = (this._hass.entities || {})[eid] || {}, plat = ent.platform;
       // Netgear / Orbi keep this in separate sensors of the same client: access point MAC, link type and SSID
@@ -1244,17 +1353,26 @@
       var raw = String(a.interface_type || a.connection_type || a.connection || '').trim();
       var band = { ng: '2.4 GHz', na: '5 GHz', '6e': '6 GHz', '6g': '6 GHz' }[String(a.radio || '').toLowerCase()] || '';
       if (/2[.,]?4\s*g/i.test(raw)) band = '2.4 GHz'; else if (/(^|[^\d.])5\s*g/i.test(raw)) band = '5 GHz'; else if (/(^|[^\d.])6\s*g/i.test(raw)) band = '6 GHz';
-      var wired = /^(lan|eth|ethernet|wired|cable)\b/i.test(raw);
+      var wired = a.is_wired === true || /^(lan|eth|ethernet|wired|cable)\b/i.test(raw);
       if (!raw && !band && plat === 'unifi' && !a.essid && !a.ap_mac && s.state === 'home') wired = true;
-      var via = a.connected_via || a.connected_to || a.ap_name || a.access_point || null;
-      if (!via && !a.ap_mac && this._gw && this._gw[plat]) via = this._gw[plat]; // a gateway that says nothing else: its clients are on it
-      if (!via && a.ap_mac) via = (this._macName || {})[String(a.ap_mac).toLowerCase()] || a.ap_mac;
+      var via = a.connected_via || a.connected_to || a.ap_name || a.access_point || null, hopMac = a.ap_mac || a.sw_mac;
+      if (!via && !hopMac && this._gw && this._gw[plat]) via = this._gw[plat]; // a gateway that says nothing else: its clients are on it
+      if (!via && hopMac) via = (this._macName || {})[String(hopMac).toLowerCase()] || hopMac;
       var wifi = !wired && !!(band || /w-?lan|wi-?fi|wireless|802\.11/i.test(raw) || a.essid || a.ssid);
-      return { via: via, iface: wired ? 'LAN' : band, wired: wired, wifi: wifi, ssid: a.essid || a.ssid || null, rssi: a.rssi || a.signal_strength || null, ip: a.ip || a.ip_address || null, home: s.state === 'home' };
+      var macL = a.mac ? String(a.mac).toLowerCase() : '', uiEx = macL && this._uiByMac ? this._uiByMac[macL] : null;
+      if (uiEx && !via) via = (uiEx.viaMac && this._macName && this._macName[uiEx.viaMac]) || uiEx.via || null;
+      return {
+        via: via, iface: wired ? 'LAN' : band, wired: wired, wifi: wifi, ssid: a.essid || a.ssid || null,
+        rssi: a.rssi || a.signal_strength || null, ip: a.ip || a.ip_address || (uiEx && uiEx.ip) || null,
+        port: a.sw_port || (uiEx && uiEx.port) || null, speed: a.wired_rate_mbps || (uiEx && uiEx.speed) || null, home: s.state === 'home'
+      };
     }
     _ifaceText(c) {
       var t = this._t.bind(this); if (!c) return '';
-      return c.wired ? t('wired') : c.wifi ? t('wifi') + (c.iface ? ' ' + c.iface : '') : '';
+      var base = c.wired ? t('wired') : c.wifi ? t('wifi') + (c.iface ? ' ' + c.iface : '') : '';
+      var sp = c.speed ? (c.speed >= 1000 ? (c.speed / 1000) + ' Gbps' : c.speed + ' Mbps') : '';
+      var pt = c.port ? t('port') + ' ' + c.port : '';
+      return [base, sp, pt].filter(Boolean).join(' · ');
     }
     _hubConn(h) {
       // a hub's own connection, or the most common one among its devices
@@ -1321,15 +1439,35 @@
       function zwHub(id) { var c = zwCtrl[zwHome[id]]; return c && zwNodes[zwHome[id]] > 1 ? c : null; }
       function platOf(id) { return primary(byDev[id] || []) || (((devices[id] || {}).identifiers || [])[0] || [])[0] || ''; }
       function isHubDevice(v) { return v && !v.disabled_by && ((children[v.id] || 0) >= 2 || (byDev[v.id] || []).length <= 5); }
-      var hubs = {}, devs = [], routers = [], coords = [];
+      var hubs = {}, devs = [], routers = [], routerByMac = {}, coords = [];
       this._z2mBridge = null;
-      // device_tracker entities from router integrations tell which node each client uses and how (cable / 2.4 / 5 GHz)
-      var trk = [];
-      Object.keys(entities).forEach(function (eid) { var e = entities[eid]; if (eid.indexOf('device_tracker.') === 0 && ROUTER_INTS.indexOf(e.platform) >= 0) trk.push(eid); });
-      this._trk = trk;
-      var macName = {};
-      Object.keys(devices).forEach(function (id) { var d = devices[id]; (d.connections || []).forEach(function (c) { if (c[0] === 'mac') macName[String(c[1]).toLowerCase()] = (d.name_by_user || d.name); }); });
+      var macName = {}, apMacs = {};
+      Object.keys(devices).forEach(function (id) {
+        var d = devices[id]; if (d.disabled_by) return;
+        var p0 = platOf(id);
+        (d.connections || []).forEach(function (c) {
+          if (c[0] === 'mac') { var ml = String(c[1]).toLowerCase(); if (p0 === 'unifi' || !macName[ml]) macName[ml] = (d.name_by_user || d.name); }
+        });
+      });
       this._macName = macName;
+      // device_tracker entities from router integrations (plus UniFi Insights topology clients) tell which node each client uses
+      var trk = [], seenTrkMac = {};
+      Object.keys(entities).forEach(function (eid) {
+        var e = entities[eid];
+        if ((e.platform === 'unifi' || e.platform === 'unifi_insights') && /_uplink_mac$/.test(eid) && H.states[eid] && /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(H.states[eid].state)) {
+          apMacs[H.states[eid].state.toLowerCase()] = 1;
+        }
+        if (eid.indexOf('device_tracker.') === 0 && ROUTER_INTS.indexOf(e.platform) >= 0) {
+          trk.push(eid);
+          var a = (H.states[eid] || {}).attributes || {};
+          if (a.mac && H.states[eid]) seenTrkMac[String(a.mac).toLowerCase()] = 1;
+          if (a.ap_mac) apMacs[String(a.ap_mac).toLowerCase()] = 1;
+          if (a.sw_mac) apMacs[String(a.sw_mac).toLowerCase()] = 1;
+        }
+      });
+      Object.keys(this._uiInfra || {}).forEach(function (k) { var r = self._uiInfra[k]; if (r.mac) apMacs[r.mac] = 1; });
+      Object.keys(this._uiClients || {}).forEach(function (uid) { var c = self._uiClients[uid]; if (!c.mac || !seenTrkMac[c.mac]) trk.push(uid); });
+      this._trk = trk;
       var ng = this._ng = {}, ngAps = {};
       Object.keys(entities).forEach(function (eid) {
         var e = entities[eid]; if (e.platform !== 'netgear' || !e.device_id || eid.indexOf('sensor.') !== 0) return;
@@ -1357,24 +1495,34 @@
       var netName = '';
       if (net) Object.keys(devices).forEach(function (k) { var u = devices[k].configuration_url, h = ''; try { h = u ? new URL(u).hostname : ''; } catch (e) { h = ''; } if (!netName && h === net[1]) netName = String(devices[k].model || devices[k].name_by_user || devices[k].name || '').trim(); });
       function slug(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
+      function trkMeta(eid) {
+        if (eid.indexOf('ui:') === 0) {
+          var u = self._uiClients && self._uiClients[eid];
+          return u ? { devId: u.haDevId || null, mac: u.mac, ip: u.ip, ts: slug(u.name) } : { devId: null, mac: null, ip: null, ts: '' };
+        }
+        var a = (H.states[eid] || {}).attributes || {};
+        return { devId: null, mac: a.mac ? String(a.mac).toLowerCase() : null, ip: a.ip || a.ip_address || null, ts: eid.slice(15) };
+      }
       function findTrk(dev) {
         if (!dev || dev.entry_type === 'service') return null;
         var md = self._matter && self._matter[dev.id];
         if (!trk.length) { findTrk.sure = false; return md && md.net === 'wifi' ? 'matter:' + dev.id : null; }
-        var S = H.states, best = null;
+        var best = null;
         var macs = (dev.connections || []).filter(function (c) { return c[0] === 'mac'; }).map(function (c) { return String(c[1]).toLowerCase(); });
         if (md && md.mac && macs.indexOf(md.mac) < 0) macs.push(md.mac);
         var host = null; try { host = dev.configuration_url ? new URL(dev.configuration_url).hostname : null; } catch (e) { host = null; }
         var ips = [host, md && md.ip].filter(Boolean);
         trk.forEach(function (eid) {
-          if (best) return; var a = (S[eid] || {}).attributes || {};
-          if (a.mac && macs.indexOf(String(a.mac).toLowerCase()) >= 0) best = eid;
-          else if ((a.ip || a.ip_address) && ips.indexOf(a.ip || a.ip_address) >= 0) best = eid;
+          if (best) return; var tm = trkMeta(eid);
+          if (tm.devId && tm.devId === dev.id) best = eid;
+          else if (tm.mac && macs.indexOf(tm.mac) >= 0) best = eid;
+          else if (tm.ip && ips.indexOf(tm.ip) >= 0) best = eid;
         });
         findTrk.sure = !!best;
         var ds = slug(dev.name_by_user || dev.name), dt = ds.split('_').filter(Boolean);
         if (!best && ds) trk.forEach(function (eid) {
-          if (best) return; var ts = eid.slice(15), tt = ts.split('_');
+          if (best) return; var tm = trkMeta(eid); if (!tm.ts) return;
+          var ts = tm.ts, tt = ts.split('_');
           if (ts === ds || (dt.length >= 2 && dt.every(function (x) { return tt.indexOf(x) >= 0; })) ||
             (dt.length === 1 && dt[0].length >= 5 && tt.indexOf(dt[0]) >= 0 && tt.length <= 3)) best = eid;
         });
@@ -1415,6 +1563,14 @@
         if (!hubs[key]) hubs[key] = { key: key, n: name, m: medium, kind: kind, p: p, dv: [] };
         return hubs[key];
       }
+      var hasUnifiHw = Object.keys(devices).some(function (k) {
+        var dk = devices[k]; if (dk.disabled_by || dk.entry_type === 'service') return false;
+        var pk = platOf(k); if (pk !== 'unifi' && pk !== 'unifi_insights') return false;
+        if (/^(wifi network|unifi firewall|firewall)/i.test(dk.model || '')) return false;
+        var ek = byDev[k] || [];
+        if (ek.some(function (e) { return e.entity_id.indexOf('device_tracker.') === 0; })) return false;
+        return !!(dk.model || ek.length);
+      });
       var skipped = this._skipped = [];
       var one = function (id) {
         var d = devices[id];
@@ -1434,11 +1590,37 @@
         var doms = es.map(function (e) { return e.entity_id.split('.')[0]; });
         if (!bare && doms.every(function (x) { return x === 'update'; })) return;
         if (!bare && !cfg.show_trackers && p !== 'mobile_app' && doms.every(function (x) { return x === 'device_tracker' || x === 'update'; })) return;
-        if (SKIP.indexOf(p) >= 0 || cfg.exclude_integrations.indexOf(p) >= 0) return;
-        // Netgear registers every client as a device of its own: only the router and the satellites that clients name as
-        // their access point are network nodes; the rest are plain clients
-        if (CLIENTS_AS_DEVICES.indexOf(p) >= 0 && d.via_device_id && !(d.connections || []).some(function (c) { return c[0] === 'mac' && ngAps[String(c[1]).toLowerCase()]; })) { if (!cfg.show_trackers) return; }
-        else if (ROUTER_INTS.indexOf(p) >= 0) { routers.push({ id: id, n: nm, p: p, ents: es.map(function (e) { return e.entity_id; }) }); return; }
+        if (SKIP.indexOf(p) >= 0 || cfg.exclude_integrations.indexOf(p) >= 0 || p === 'unifi_wan') return;
+        // UniFi registers WLANs and firewall rules as service entries, and every client as a device (with 0 entities when
+        // trackers are disabled, or a block switch alongside its tracker). Only real gateways, switches and APs are network nodes.
+        if (p === 'unifi' || p === 'unifi_insights') {
+          var rmacs = (d.connections || []).filter(function (c) { return c[0] === 'mac'; }).map(function (c) { return String(c[1]).toLowerCase(); });
+          if (d.entry_type === 'service' || /^(wifi network|unifi firewall|firewall)/i.test(d.model || '') || (!d.name && !d.model && !rmacs.length)) return;
+          var isInfra = rmacs.some(function (m) { return !!apMacs[m]; });
+          if (!isInfra && (doms.indexOf('device_tracker') >= 0 || (bare && !d.model && hasUnifiHw))) {
+            if (!cfg.show_trackers || (bare && cfg.devices_without_entities === false)) return;
+          } else {
+            var rmac = rmacs[0] || null;
+            var isSw = !!(rmac && self._uiInfra && self._uiInfra[rmac] && self._uiInfra[rmac].kind === 'switch') ||
+              (/\b(usw|usmini|switch|flex\s*mini|crs\d|css\d|tl-sg|gs\d{3})\b/i.test((d.model || '') + ' ' + nm) && !/\b(ap|u[67]|uap|wifi|wlan)\b/i.test(nm));
+            var upEnt = (es.filter(function (e) { return /_uplink_mac$/.test(e.entity_id); })[0] || {}).entity_id || null;
+            if (rmac && routerByMac[rmac]) {
+              var ex = routerByMac[rmac];
+              if (p === 'unifi' && ex.p !== 'unifi') { ex.id = id; ex.n = nm; ex.p = p; }
+              if (isSw) ex.sw = true;
+              if (upEnt && !ex.uplinkEnt) ex.uplinkEnt = upEnt;
+              es.forEach(function (e) { if (ex.ents.indexOf(e.entity_id) < 0) ex.ents.push(e.entity_id); });
+              return;
+            }
+            var rObj = { id: id, n: nm, p: p, mac: rmac, sw: isSw, uplinkEnt: upEnt, ents: es.map(function (e) { return e.entity_id; }) };
+            routers.push(rObj); if (rmac) routerByMac[rmac] = rObj;
+            return;
+          }
+        } else if (CLIENTS_AS_DEVICES.indexOf(p) >= 0 && d.via_device_id && !(d.connections || []).some(function (c) { return c[0] === 'mac' && ngAps[String(c[1]).toLowerCase()]; })) { if (!cfg.show_trackers) return; }
+        else if (ROUTER_INTS.indexOf(p) >= 0) {
+          var isSw2 = /\b(usw|usmini|switch|crs\d|css\d|tl-sg|gs\d{3})\b/i.test((d.model || '') + ' ' + nm) && !/\b(ap|wifi|wlan)\b/i.test(nm);
+          routers.push({ id: id, n: nm, p: p, sw: isSw2, ents: es.map(function (e) { return e.entity_id; }) }); return;
+        }
         if ((children[id] || 0) > 0 && isHubDevice(d)) return; // the hub itself is drawn as a hub node
         if (zwHub(id) === d) return; // so is a Z-Wave controller with nodes of its own
         var v = d.via_device_id ? devices[d.via_device_id] : null;
@@ -1598,18 +1780,28 @@
         h.dv.forEach(function (d) { d.hub = g; d.meshParent = par; g.dv.push(d); });
         delete hubs[k];
       });
-      routers.forEach(function (r) { r.trk = findTrk(devices[r.id]); });
+      routers.forEach(function (r) {
+        if (r.mac && self._uiInfra && self._uiInfra[r.mac] && self._uiInfra[r.mac].via) r.trk = 'ui:' + r.mac;
+        else r.trk = findTrk(devices[r.id]);
+        if (!r.trk && r.uplinkEnt && H.states[r.uplinkEnt] && /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(H.states[r.uplinkEnt].state)) r.trk = 'uplink:' + H.states[r.uplinkEnt].state.toLowerCase();
+      });
       this._routers = routers;
       var gws = this._gw = {}; // the gateway of the integrations that only say "this is one of my clients"
       routers.forEach(function (r) { if (r.p === 'sagemcom_fast' && !(devices[r.id] || {}).via_device_id) gws[r.p] = r.n; });
       // The main router: the one the user names (main_router: a device name or an integration); otherwise one that is
-      // not itself a client of another router integration (a second router behind the provider's gateway is), and
-      // among those the one whose name says so.
+      // not itself a switch or downstream of another router, and among those the one whose name says so.
       var want = String(cfg.main_router || '').trim().toLowerCase();
-      var up = routers.filter(function (r) { return !(r.trk && (entities[r.trk] || {}).platform && entities[r.trk].platform !== r.p); });
+      var up = routers.filter(function (r) {
+        if (r.sw) return false;
+        if (!r.trk) return true;
+        if (r.trk.indexOf('uplink:') === 0 || r.trk.indexOf('ui:') === 0) return false;
+        return !((entities[r.trk] || {}).platform && entities[r.trk].platform !== r.p);
+      });
       if (!up.length) up = routers;
       this._router = (want && routers.filter(function (r) { return r.n.toLowerCase() === want || r.p === want; })[0]) ||
         up.filter(function (r) { return /primary|main|principal|gateway|router|udm|dream|ucg|usg|fritz!?\s?box|box/i.test(r.n); })[0] || up[0] || null;
+      var haIps = this._haIps || [];
+      if (haIps.length) this._haTrk = trk.filter(function (eid) { var c = self._conn(eid); return c && c.ip && haIps.indexOf(c.ip) >= 0; })[0] || this._haTrk || null;
       // a mobile group "on" the main router, or on something that is not one of the access points, is the plain one
       Object.keys(hubs).forEach(function (k) {
         var h = hubs[k]; if (!h.apHint) return;
@@ -1650,7 +1842,7 @@
 
     _status() {
       // a bridge is a device too: with all its own entities unavailable, it is offline
-      var S0 = this._hass.states; (this._hubs || []).forEach(function (h) { var live = (h.ents || []).filter(function (e) { return !!S0[e]; }); h.off = live.length > 0 && live.every(function (e) { return S0[e].state === 'unavailable'; }); });
+      var S0 = this._hass.states, self = this; (this._hubs || []).forEach(function (h) { var live = (h.ents || []).filter(function (e) { return !!S0[e]; }); h.off = live.length > 0 && live.every(function (e) { return S0[e].state === 'unavailable'; }); });
       var S = this._hass.states, now = Date.now(), win = Math.max(0, parseFloat(this._cfg.recent_hours) || 0) * 3600000;
       (this._devs || []).concat(this._routers || []).forEach(function (d) {
         var st = d.ents.filter(function (e) { return !!S[e]; }).map(function (e) { return S[e].state; }); // an entity without a state (disabled) says nothing
@@ -1662,7 +1854,8 @@
           var when = 0; d.ents.forEach(function (e) { var x = S[e] && Date.parse(S[e].last_changed); if (x && x > when) when = x; });
           if (when && now - when < win) { d.recent = true; d.off = false; d.seen = when; }
         }
-        d.away = !d.off && !!d.trk && !!S[d.trk] && S[d.trk].state === 'not_home';
+        var uiAway = d.trk && d.trk.indexOf('ui:') === 0 ? self._conn(d.trk) : null;
+        d.away = !d.off && (uiAway ? uiAway.home === false : (!!d.trk && !!S[d.trk] && S[d.trk].state === 'not_home'));
         // a phone or tablet on mobile data, or away from the home network, reaches Home Assistant over the internet
         d.cell = !d.off && !!d.net && !!S[d.net] && /cell|mobile/i.test(S[d.net].state);
         d.remote = (d.p === 'mobile_app' && (d.cell || d.away)) || (!!d.app && d.cell); if (d.remote) d.away = true;
@@ -1999,7 +2192,7 @@
         var down = m === 'local' && self._routers && self._routers.length && self._routers.every(function (r) { return r.off; });
         el('circle', { cx: n.x, cy: n.y, r: n.r, 'class': 'disc', stroke: down ? 'var(--cm-bad)' : M[m] }, g);
         var ic = el('text', { x: n.x, y: n.y + n.r * 0.14, 'text-anchor': 'middle', style: 'font-size:' + (n.r * 0.39) + 'px;font-weight:700;fill:' + M[m] }, g);
-        ic.textContent = m === 'cloud' ? 'WWW' : m === 'local' ? (self._router ? 'Wi-Fi' : 'LAN') : (self._coord ? 'USB' : 'RF');
+        ic.textContent = m === 'cloud' ? 'WWW' : m === 'local' ? (self._router && !(self._routers && self._routers.some(function (x) { return x.sw; })) ? 'Wi-Fi' : 'LAN') : (self._coord ? 'USB' : 'RF');
         var below = Math.sin(deg(n.ac)) >= 0;
         var name = self._mname(m), sub = t(m + 'Sub');
         if (m === 'local' && self._router) sub = self._intName(self._router.p) + (self._routers.length > 1 ? ' · ' + self._routers.length + ' ' + t('meshNodes') : '');
@@ -2014,16 +2207,16 @@
         hov(g, { node: n }, n.x, n.y - n.r, function () { return [name, sub]; });
       });
       Object.keys(this._rnodes || {}).forEach(function (k) {
-        var n = self._rnodes[k]; if (!n.router) return; var r = n.router;
+        var n = self._rnodes[k]; if (!n.router) return; var r = n.router, tag = r.sw ? 'SW' : 'AP';
         var g = el('g', { 'class': 'mnode', tabindex: 0, role: 'button', 'aria-label': r.n }, gN); n.g = g;
         el('circle', { cx: n.x, cy: n.y, r: n.r, 'class': 'disc', stroke: r.off ? 'var(--cm-bad)' : M.local }, g);
-        var ic = el('text', { x: n.x, y: n.y + n.r * 0.17, 'text-anchor': 'middle', style: 'font-size:' + (n.r * 0.47) + 'px;font-weight:700;fill:' + M.local }, g); ic.textContent = 'AP';
+        var ic = el('text', { x: n.x, y: n.y + n.r * 0.17, 'text-anchor': 'middle', style: 'font-size:' + (n.r * 0.47) + 'px;font-weight:700;fill:' + M.local }, g); ic.textContent = tag;
         var below = Math.sin(deg(n.ac)) >= 0;
-        tlabel(g, n.x, n.y, n.r + 2, below, r.n, '', true, 1, 'AP ' + (++anon.ap));
+        tlabel(g, n.x, n.y, n.r + 2, below, r.n, '', true, 1, tag + ' ' + (++anon.ap));
         obst.push({ x: n.x, y: n.y, r: n.r + 2 });
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selRouter(r); });
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selRouter(r); });
-        hov(g, { node: n }, n.x, n.y - n.r, function () { return [r.n, r.off ? t('offline') : t('routerDesc')]; });
+        hov(g, { node: n }, n.x, n.y - n.r, function () { return [r.n, r.off ? t('offline') : t(r.sw ? 'switchDesc' : 'routerDesc')]; });
       });
       // area nodes: a small ring between the hub and the devices of that area; its name goes outside the group
       this._alabs = [];
@@ -2459,12 +2652,12 @@
       var n = this._rnodes[r.n]; if (n && n.edge) n.edge.classList.add('hot'); if (this._mnodes.local && this._mnodes.local.edge) this._mnodes.local.edge.classList.add('hot');
       var items = [];
       this._hubs.forEach(function (h) { if (h.trk) { var c = self._conn(h.trk); if (c && c.via === r.n) items.push({ n: h.n, c: c, hub: h }); } });
-      this._devs.forEach(function (d) { var c = self._conn(d.trk); if (c && c.via === r.n) items.push({ n: d.n, c: c, d: d }); });
+      this._devs.forEach(function (d) { if (d.hub && d.hub.trk && d.trk === d.hub.trk) return; var c = self._conn(d.trk); if (c && c.via === r.n) items.push({ n: d.n, c: c, d: d }); });
       var ha = this._conn(this._haTrk); if (ha && ha.via === r.n) items.unshift({ n: 'Home Assistant', c: ha });
       var bc = this._conn(r.trk), others = r === this._router ? (this._routers || []).filter(function (x) { return x !== r; }) : [];
-      this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M.local + '">' + esc(t('network')) + ' · ' + esc(this._intName(r.p)) + '</div><h2>' + esc(r.n) + '</h2><p>' + esc(r === this._router ? t('infraLocal') : t('routerDesc')) + '</p>' +
+      this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M.local + '">' + esc(t('network')) + ' · ' + esc(this._intName(r.p)) + '</div><h2>' + esc(r.n) + '</h2><p>' + esc(r === this._router ? t('infraLocal') : t(r.sw ? 'switchDesc' : 'routerDesc')) + '</p>' +
         (bc ? '<dl class="kv"><dt>' + esc(t('backhaul')) + '</dt><dd>' + esc((bc.via ? bc.via + ' · ' : '') + this._ifaceText(bc)) + '</dd>' + (bc.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(bc.ip) + '</dd>' : '') + '</dl>' : '') +
-        (others.length ? '<div class="list">' + others.map(function (x) { return '<button class="item" data-router="' + esc(x.n) + '"><i style="' + (x.off ? 'border:2px solid var(--cm-bad)' : 'background:' + self._M.local) + '"></i><span class="nm">' + esc(x.n) + '</span><small class="' + (x.off ? 'off' : '') + '">' + esc(x.off ? t('offline') : (self._offMap || []).indexOf(x.n) >= 0 ? t('notDrawn') : 'AP') + '</small></button>'; }).join('') + '</div>' : '') +
+        (others.length ? '<div class="list">' + others.map(function (x) { var xc = self._conn(x.trk), xsub = x.off ? t('offline') : (self._offMap || []).indexOf(x.n) >= 0 ? t('notDrawn') : [x.sw ? 'SW' : 'AP', xc ? self._ifaceText(xc) : ''].filter(Boolean).join(' · '); return '<button class="item" data-router="' + esc(x.n) + '"><i style="' + (x.off ? 'border:2px solid var(--cm-bad)' : 'background:' + self._M.local) + '"></i><span class="nm">' + esc(x.n) + '</span><small class="' + (x.off ? 'off' : '') + '">' + esc(xsub) + '</small></button>'; }).join('') + '</div>' : '') +
         '<div class="eyebrow" style="color:var(--cm-muted)">' + esc(t('connectedHere')) + ' · ' + items.length + '</div><div class="list">' +
         items.map(function (it) {
           var col = it.hub ? self._M[it.hub.m] : it.d ? self._M[it.d.hub.m] : self._M.core;
