@@ -136,6 +136,7 @@
       repeater: 'repeater',
       role: 'Role',
       roleEnd: 'End device',
+      roleLeader: 'Leader · Router / repeater',
       roleRouter: 'Router / repeater',
       routerDesc: 'Access point / mesh node of your network.',
       runsOn: 'Runs on',
@@ -153,6 +154,7 @@
       summaryText: 'Each dot is a device. Lines show the path its data takes to Home Assistant.',
       threadBr: 'Thread border router',
       threadDesc: 'Matter devices on the Thread mesh. They reach Home Assistant through a Thread border router.',
+      threadMeshNote: 'Thread routes come from Matter network diagnostics.',
       title: 'Connection map',
       version: 'Version',
       vm: 'Virtual machine',
@@ -282,6 +284,7 @@
       repeater: 'repetidor',
       role: 'Rol',
       roleEnd: 'Equipo final',
+      roleLeader: 'Líder · Router / repetidor',
       roleRouter: 'Router / repetidor',
       routerDesc: 'Punto de acceso / nodo de la red.',
       runsOn: 'Corre en',
@@ -299,6 +302,7 @@
       summaryText: 'Cada punto es un equipo. Las líneas muestran el camino que siguen sus datos hasta Home Assistant.',
       threadBr: 'Router de borde Thread',
       threadDesc: 'Equipos Matter en la malla Thread. Llegan a Home Assistant a través de un border router Thread.',
+      threadMeshNote: 'Las rutas Thread vienen del diagnóstico de red Matter.',
       title: 'Mapa de conexiones',
       version: 'Versión',
       vm: 'Máquina virtual',
@@ -351,7 +355,7 @@
   //   demo: fritz  -> FRITZ!Box + repeater, Zigbee2MQTT on a network coordinator, Tuya/tado cloud, no Supervisor (Docker)
   //   demo: large  -> ~350 devices across 30 integrations
   function makeDemo(kind, real) {
-    var devices = {}, entities = {}, states = {}, areas = {}, man = [], src = {}, bts = [], scans = [], matter = {}, seq = 0, seed = 7;
+    var devices = {}, entities = {}, states = {}, areas = {}, man = [], src = {}, bts = [], scans = [], matter = {}, matDiag = null, seq = 0, seed = 7;
     var host = null, haIp = null, zha = null, z2mInfo = null, z2mMap = null, i, j;
     function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
     function mac() { var s = []; for (var k = 0; k < 6; k++) s.push(('0' + Math.floor(rnd() * 256).toString(16)).slice(-2)); return s.join(':'); }
@@ -436,9 +440,19 @@
       var pm = mac(); dev({ p: 'esphome', n: 'ESP32 Bluetooth proxy', mo: 'ESP32-C3', mac: pm, a: A[2] }); trk('esp32_bluetooth_proxy', 'unifi', { mac: pm, ap_mac: ap1, essid: 'IoT', radio: 'ng' });
       scans = [{ source: pm.toUpperCase(), name: 'esp32-bt-proxy (' + pm.toUpperCase() + ')', adapter: 'esp32-bt-proxy', connectable: true, scanner_type: 'remote' }, { source: 'AA:AA:AA:AA:AA:01', name: 'hci0 (AA:AA:AA:AA:AA:01)', adapter: 'hci0', connectable: true, scanner_type: 'usb' }];
       bts = [{ address: bts[0].toUpperCase(), source: scans[0].source, rssi: -61 }, { address: bts[1].toUpperCase(), source: scans[0].source, rssi: -74 }, { address: bts[2].toUpperCase(), source: scans[1].source, rssi: -83 }];
-      // Matter: three devices on Thread, one on Wi-Fi
+      // Matter: three devices on Thread (one router repeating for one sleepy sensor), one on Wi-Fi
       integ('matter', 'Matter', 'local_push');
-      ['Eve door sensor', 'Eve motion sensor', 'Nanoleaf bulb'].forEach(function (n, k) { matter[dev({ p: 'matter', n: n, a: A[k + 4] })] = { network_type: 'thread', network_name: 'ha-thread-1a2b', node_type: k === 2 ? 'routing_end_device' : 'sleepy_end_device' }; });
+      ['Eve door sensor', 'Eve motion sensor', 'Nanoleaf bulb'].forEach(function (n, k) {
+        var mid = dev({ p: 'matter', n: n, a: A[k + 4] });
+        devices[mid].identifiers = [['matter', 'deviceid_0000000000000001-000000000000000' + (k + 1) + '-MatterNodeDevice']];
+        devices[mid].config_entries = ['ce_matter'];
+        matter[mid] = { network_type: 'thread', network_name: 'ha-thread-1a2b', node_type: k === 2 ? 'routing_end_device' : 'sleepy_end_device' };
+      });
+      matDiag = { data: { server: { nodes: [
+        { node_id: 1, attributes: { '0/51/0': [{ '4': 'AAAAAAAAAAE=', '7': 4 }], '0/53/1': 2, '0/53/7': [{ '0': 100, '2': 45056, '5': 3, '6': -61, '7': -61, '13': false }], '0/53/8': [{ '0': 100, '1': 45056, '2': 44, '3': 0, '4': 0, '5': 3, '6': 3, '8': true, '9': true }] } },
+        { node_id: 2, attributes: { '0/51/0': [{ '4': 'AAAAAAAAAAI=', '7': 4 }], '0/53/1': 2, '0/53/7': [{ '0': 3, '2': 6144, '5': 3, '6': -65, '7': -66, '13': false }], '0/53/8': [{ '0': 3, '1': 6144, '2': 6, '3': 0, '4': 0, '5': 3, '6': 3, '8': true, '9': true }] } },
+        { node_id: 3, attributes: { '0/51/0': [{ '4': 'AAAAAAAAAAM=', '7': 4 }], '0/53/1': 5, '0/53/7': [{ '0': 2, '2': 6145, '5': 3, '6': -65, '7': -65, '13': true }, { '0': 100, '2': 45056, '5': 3, '6': -58, '7': -58, '13': false }], '0/53/8': [{ '0': 0, '1': 6144, '2': 6, '3': 63, '4': 0, '5': 0, '6': 0, '8': true, '9': false }, { '0': 100, '1': 45056, '2': 44, '3': 6, '4': 1, '5': 3, '6': 3, '8': true, '9': true }] } }
+      ] } } };
       matter[dev({ p: 'matter', n: 'Matter smart plug', a: A[1], dom: 'switch' })] = { network_type: 'wifi', network_name: 'IoT', node_type: 'end_device' };
       integ('tplink', 'TP-Link Smart Home', 'local_polling');
       var strip = dev({ p: 'tplink', n: 'Office power strip', mo: 'HS300', a: A[3], dom: 'switch', ents: 3 });
@@ -471,6 +485,10 @@
           if (msg.endpoint === '/network/info') return Promise.resolve({ interfaces: haIp ? [{ ipv4: { address: [haIp + '/24'] } }] : [] });
         }
         if (msg.type === 'zha/devices' && zha) return Promise.resolve(zha);
+        return Promise.reject(new Error('not available in demo'));
+      },
+      callApi: function (method, path) {
+        if (method === 'GET' && path === 'diagnostics/config_entry/ce_matter' && matDiag) return Promise.resolve(matDiag);
         return Promise.reject(new Error('not available in demo'));
       },
       callService: function () { return Promise.resolve(); },
@@ -550,7 +568,7 @@
     '.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px;font-size:13px;margin:0}.kv dt{color:var(--cm-muted)}.kv dd{margin:0}',
     '.msg{padding:32px 12px;text-align:center;color:var(--cm-muted)}',
     '.edge{fill:none;stroke-opacity:.55}.edge.hot{stroke-opacity:.9}',
-    '.spoke{stroke:var(--cm-line);stroke-width:1}.spoke.meshl{stroke:var(--cm-radio);stroke-dasharray:3 2;stroke-opacity:.8}',
+    '.spoke{stroke:var(--cm-line);stroke-width:1}.spoke.meshl{stroke:var(--cm-radio);stroke-dasharray:3 2;stroke-opacity:.8}.spoke.meshl.l-local{stroke:var(--cm-local)}',
     // motion: data flowing towards Home Assistant, devices popping in, offline / off-network rings breathing
     '.flow{fill:none;stroke-width:2;stroke-dasharray:2 18;stroke-linecap:round;opacity:.35;pointer-events:none;animation:cmflow 3.2s linear infinite}',
     '.edge.hot+.flow{stroke-width:3.6;animation-duration:.7s;opacity:1}.edge.dim+.flow{opacity:.08}',
@@ -667,79 +685,151 @@
 
     async _load() {
       this._loading = true;
+      var gen = this._gen = (this._gen || 0) + 1, self = this, H = this._hass;
       var t = this._t.bind(this);
-      this._$('title').textContent = (this._cfg.title || t('title')) + (this._hass.demo ? ' · demo: ' + this._cfg.demo : '');
+      this._$('title').textContent = (this._cfg.title || t('title')) + (H.demo ? ' · demo: ' + this._cfg.demo : '');
       var ld = this._$('loading'); if (ld) ld.textContent = t('loading');
-      var key = this._modelKey;
-      var man = {};
-      try { (await this._hass.callWS({ type: 'manifest/list' })).forEach(function (m) { man[m.domain] = m; }); } catch (e) { /* non-admin: fall back to guesses */ }
-      this._man = man;
-      // which integration each entity comes from, including YAML entities that are not in the entity registry
-      this._src = {};
-      try { this._src = (await this._hass.callWS({ type: 'entity/source' })) || {}; } catch (e) { /* older versions: registry only */ }
-      await this._loadAnswers();
+      var key = this._modelKey, man = {};
+      this._man = man; this._src = {}; this._bt = null; this._mesh = false; this._threadMeshOn = false; this._rawThread = null;
+      await Promise.all([
+        H.callWS({ type: 'manifest/list' }).then(function (l) { (l || []).forEach(function (m) { man[m.domain] = m; }); }, function () { /* non-admin: fall back to guesses */ }),
+        H.callWS({ type: 'entity/source' }).then(function (s) { self._src = s || {}; }, function () { /* older versions: registry only */ }),
+        this._loadAnswers(),
+        this._matterFast()
+      ]);
       this._model();
       this._loading = false;
       if (key !== this._modelKey) { this._load(); return; } // the configuration changed while loading
       this._built = true;
       this._render();
-      this._extras();
+      this._extras(gen);
     }
 
-    // Host details (Supervisor), coordinator details and the Zigbee mesh (Zigbee2MQTT or ZHA). All optional, admin only.
-    async _extras() {
-      var H = this._hass;
-      try {
-        var hi = await H.callWS({ type: 'supervisor/api', endpoint: '/host/info', method: 'get' });
-        this._host = { os: hi.operating_system, chassis: hi.chassis, virt: hi.virtualization, hostname: hi.hostname, disk: [hi.disk_used, hi.disk_total] };
-        this._coreText();
-      } catch (e) { /* not supervised or not admin */ }
-      try {
-        var ni = await H.callWS({ type: 'supervisor/api', endpoint: '/network/info', method: 'get' });
-        var ips = []; (ni.interfaces || []).forEach(function (i) { ((i.ipv4 && i.ipv4.address) || []).forEach(function (a) { ips.push(String(a).split('/')[0]); }); });
-        var S = H.states; this._haTrk = (this._trk || []).filter(function (eid) { var a = (S[eid] || {}).attributes || {}; return a.ip && ips.indexOf(a.ip) >= 0; })[0] || null;
-        if (this._haTrk) this._render();
-      } catch (e) { /* not supervised or not admin */ }
-      if (await this._radioInfo()) { if (this._S && this._S.sel && !this._S.sel.core) this._S.sel = null; this._model(); this._render(); }
-      var base = this._cfg.z2m_base_topic || 'zigbee2mqtt', mesh = this._cfg.show_mesh !== false, changed = false;
-      if (this._z2mBridge) {
-        try { this._z2mInfo(await this._mqttOnce(base + '/bridge/info', null, 5000)); changed = true; if (this._S && this._S.sel && !this._S.sel.core) this._S.sel = null; this._model(); } catch (e) { /* retained bridge/info not available */ }
-        if (mesh) { try { var nm = await this._mqttOnce(base + '/bridge/response/networkmap', { topic: base + '/bridge/request/networkmap', payload: JSON.stringify({ type: 'raw', routes: false }) }, 45000); this._applyMesh(nm.data && nm.data.value); changed = true; } catch (e) { /* no answer */ } }
-      }
-      if (mesh && this._hasZha) {
-        try { this._applyZhaMesh(await H.callWS({ type: 'zha/devices' })); changed = true; } catch (e) { /* ZHA not loaded or not admin */ }
-      }
-      if (changed) this._render();
-    }
-    // Which Bluetooth receiver (adapter or proxy) hears each Bluetooth device best, and which Matter devices are on Thread.
-    // Bluetooth needs an admin user; both are skipped quietly when not available. Resolves true if the model must be rebuilt.
-    async _radioInfo() {
-      var H = this._hass, devices = H.devices || {}, entities = H.entities || {}, found = false;
-      function low(x) { return String(x || '').toLowerCase(); }
-      this._bt = null; this._matter = null;
-      var hasBt = Object.keys(devices).some(function (id) { return (devices[id].connections || []).some(function (c) { return c[0] === 'bluetooth'; }); });
-      if (hasBt && H.connection && H.connection.subscribeMessage) {
+    // Host details (Supervisor), live Bluetooth / Matter enrichment, coordinator details and Zigbee / Thread meshes. Non-blocking.
+    async _extras(gen) {
+      var self = this, H = this._hass;
+      var hostTask = (async function () {
         try {
-          var sc = {}, adv = {};
-          var u1 = await H.connection.subscribeMessage(function (m) { ((m && m.add) || []).forEach(function (x) { sc[low(x.source)] = x; }); }, { type: 'bluetooth/subscribe_scanner_details' });
-          var u2 = await H.connection.subscribeMessage(function (m) {
-            ((m && m.add) || []).forEach(function (a) { var k = low(a.address), o = adv[k], src = low(a.source); if (!o || o.source === src || a.rssi > o.rssi) adv[k] = { source: src, rssi: a.rssi }; });
-          }, { type: 'bluetooth/subscribe_advertisements' });
-          await new Promise(function (r) { setTimeout(r, 3500); }); // the advertisements are a live stream: listen briefly, then stop
-          if (typeof u1 === 'function') u1(); if (typeof u2 === 'function') u2();
-          if (Object.keys(adv).length) { this._bt = { sc: sc, adv: adv }; found = true; }
-        } catch (e) { /* Bluetooth not loaded or not admin */ }
+          var hi = await H.callWS({ type: 'supervisor/api', endpoint: '/host/info', method: 'get' });
+          if (gen !== self._gen) return;
+          self._host = { os: hi.operating_system, chassis: hi.chassis, virt: hi.virtualization, hostname: hi.hostname, disk: [hi.disk_used, hi.disk_total] };
+          self._coreText();
+        } catch (e) { /* not supervised or not admin */ }
+        try {
+          var ni = await H.callWS({ type: 'supervisor/api', endpoint: '/network/info', method: 'get' });
+          if (gen !== self._gen) return;
+          var ips = []; (ni.interfaces || []).forEach(function (i) { ((i.ipv4 && i.ipv4.address) || []).forEach(function (a) { ips.push(String(a).split('/')[0]); }); });
+          var S = H.states; self._haTrk = (self._trk || []).filter(function (eid) { var a = (S[eid] || {}).attributes || {}; return a.ip && ips.indexOf(a.ip) >= 0; })[0] || null;
+          if (self._haTrk) self._render();
+        } catch (e) { /* not supervised or not admin */ }
+      })();
+      var matTask = H.demo ? Promise.resolve() : this._matterInfo().then(function (ch) { if (ch && gen === self._gen) self._remodel(); });
+      var btTask = this._btInfo().then(function (ch) { if (ch && gen === self._gen) self._remodel(); });
+      var meshTask = (async function () {
+        var base = self._cfg.z2m_base_topic || 'zigbee2mqtt', mesh = self._cfg.show_mesh !== false;
+        if (self._z2mBridge) {
+          try { var info = await self._mqttOnce(base + '/bridge/info', null, 5000); if (gen !== self._gen) return; self._z2mInfo(info); self._remodel(); } catch (e) { /* retained bridge/info not available */ }
+          if (mesh) { try { var nm = await self._mqttOnce(base + '/bridge/response/networkmap', { topic: base + '/bridge/request/networkmap', payload: JSON.stringify({ type: 'raw', routes: false }) }, 45000); if (gen !== self._gen) return; self._applyMesh(nm.data && nm.data.value); self._render(); } catch (e) { /* no answer */ } }
+        }
+        if (mesh && self._hasZha) {
+          try { var zd = await H.callWS({ type: 'zha/devices' }); if (gen !== self._gen) return; self._applyZhaMesh(zd); self._render(); } catch (e) { /* ZHA not loaded or not admin */ }
+        }
+        if (mesh && (self._matter || self._matterIds().length)) {
+          await matTask;
+          if (gen !== self._gen) return;
+          var tnodes = await self._threadMesh();
+          if (tnodes && gen === self._gen) { self._applyThreadMesh(tnodes); self._render(); }
+        }
+      })();
+      await Promise.all([hostTask, matTask, btTask, meshTask]);
+    }
+    _matterIds() {
+      var H = this._hass, devices = (H && H.devices) || {}, entities = (H && H.entities) || {}, mat = {};
+      Object.keys(entities).forEach(function (eid) { var e = entities[eid]; if (e.platform === 'matter' && e.device_id) mat[e.device_id] = 1; });
+      Object.keys(devices).forEach(function (id) { if ((devices[id].identifiers || []).some(function (i) { return i[0] === 'matter'; })) mat[id] = 1; });
+      return Object.keys(mat).filter(function (id) { return devices[id] && !devices[id].disabled_by; }).slice(0, 250);
+    }
+    _matterCacheKey() { var u = this._hass && !this._hass.demo && this._hass.user && this._hass.user.id; return u ? 'connection-map-card-matter:' + u : ''; }
+    // Instant Thread vs Wi-Fi classification from the entity registry and Thread dataset list, without waking sleepy Thread sensors.
+    async _matterFast() {
+      var H = this._hass, states = (H && H.states) || {}, ids = this._matterIds();
+      this._matter = null; this._matSleepy = {};
+      if (!ids.length || !H || !H.callWS) return;
+      if (H.demo) { await this._matterInfo(); return; }
+      var reg = null, ds = null, cached = {}, ck = this._matterCacheKey();
+      if (ck) { try { cached = JSON.parse(localStorage.getItem(ck) || '{}') || {}; } catch (e) { cached = {}; } }
+      await Promise.all([
+        H.callWS({ type: 'config/entity_registry/list' }).then(function (r) { reg = r; }, function () { }),
+        H.callWS({ type: 'thread/list_datasets' }).then(function (r) { ds = r && r.datasets; }, function () { })
+      ]);
+      var dsName = '';
+      if (Array.isArray(ds) && ds.length) {
+        var pref = ds.filter(function (d) { return d.preferred; })[0] || ds[0];
+        dsName = (pref && pref.network_name) || '';
       }
-      var mat = {}; Object.keys(entities).forEach(function (eid) { var e = entities[eid]; if (e.platform === 'matter' && e.device_id) mat[e.device_id] = 1; });
-      var ids = Object.keys(mat).filter(function (id) { return devices[id] && !devices[id].disabled_by; }).slice(0, 250), res = {}, dead = false;
-      for (var i = 0; i < ids.length && !dead; i += 8) {
-        await Promise.all(ids.slice(i, i + 8).map(function (id) {
-          return H.callWS({ type: 'matter/node_diagnostics', device_id: id }).then(function (r) { res[id] = { net: r.network_type, name: r.network_name || '', type: r.node_type }; },
-            function (e) { if (e && e.code === 'unknown_command') dead = true; });
+      var byDev = {}, list = Array.isArray(reg) ? reg : Object.keys(H.entities || {}).map(function (k) { return H.entities[k]; });
+      list.forEach(function (e) { if (e && e.device_id) (byDev[e.device_id] = byDev[e.device_id] || []).push(e); });
+      var res = {}, sleepy = this._matSleepy, thName = dsName;
+      ids.forEach(function (id) {
+        var es = byDev[id] || [], c = cached[id];
+        if (c && c.net === 'thread' && !thName && c.name) thName = c.name;
+        var isTh = es.some(function (e) { return /^thread_/.test(e.translation_key || '') || /_thread_(channel|network_name|routing_role|extended_address)$/.test(e.entity_id || ''); });
+        var isBat = es.some(function (e) {
+          var a = (states[e.entity_id] || {}).attributes || {};
+          return a.device_class === 'battery' || /^battery/.test(e.translation_key || '') || /_battery(_level|_voltage|_type)?$/.test(e.entity_id || '');
+        });
+        if (isTh && isBat) sleepy[id] = true;
+        if (isTh) res[id] = { net: 'thread', name: (c && c.name) || dsName, type: (c && c.type) || (isBat ? 'sleepy_end_device' : ''), mac: (c && c.mac) || null, ip: (c && c.ip) || null };
+        else if (c) res[id] = Object.assign({}, c);
+      });
+      Object.keys(res).forEach(function (id) { if (res[id].net === 'thread' && !res[id].name && thName) res[id].name = thName; });
+      if (Object.keys(res).length) this._matter = res;
+    }
+    // Live Matter diagnostics for mains-powered / Wi-Fi nodes only (sleepy battery Thread sensors block 5-20 s waiting to wake).
+    async _matterInfo() {
+      var H = this._hass, ids = this._matterIds(), sleepy = this._matSleepy || {};
+      if (!ids.length || !H || !H.callWS) return false;
+      function low(x) { return String(x || '').toLowerCase(); }
+      var before = JSON.stringify(this._matter || {}), res = Object.assign({}, this._matter || {}), dead = false;
+      var fastIds = ids.filter(function (id) { return !sleepy[id]; });
+      for (var i = 0; i < fastIds.length && !dead; i += 8) {
+        await Promise.all(fastIds.slice(i, i + 8).map(function (id) {
+          var req = H.callWS({ type: 'matter/node_diagnostics', device_id: id });
+          var race = H.demo ? req : Promise.race([req, new Promise(function (_, rej) { setTimeout(function () { rej(new Error('timeout')); }, 2500); })]);
+          return race.then(function (r) {
+            if (!r || !r.network_type) return;
+            var mac = r.mac_address && /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(r.mac_address) ? low(r.mac_address) : null;
+            var ip = ((r.ip_adresses || r.ip_addresses || []).filter(function (x) { return /^\d+\.\d+\.\d+\.\d+$/.test(String(x || '')); })[0]) || null;
+            res[id] = { net: r.network_type, name: r.network_name || (res[id] && res[id].name) || '', type: r.node_type || '', mac: mac, ip: ip };
+          }, function (e) { if (e && e.code === 'unknown_command') dead = true; });
         }));
       }
-      if (Object.keys(res).some(function (id) { return res[id].net === 'thread'; })) { this._matter = res; found = true; }
-      return found;
+      var thName = '';
+      Object.keys(res).forEach(function (id) { if (res[id] && res[id].net === 'thread' && !thName && res[id].name) thName = res[id].name; });
+      Object.keys(res).forEach(function (id) { if (res[id] && res[id].net === 'thread' && thName && !res[id].name) res[id].name = thName; });
+      if (!Object.keys(res).length) return false;
+      this._matter = res;
+      var ck = this._matterCacheKey();
+      if (ck) { try { localStorage.setItem(ck, JSON.stringify(res)); } catch (e) { /* no storage */ } }
+      return JSON.stringify(res) !== before;
+    }
+    // Which Bluetooth receiver (adapter or proxy) hears each Bluetooth device best. Needs admin; runs independently of Matter.
+    async _btInfo() {
+      var H = this._hass, devices = (H && H.devices) || {};
+      function low(x) { return String(x || '').toLowerCase(); }
+      var hasBt = Object.keys(devices).some(function (id) { return (devices[id].connections || []).some(function (c) { return c[0] === 'bluetooth'; }); });
+      if (!hasBt || !H.connection || !H.connection.subscribeMessage) return false;
+      try {
+        var sc = {}, adv = {};
+        var u1 = await H.connection.subscribeMessage(function (m) { ((m && m.add) || []).forEach(function (x) { sc[low(x.source)] = x; }); }, { type: 'bluetooth/subscribe_scanner_details' });
+        var u2 = await H.connection.subscribeMessage(function (m) {
+          ((m && m.add) || []).forEach(function (a) { var k = low(a.address), o = adv[k], src = low(a.source); if (!o || o.source === src || a.rssi > o.rssi) adv[k] = { source: src, rssi: a.rssi }; });
+        }, { type: 'bluetooth/subscribe_advertisements' });
+        await new Promise(function (r) { setTimeout(r, 3500); }); // the advertisements are a live stream: listen briefly, then stop
+        if (typeof u1 === 'function') u1(); if (typeof u2 === 'function') u2();
+        if (Object.keys(adv).length) { this._bt = { sc: sc, adv: adv }; return true; }
+      } catch (e) { /* Bluetooth not loaded or not admin */ }
+      return false;
     }
     // subscribe to one MQTT topic (optionally publishing a request) and resolve with the first JSON payload
     _mqttOnce(topic, pub, ms) {
@@ -794,6 +884,196 @@
       });
       if (coord && !this._coordFromDev && !this._cfg.coordinator_name) this._coord = [coord.manufacturer, coord.model].filter(Boolean).join(' ') || this._coord;
       this._mesh = true;
+    }
+    // Matter ThreadNetworkDiagnostics (cluster 53) + GeneralDiagnostics (cluster 51) cached in Home Assistant's Matter diagnostics endpoint
+    async _threadMesh() {
+      var H = this._hass, devices = (H && H.devices) || {}, ids = this._matterIds();
+      if (!ids.length || !H || typeof H.callApi !== 'function') return null;
+      var entries = {}, cids = [];
+      try { ((await H.callWS({ type: 'config_entries/get' })) || []).forEach(function (ce) { if (ce && ce.entry_id) entries[ce.entry_id] = ce; }); } catch (e) { /* optional */ }
+      Object.keys(entries).forEach(function (cid) { if (entries[cid] && entries[cid].domain === 'matter' && cids.indexOf(cid) < 0) cids.push(cid); });
+      if (!cids.length) ids.forEach(function (id) {
+        ((devices[id] && devices[id].config_entries) || []).forEach(function (cid) {
+          if ((!entries[cid] || entries[cid].domain === 'matter') && cids.indexOf(cid) < 0) cids.push(cid);
+        });
+      });
+      if (!cids.length) return null;
+      var out = [];
+      for (var i = 0; i < cids.length; i++) {
+        try {
+          var resp = await H.callApi('GET', 'diagnostics/config_entry/' + cids[i]);
+          var d = (resp && resp.data) || resp || {};
+          var raw = (d.server && d.server.nodes) || d.nodes || (d.server_info && d.server_info.nodes) || [];
+          var arr = Array.isArray(raw) ? raw : Object.keys(raw).map(function (k) { return raw[k]; });
+          arr.forEach(function (n) {
+            var a = n && n.attributes;
+            if (a && (a['0/53/1'] != null || a['0/53/7'] != null || a['0/53/8'] != null)) out.push(n);
+          });
+        } catch (e) { /* diagnostics not available or not admin */ }
+      }
+      return out.length ? out : null;
+    }
+    _applyThreadMesh(list) {
+      this._rawThread = list;
+      if (!Array.isArray(list) || !list.length || this._cfg.show_mesh === false) return;
+      var H = this._hass, devices = (H && H.devices) || {}, byNodeId = {};
+      function nodeIdOf(regId) {
+        var rd = devices[regId]; if (!rd) return null;
+        var found = null;
+        (rd.identifiers || []).forEach(function (tup) {
+          if (!tup || tup[0] !== 'matter') return;
+          var m = /^deviceid_[0-9a-f]+-([0-9a-f]{16})-(.+)$/i.exec(String(tup[1] || ''));
+          if (!m) return;
+          var dec = typeof BigInt === 'function' ? BigInt('0x' + m[1]).toString() : String(parseInt(m[1], 16));
+          if (!found || m[2] === 'MatterNodeDevice') found = dec;
+        });
+        return found;
+      }
+      (this._devs || []).forEach(function (d) {
+        var nid = nodeIdOf(d.id);
+        if (!nid && d.also) d.also.forEach(function (o) { if (!nid) nid = nodeIdOf(o.id); });
+        if (nid) byNodeId[nid] = d;
+      });
+      function b64(s) {
+        try { var bin = atob(String(s || '')), a = []; for (var i = 0; i < bin.length; i++) a.push(bin.charCodeAt(i) & 255); return a; }
+        catch (e) { return null; }
+      }
+      function extOf(bytes) {
+        if (!bytes || bytes.length !== 8) return null;
+        if (typeof BigInt === 'function') {
+          var v = BigInt(0); for (var i = 0; i < 8; i++) v = (v << BigInt(8)) | BigInt(bytes[i]);
+          return String(Number(v));
+        }
+        var n = 0; for (var j = 0; j < 8; j++) n = n * 256 + bytes[j];
+        return String(n);
+      }
+      function okRssi(v) { return typeof v === 'number' && !isNaN(v) && v < 0 && v >= -127 ? Math.round(v) : null; }
+      function okLqi(v) { return typeof v === 'number' && !isNaN(v) && v >= 0 ? Math.round(v) : null; }
+      var tnodes = [], extToRloc = {}, byExt = {}, byRloc = {}, byRouterId = {};
+      list.forEach(function (n) {
+        if (!n || n.node_id == null) return;
+        var a = n.attributes || {}, role = a['0/53/1'], nbs = Array.isArray(a['0/53/7']) ? a['0/53/7'] : [], rts = Array.isArray(a['0/53/8']) ? a['0/53/8'] : [];
+        var extKey = null, rloc = null;
+        (Array.isArray(a['0/51/0']) ? a['0/51/0'] : []).forEach(function (ifc) {
+          if (!ifc) return;
+          var hb = b64(ifc['4']);
+          if (hb && hb.length === 8 && (ifc['7'] === 4 || !extKey)) extKey = extOf(hb);
+          (ifc['6'] || []).forEach(function (ip6) {
+            var ib = b64(ip6);
+            if (ib && ib.length === 16 && !ib[8] && !ib[9] && !ib[10] && !ib[13] && ib[11] === 255 && ib[12] === 254) rloc = (ib[14] << 8) | ib[15];
+          });
+        });
+        rts.forEach(function (rt) {
+          if (rt && rt['0'] && rt['1'] != null) extToRloc[String(rt['0'])] = rt['1'];
+          if (rloc == null && rt && rt['8'] && !rt['9'] && rt['3'] === 63 && rt['1'] != null) rloc = rt['1'];
+        });
+        nbs.forEach(function (nb) { if (nb && nb['0'] && nb['2'] != null) extToRloc[String(nb['0'])] = nb['2']; });
+        tnodes.push({ nid: String(n.node_id), d: byNodeId[String(n.node_id)] || null, role: role, isRouter: role === 5 || role === 6, isLeader: role === 6, ext: extKey, rloc: rloc, nbs: nbs, rts: rts });
+      });
+      tnodes.forEach(function (tn) {
+        if (tn.rloc == null && tn.ext && extToRloc[tn.ext] != null) tn.rloc = extToRloc[tn.ext];
+        if (tn.ext) byExt[tn.ext] = tn;
+        if (tn.rloc != null) { byRloc[tn.rloc] = tn; if (tn.isRouter && (tn.rloc & 1023) === 0) byRouterId[tn.rloc >> 10] = tn; }
+      });
+      var brRlocs = {}, brRouterIds = {};
+      tnodes.forEach(function (tn) {
+        tn.rts.forEach(function (rt) {
+          if (!rt || rt['8'] === false || rt['1'] == null) return;
+          if (!byRloc[rt['1']]) { brRlocs[rt['1']] = 1; brRouterIds[rt['2'] != null ? rt['2'] : (rt['1'] >> 10)] = 1; }
+        });
+      });
+      var parentOf = {}, rssiOf = {}, lqiOf = {};
+      tnodes.forEach(function (rn) {
+        if (!rn.isRouter) return;
+        rn.nbs.forEach(function (nb) {
+          if (!nb || !nb['13']) return;
+          var ch = (nb['0'] && byExt[String(nb['0'])]) || (nb['2'] != null && byRloc[nb['2']]) || null;
+          if (ch && !ch.isRouter) {
+            parentOf[ch.nid] = rn;
+            var rs = okRssi(nb['6']) != null ? okRssi(nb['6']) : okRssi(nb['7']);
+            if (rs != null) rssiOf[ch.nid] = rs;
+            if (okLqi(nb['5']) != null) lqiOf[ch.nid] = okLqi(nb['5']);
+          }
+        });
+      });
+      tnodes.forEach(function (tn) {
+        if (!tn.isRouter) {
+          if (!parentOf[tn.nid] && tn.nbs.length) {
+            var pnb = tn.nbs.filter(function (x) { return x && !x['13']; })[0] || tn.nbs[0];
+            if (pnb) {
+              var par = (pnb['0'] && byExt[String(pnb['0'])]) || (pnb['2'] != null && (byRloc[pnb['2']] || byRloc[pnb['2'] & 0xfc00])) || null;
+              if (par && par !== tn) parentOf[tn.nid] = par;
+              if (rssiOf[tn.nid] == null) rssiOf[tn.nid] = okRssi(pnb['7']) != null ? okRssi(pnb['7']) : okRssi(pnb['6']);
+              if (lqiOf[tn.nid] == null && okLqi(pnb['5']) != null) lqiOf[tn.nid] = okLqi(pnb['5']);
+            }
+          }
+          if (!parentOf[tn.nid] && tn.rloc != null && !brRlocs[tn.rloc & 0xfc00]) {
+            var rpar = byRloc[tn.rloc & 0xfc00];
+            if (rpar && rpar !== tn) parentOf[tn.nid] = rpar;
+          }
+          return;
+        }
+        var bestBr = null;
+        tn.nbs.forEach(function (nb) {
+          if (!nb || nb['13']) return;
+          var known = (nb['0'] && byExt[String(nb['0'])]) || (nb['2'] != null && byRloc[nb['2']]);
+          var isBr = (nb['2'] != null && brRlocs[nb['2']]) || (!known && nb['2'] != null && (nb['2'] & 1023) === 0);
+          if (!isBr) return;
+          var rs = okRssi(nb['6']) != null ? okRssi(nb['6']) : okRssi(nb['7']);
+          if (!bestBr || (rs != null && (bestBr.rs == null || rs > bestBr.rs))) bestBr = { nb: nb, rs: rs };
+        });
+        if (bestBr) {
+          rssiOf[tn.nid] = bestBr.rs;
+          if (okLqi(bestBr.nb['5']) != null) lqiOf[tn.nid] = okLqi(bestBr.nb['5']);
+          return;
+        }
+        var hop = null;
+        tn.rts.forEach(function (rt) {
+          if (hop || !rt || (!brRlocs[rt['1']] && !brRouterIds[rt['2']])) return;
+          if (rt['3'] != null && rt['3'] < 63 && byRouterId[rt['3']] && byRouterId[rt['3']] !== tn) hop = byRouterId[rt['3']];
+        });
+        if (!hop && !tn.isLeader) {
+          var bestR = null;
+          tn.nbs.forEach(function (nb) {
+            if (!nb || nb['13']) return;
+            var cand = (nb['0'] && byExt[String(nb['0'])]) || (nb['2'] != null && byRloc[nb['2']]);
+            if (!cand || !cand.isRouter || cand === tn) return;
+            var rs2 = okRssi(nb['6']) != null ? okRssi(nb['6']) : okRssi(nb['7']);
+            if (!bestR || (cand.isLeader && !bestR.cand.isLeader) || (rs2 != null && (bestR.rs == null || rs2 > bestR.rs))) bestR = { cand: cand, nb: nb, rs: rs2 };
+          });
+          if (bestR) hop = bestR.cand;
+        }
+        if (hop) {
+          parentOf[tn.nid] = hop;
+          tn.nbs.forEach(function (nb) {
+            if (!nb) return;
+            var match = (nb['0'] && hop.ext && String(nb['0']) === hop.ext) || (nb['2'] != null && hop.rloc != null && nb['2'] === hop.rloc);
+            if (match) {
+              rssiOf[tn.nid] = okRssi(nb['6']) != null ? okRssi(nb['6']) : okRssi(nb['7']);
+              if (okLqi(nb['5']) != null) lqiOf[tn.nid] = okLqi(nb['5']);
+            }
+          });
+        }
+      });
+      tnodes.forEach(function (tn) {
+        var cur = parentOf[tn.nid], seen = {}; seen[tn.nid] = 1;
+        while (cur) {
+          if (seen[cur.nid]) { delete parentOf[tn.nid]; break; }
+          seen[cur.nid] = 1; cur = parentOf[cur.nid];
+        }
+      });
+      var applied = false;
+      tnodes.forEach(function (tn) {
+        var d = tn.d; if (!d) return;
+        applied = true;
+        d.threadMesh = true; d.threadRole = true;
+        if (tn.role != null) { d.router = tn.isRouter; d.threadLeader = tn.isLeader; }
+        var par = parentOf[tn.nid] && parentOf[tn.nid].d;
+        d.meshParent = par && par !== d && par.hub === d.hub ? par : null;
+        if (rssiOf[tn.nid] != null) d.rssi = rssiOf[tn.nid];
+        if (lqiOf[tn.nid] != null) { d.lqi = lqiOf[tn.nid]; d.lqiMax = lqiOf[tn.nid] <= 3 ? 3 : 255; }
+      });
+      if (applied) this._threadMeshOn = true;
     }
     // Which access point each mobile device is on. When it changes (someone walked to another room, came home, left)
     // the groups are rebuilt; the Zigbee mesh already loaded is drawn again, not asked for again.
@@ -876,7 +1156,7 @@
           flags: ['own', 'plain', 'bt', 'rx', 'thread', 'otbr', 'direct', 'tree'].filter(function (k) { return h[k]; }).concat(h.areas && h.areas.length ? ['areas:' + h.areas.length] : []),
           link: h.from && h.from.router ? 'access point' : h.direct ? 'home assistant' : h.m }; }),
         integrations: ints,
-        sources: { integration_list: Object.keys(man).length > 0, entity_sources: Object.keys(this._src || {}).length > 0, bluetooth: !!this._bt, matter: !!this._matter, zha: !!this._hasZha, zigbee_mesh: !!(this._rawMesh || this._rawZha),
+        sources: { integration_list: Object.keys(man).length > 0, entity_sources: Object.keys(this._src || {}).length > 0, bluetooth: !!this._bt, matter: !!this._matter, zha: !!this._hasZha, zigbee_mesh: !!(this._rawMesh || this._rawZha), thread_mesh: !!this._rawThread,
           otbr: ((H.config && H.config.components) || []).indexOf('otbr') >= 0, stick_role: this._otbr ? 'thread border router' : this._coordFromDev ? 'zigbee coordinator' : 'none',
           zigbee2mqtt_adapter: !port ? null : /^(tcp|socket):/i.test(port) ? 'network' : 'serial' },
         duplicates: { mode: cfg.merge_duplicates == null ? 'ask' : cfg.merge_duplicates, merged: devs.reduce(function (n, d) { return n + ((d.also && d.also.length) || 0); }, 0), waiting_for_an_answer: (this._dupPending || []).length, answers: Object.keys((this._ans && this._ans.dup) || {}).length },
@@ -897,8 +1177,13 @@
       m.onclick = function (e) { if (e.target === m) self._closeModal(); };
     }
     _remodel() {
+      this._mesh = false; this._threadMeshOn = false;
       this._model();
-      if (this._rawMesh) this._applyMesh(this._rawMesh); if (this._rawZha) this._applyZhaMesh(this._rawZha);
+      if (this._cfg.show_mesh !== false) {
+        if (this._rawMesh) this._applyMesh(this._rawMesh);
+        if (this._rawZha) this._applyZhaMesh(this._rawZha);
+        if (this._rawThread) this._applyThreadMesh(this._rawThread);
+      }
       if (this._S && this._S.sel && !this._S.sel.core) this._S.sel = null;
       this._render(); if (this._S) this._list();
     }
@@ -943,7 +1228,12 @@
     //   FRITZ!Box:   connected_to + connection_type (LAN / WLAN) + ssid
     //   UniFi:       ap_mac (-> AP device) + essid + radio (ng / na / 6e); wired clients have neither
     _conn(eid) {
-      if (!eid || !this._hass) return null; var s = this._hass.states[eid]; if (!s) return null; var a = s.attributes || {};
+      if (!eid || !this._hass) return null;
+      if (eid.indexOf('matter:') === 0) {
+        var md = this._matter && this._matter[eid.slice(7)]; if (!md) return null;
+        return { via: null, iface: '', wired: md.net === 'ethernet', wifi: md.net === 'wifi', ssid: md.name || null, rssi: null, ip: md.ip || null, home: true };
+      }
+      var s = this._hass.states[eid]; if (!s) return null; var a = s.attributes || {};
       var ent = (this._hass.entities || {})[eid] || {}, plat = ent.platform;
       // Netgear / Orbi keep this in separate sensors of the same client: access point MAC, link type and SSID
       var ng = plat === 'netgear' && this._ng && this._ng[ent.device_id];
@@ -1068,14 +1358,18 @@
       if (net) Object.keys(devices).forEach(function (k) { var u = devices[k].configuration_url, h = ''; try { h = u ? new URL(u).hostname : ''; } catch (e) { h = ''; } if (!netName && h === net[1]) netName = String(devices[k].model || devices[k].name_by_user || devices[k].name || '').trim(); });
       function slug(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
       function findTrk(dev) {
-        if (!dev || !trk.length || dev.entry_type === 'service') return null;
+        if (!dev || dev.entry_type === 'service') return null;
+        var md = self._matter && self._matter[dev.id];
+        if (!trk.length) { findTrk.sure = false; return md && md.net === 'wifi' ? 'matter:' + dev.id : null; }
         var S = H.states, best = null;
         var macs = (dev.connections || []).filter(function (c) { return c[0] === 'mac'; }).map(function (c) { return String(c[1]).toLowerCase(); });
+        if (md && md.mac && macs.indexOf(md.mac) < 0) macs.push(md.mac);
         var host = null; try { host = dev.configuration_url ? new URL(dev.configuration_url).hostname : null; } catch (e) { host = null; }
+        var ips = [host, md && md.ip].filter(Boolean);
         trk.forEach(function (eid) {
           if (best) return; var a = (S[eid] || {}).attributes || {};
           if (a.mac && macs.indexOf(String(a.mac).toLowerCase()) >= 0) best = eid;
-          else if (host && a.ip === host) best = eid;
+          else if ((a.ip || a.ip_address) && ips.indexOf(a.ip || a.ip_address) >= 0) best = eid;
         });
         findTrk.sure = !!best;
         var ds = slug(dev.name_by_user || dev.name), dt = ds.split('_').filter(Boolean);
@@ -1084,6 +1378,7 @@
           if (ts === ds || (dt.length >= 2 && dt.every(function (x) { return tt.indexOf(x) >= 0; })) ||
             (dt.length === 1 && dt[0].length >= 5 && tt.indexOf(dt[0]) >= 0 && tt.length <= 3)) best = eid;
         });
+        if (!best && md && md.net === 'wifi') best = 'matter:' + dev.id;
         return best;
       }
       this._findTrk = findTrk;
@@ -1187,6 +1482,10 @@
         // only Zigbee goes through the Zigbee coordinator: Z-Wave, EnOcean, 433 MHz... have a radio of their own
         if (hub.m === 'radio' && !hub.own && ZIGBEE.indexOf(p) < 0 && p !== 'mqtt') hub.own = hub.plain = true;
         var made = mk(id, d, es, p, hub); if (hub.own && !hub.plain) made.via = self._intName(p); if (rssi != null) made.rssi = rssi;
+        if (p === 'matter' && self._matter && self._matter[id] && self._matter[id].net === 'thread') {
+          made.router = /router|routing/i.test(self._matter[id].type || '');
+          made.threadRole = !!self._matter[id].type;
+        }
       };
       Object.keys(devices).forEach(function (id) {
         try { one(id); } catch (e) { skipped.push({ integration: platOf(id) || '?', error: String((e && e.message) || e).slice(0, 160) }); }
@@ -1382,7 +1681,7 @@
         // Optional: the devices of a hub grouped by area, hub -> area -> devices, for areas with more than one device.
         // A Zigbee mesh keeps its own shape (who repeats for whom) instead.
         h.areas = []; h.dv.forEach(function (d) { d.parentNode = null; });
-        if (me._cfg.group_by_area && !h.dv.some(function (d) { return d.meshParent && d.ieee; })) {
+        if (me._cfg.group_by_area && !h.dv.some(function (d) { return d.meshParent && (d.ieee || d.threadMesh); })) {
           // a device with children of its own (a power strip) keeps its family and stays outside the area nodes
           var isParent = {}; h.dv.forEach(function (d) { if (d.meshParent) isParent[d.meshParent.id] = 1; });
           var byArea = {}; h.dv.forEach(function (d) { if (d.a && !d.meshParent && !isParent[d.id]) (byArea[d.a] = byArea[d.a] || []).push(d); });
@@ -1674,7 +1973,7 @@
         if (compact) return;
         var tree = d.meshParent && d.meshParent.x != null && d.hub.tree;
         var from = d.parentNode && d.parentNode.x != null ? d.parentNode : tree ? d.meshParent : d.hub;
-        d.spoke = el('line', { x1: from.x, y1: from.y, x2: d.x, y2: d.y, 'class': 'spoke' + (tree && d.ieee ? ' meshl' : '') }, gS);
+        d.spoke = el('line', { x1: from.x, y1: from.y, x2: d.x, y2: d.y, 'class': 'spoke' + (tree && (d.ieee || d.threadMesh) ? ' meshl' + (d.hub.m === 'local' ? ' l-local' : '') : '') }, gS);
         var g = el('g', { 'class': 'dev' + (first ? ' enter' : ''), tabindex: 0, role: 'button', 'aria-label': d.n, style: first ? 'animation-delay:' + Math.min(1100, 250 + i * 6) + 'ms' : '' }, gD);
         d.lab = null;
         if (d.router) el('circle', { cx: d.x, cy: d.y, r: Z.dev + 3.8, fill: 'none', stroke: M[d.hub.m], 'stroke-width': 1.6, 'class': 'rring' }, g);
@@ -2111,6 +2410,8 @@
     _pathOf(d) {
       var t = this._t.bind(this), r = [d.n], m = d.hub.m;
       if (d.hub.own && !d.hub.plain) {
+        var tp = d.meshParent, tg = 0;
+        while (tp && tg++ < 6) { r.push(tp.n + ' (' + t('repeater') + ')'); tp = tp.meshParent; }
         r.push(d.via || this._intName(d.p));
         if (d.hub.thread) r.push(d.hub.otbr ? d.hub.n + ' (' + t('threadBr') + ')' : 'Thread' + (d.hub.net ? ' (' + d.hub.net + ')' : ''));
         else if (d.hub.rx) {
@@ -2126,7 +2427,8 @@
       } else if (d.remote) {
         r.push(this._intName(d.p)); if (d.cell) r.push(t('mobileData')); r.push(t('cloud'));
       } else {
-        if (d.meshParent) r.push(d.meshParent.n);
+        var lp = d.meshParent, lg = 0;
+        while (lp && lg++ < 6) { r.push(lp.n + (d.threadMesh ? ' (' + t('repeater') + ')' : '')); lp = lp.meshParent; }
         if (d.hub.kind === 'hub') r.push(d.hub.n);
         var c = this._conn(d.trk) || (d.hub.kind === 'hub' ? this._conn(d.hub.trk) : null);
         var how = this._ifaceText(c), hop = c && c.via ? c.via + (how ? ' (' + how + ')' : '') : null;
@@ -2195,6 +2497,7 @@
       var route = h.own && !h.plain ? [t('device'), t('integration'), h.n, 'Home Assistant'] : h.plain ? [t('device'), h.n, 'Home Assistant'] : h.m === 'radio' ? [t('device'), this._coord || t('radio'), h.n, 'Home Assistant'] :
         h.kind === 'hub' ? [t('device'), h.n, h.sub, this._mname(h.m), 'Home Assistant'] : [t('device'), h.kind === 'other' ? t('integration') : h.n, this._mname(h.m), 'Home Assistant'];
       if (h.m === 'radio' && !h.own && this._mesh) desc += ' ' + t('meshNote');
+      else if (h.thread && this._threadMeshOn) desc += ' ' + t('threadMeshNote');
       this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M[h.m] + '">' + esc(t(h.m)) + (h.kind === 'hub' ? ' · ' + esc(t('hub')) : '') + '</div><h2>' + esc(h.n) + '</h2>' + this._route(route) + '<p>' + esc(desc) + '</p>' +
         '<dl class="kv"><dt>' + esc(t('devices')) + '</dt><dd>' + h.dv.length + '</dd>' + (off ? '<dt>' + esc(t('offline')) + '</dt><dd class="off">' + off + '</dd>' : '') +
         (function () { var c = self._conn(h.trk); return c && c.via ? '<dt>' + esc(t('network')) + '</dt><dd>' + esc([c.via, self._ifaceText(c)].filter(Boolean).join(' · ')) + '</dd>' + (c.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(c.ip) + '</dd>' : '') : ''; })() + '</dl>' +
@@ -2234,14 +2537,17 @@
         (d.also && d.also.length ? '<dt>' + esc(t('alsoAs')) + '</dt><dd>' + esc(d.also.map(function (o) { return o.as; }).filter(function (v, i, l) { return l.indexOf(v) === i; }).join(', ')) + '</dd>' : '') +
         (d.entity ? '<dt>' + esc(t('entity')) + '</dt><dd style="word-break:break-all">' + esc(d.entity) + '</dd>' : '') +
         '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away);font-weight:600' : '') + '">' + esc(d.bare ? t('noEntities') : d.off ? t('offline') : d.recent ? t('recentLong') + ' ' + this._ago(d.seen) : d.remote ? t('remoteLong') : d.away ? t('awayLong') : t('online')) + '</dd>' +
-        (d.meshParent && !d.ieee ? '<dt>' + esc(t('parentDev')) + '</dt><dd>' + esc(d.meshParent.n) + '</dd>' : '') +
-        (d.router != null && d.ieee ? '<dt>' + esc(t('role')) + '</dt><dd>' + esc(d.router ? t('roleRouter') : t('roleEnd')) + '</dd>' : '') +
+        (d.meshParent && !d.ieee && !d.threadMesh ? '<dt>' + esc(t('parentDev')) + '</dt><dd>' + esc(d.meshParent.n) + '</dd>' : '') +
+        (d.router != null && (d.ieee || d.threadRole) ? '<dt>' + esc(t('role')) + '</dt><dd>' + esc(d.threadLeader ? t('roleLeader') : d.router ? t('roleRouter') : t('roleEnd')) + '</dd>' : '') +
         (d.ieee && this._mesh ? '<dt>' + esc(t('connectedTo')) + '</dt><dd>' + esc(d.meshParent ? d.meshParent.n : (this._coord || t('coordinator'))) + '</dd>' : '') +
-        (d.lqi != null ? '<dt>' + esc(t('signal')) + '</dt><dd>' + d.lqi + ' / 255</dd>' : '') +
+        (d.threadMesh && this._threadMeshOn ? '<dt>' + esc(t('connectedTo')) + '</dt><dd>' + esc(d.meshParent ? d.meshParent.n : (h.kind === 'hub' && h.thread ? h.n : h.otbr ? h.n : t('threadBr'))) + '</dd>' : '') +
+        (d.lqi != null ? '<dt>' + esc(t('signal')) + '</dt><dd>' + d.lqi + ' / ' + (d.lqiMax || 255) + '</dd>' : '') +
         (d.rssi != null ? '<dt>' + esc(t('btSignal')) + '</dt><dd>' + esc(d.rssi) + ' dBm</dd>' : '') +
         (function () {
-          var c = self._conn(d.trk), own = !!c; if (!c && h.kind === 'hub') c = self._conn(h.trk); if (!c || !c.via) return '';
-          return '<dt>' + esc(t('network')) + '</dt><dd>' + esc((own ? '' : h.n + ' → ') + [c.via, self._ifaceText(c)].filter(Boolean).join(' · ')) + '</dd>' + (own && c.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(c.ip) + '</dd>' : '');
+          var c = self._conn(d.trk), own = !!c; if (!c && h.kind === 'hub') c = self._conn(h.trk);
+          if (!c || (!c.via && !c.ip && !c.ssid)) return '';
+          var netTxt = [c.via, self._ifaceText(c), !c.via && c.ssid ? c.ssid : ''].filter(Boolean).join(' · ');
+          return (netTxt ? '<dt>' + esc(t('network')) + '</dt><dd>' + esc((own ? '' : h.n + ' → ') + netTxt) + '</dd>' : '') + (own && c.ip ? '<dt>' + esc(t('ip')) + '</dt><dd>' + esc(c.ip) + '</dd>' : '');
         })() + '</dl>' +
         '<div class="eyebrow" style="color:var(--cm-muted)">' + esc(t('path')) + '</div>' + this._route(this._pathOf(d)) +
         '<button class="btn" id="open">' + esc(t(d.entity ? 'openEntity' : d.integration ? 'openIntegration' : 'open')) + '</button>' +
@@ -2335,7 +2641,7 @@
       score: 'Home Assistant',
       sdevice: 'Devices',
       show_export: 'Button to save the map as an image',
-      show_mesh: 'Zigbee mesh routes',
+      show_mesh: 'Zigbee and Thread mesh routes',
       show_panel: 'Side panel',
       show_trackers: 'Devices that only have a device tracker',
       shub: 'Hubs and integrations',
@@ -2398,7 +2704,7 @@
       score: 'Home Assistant',
       sdevice: 'Equipos',
       show_export: 'Botón para guardar el mapa como imagen',
-      show_mesh: 'Rutas de la malla Zigbee',
+      show_mesh: 'Rutas de la malla Zigbee y Thread',
       show_panel: 'Panel lateral',
       show_trackers: 'Equipos que solo tienen device tracker',
       shub: 'Hubs e integraciones',

@@ -752,3 +752,148 @@ test('two entries can be merged by hand, and merged ones split again', async () 
   assert.deepEqual(page.errors, []);
   await page.close();
 });
+
+test('Matter over Thread is classified from the entity registry without waking sleepy battery sensors', async () => {
+  const page = await H.newPage(browser);
+  const r = await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {}, fullReg = [], pinged = [];
+    // only the Matter devices carry a Matter identifier: the gateway and the access point belong to UniFi
+    const dev = (id, name, mac) => { devices[id] = { id, name, via_device_id: null, connections: mac ? [['mac', mac]] : [], identifiers: [[mac ? 'unifi' : 'matter', id]], disabled_by: null, area_id: null }; };
+    const ent = (eid, device_id, platform, state, attributes, tk, disabled_by) => {
+      const row = { entity_id: eid, device_id, platform, translation_key: tk || null, disabled_by: disabled_by || null };
+      fullReg.push(row);
+      if (!disabled_by) { entities[eid] = row; states[eid] = { entity_id: eid, state, attributes: attributes || {} }; }
+    };
+    dev('gw', 'UDM Gateway', 'aa:00:00:00:00:01'); ent('sensor.gw_a', 'gw', 'unifi', '1'); ent('sensor.gw_b', 'gw', 'unifi', '1');
+    dev('ap', 'AP Living', 'aa:00:00:00:00:02'); ent('sensor.ap_a', 'ap', 'unifi', '1');
+    // Sleepy battery Thread sensor: thread_* entities are disabled by the integration, and live diagnostics would hang 20 s
+    dev('leak', 'Leak sensor');
+    ent('binary_sensor.leak', 'leak', 'matter', 'off');
+    ent('sensor.leak_battery', 'leak', 'matter', '88', { device_class: 'battery' });
+    ent('sensor.leak_thread_role', 'leak', 'matter', null, {}, 'thread_routing_role', 'integration');
+    // Mains-powered Thread plug: fast diagnostics report routing_end_device
+    dev('tplug', 'Thread plug');
+    ent('switch.tplug', 'tplug', 'matter', 'on');
+    ent('sensor.tplug_thread_role', 'tplug', 'matter', null, {}, 'thread_routing_role', 'integration');
+    // Matter over Wi-Fi plug: diagnostics report its MAC so it links to AP Living
+    dev('wplug', 'Wi-Fi plug');
+    ent('switch.wplug', 'wplug', 'matter', 'on');
+    ent('device_tracker.wplug', null, 'unifi', 'home', { mac: 'aa:bb:cc:dd:ee:01', ap_mac: 'aa:00:00:00:00:02', essid: 'IoT', radio: 'ng' });
+    const man = [{ domain: 'unifi', name: 'UniFi', iot_class: 'local_push' }, { domain: 'matter', name: 'Matter', iot_class: 'local_push' }];
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false, group_small: 0 }); host.appendChild(c); window.card = c;
+    c.hass = {
+      language: 'en', states, devices, entities, areas: {}, config: { version: '1' },
+      connection: { subscribeMessage: async () => () => {} },
+      callWS: async (m) => {
+        if (m.type === 'manifest/list') return man;
+        if (m.type === 'config/entity_registry/list') return fullReg;
+        if (m.type === 'thread/list_datasets') return { datasets: [{ network_name: 'MyThread', preferred: true }] };
+        if (m.type === 'matter/node_diagnostics') {
+          pinged.push(m.device_id);
+          if (m.device_id === 'leak') return new Promise((res) => setTimeout(() => res({ network_type: 'thread' }), 20000));
+          if (m.device_id === 'tplug') return { network_type: 'thread', network_name: 'MyThread', node_type: 'routing_end_device' };
+          if (m.device_id === 'wplug') return { network_type: 'wifi', network_name: 'IoT', node_type: 'end_device', mac_address: 'AA:BB:CC:DD:EE:01', ip_addresses: ['10.0.0.55'] };
+        }
+        throw new Error('not in test');
+      }
+    };
+    const t0 = performance.now();
+    for (let i = 0; i < 40 && !(c._built && c._mnodes); i++) await new Promise((res) => setTimeout(res, 10));
+    const firstMs = performance.now() - t0;
+    await new Promise((res) => setTimeout(res, 60));
+    const by = (n) => c._devs.find((d) => d.n === n), th = c._hubs.find((h) => h.thread);
+    return { firstMs, pinged: pinged.sort(), threadHub: th && [th.n, th.sub, th.dv.map((d) => d.n).sort()],
+      routerRing: by('Thread plug').router, sleepyRing: by('Leak sensor').router,
+      wifiPath: c._pathOf(by('Wi-Fi plug')).join(' > ') };
+  });
+  assert.ok(r.firstMs < 500, 'first draw did not wait for sleepy Thread diagnostics: ' + r.firstMs + 'ms');
+  assert.deepEqual(r.pinged, ['tplug', 'wplug'], 'sleepy battery Thread sensor was never pinged');
+  assert.deepEqual(r.threadHub, ['Thread', 'MyThread', ['Leak sensor', 'Thread plug']]);
+  assert.equal(r.routerRing, true);
+  assert.equal(r.sleepyRing, false);
+  assert.equal(r.wifiPath, 'Wi-Fi plug > Matter > AP Living (Wi-Fi 2.4 GHz) > UDM Gateway > Home Assistant');
+  assert.deepEqual(await H.linkProblems(page), []);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('Thread mesh places end devices behind their Matter router plug with RSSI and LQI', async () => {
+  const page = await H.newPage(browser);
+  await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {}, fullReg = [], matter = {};
+    const add = (id, nodeHex, name, nodeType) => {
+      devices[id] = { id, name, identifiers: [['matter', 'deviceid_0000000000000001-' + nodeHex + '-MatterNodeDevice']], connections: [], config_entries: ['ce_mat'], disabled_by: null };
+      const eid = 'sensor.' + id;
+      const row = { entity_id: eid, device_id: id, platform: 'matter', translation_key: null, disabled_by: null };
+      entities[eid] = row; states[eid] = { entity_id: eid, state: 'on', attributes: {} }; fullReg.push(row);
+      fullReg.push({ entity_id: eid + '_thread_role', device_id: id, platform: 'matter', translation_key: 'thread_routing_role', disabled_by: 'integration' });
+      if (nodeType === 'sleepy_end_device') {
+        const be = eid + '_battery';
+        entities[be] = { entity_id: be, device_id: id, platform: 'matter' };
+        states[be] = { entity_id: be, state: '95', attributes: { device_class: 'battery' } };
+        fullReg.push(entities[be]);
+      } else {
+        matter[id] = { network_type: 'thread', network_name: 'home-thread', node_type: nodeType };
+      }
+    };
+    add('d_leader', '0000000000000033', 'Rack plug', 'routing_end_device');
+    add('d_router', '0000000000000034', 'Dishwasher plug', 'routing_end_device');
+    add('d_leak', '000000000000001F', 'Leak sensor', 'sleepy_end_device');
+    add('d_btn', '0000000000000032', 'Remote button', 'sleepy_end_device');
+    const diag = { data: { server: { nodes: [
+      { node_id: 51, attributes: { '0/51/0': [{ '4': 'vioFWLJYpxQ=', '7': 4 }], '0/53/1': 6, '0/53/7': [{ '0': 4184815487261952093, '2': 54275, '5': 3, '6': -74, '7': -74, '13': true }, { '0': 12859206485249176173, '2': 45056, '5': 3, '6': -64, '7': -64, '13': false }], '0/53/8': [{ '0': 12859206485249176173, '1': 45056, '2': 44, '3': 6, '4': 1, '5': 3, '6': 3, '8': true, '9': true }, { '0': 0, '1': 54272, '2': 53, '3': 63, '4': 0, '5': 0, '6': 0, '8': true, '9': false }] } },
+      { node_id: 52, attributes: { '0/51/0': [{ '4': 'SqWkoW4gyrU=', '7': 4 }], '0/53/1': 5, '0/53/7': [{ '0': 9106268042656607802, '2': 6166, '5': 3, '6': -59, '7': -60, '13': true }, { '0': 12859206485249176173, '2': 45056, '5': 3, '6': -62, '7': -59, '13': false }], '0/53/8': [{ '0': 5378886343208258229, '1': 6144, '2': 6, '3': 63, '4': 0, '5': 0, '6': 0, '8': true, '9': false }, { '0': 12859206485249176173, '1': 45056, '2': 44, '3': 53, '4': 1, '5': 3, '6': 3, '8': true, '9': true }] } },
+      { node_id: 31, attributes: { '0/51/0': [{ '4': 'fl/2iagJ7jo=', '6': ['/e79aSfTAAAAAAD//gAYFg=='], '7': 4 }], '0/53/1': 2, '0/53/7': [{ '0': 5378886343208258229, '2': 6144, '5': 3, '6': -54, '7': -55, '13': false }], '0/53/8': [] } },
+      { node_id: 50, attributes: { '0/51/0': [{ '4': 'OhNzg3jNSF0=', '6': ['/e79aSfTAAAAAAD//gDUAw=='], '7': 4 }], '0/53/1': 2, '0/53/7': [{ '0': 13702770694735570708, '2': 54272, '5': 3, '6': -15, '7': -67, '13': false }], '0/53/8': [] } }
+    ] } } };
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false }); host.appendChild(c); window.card = c;
+    c.hass = {
+      language: 'en', user: { id: 'u_thread_mesh', is_admin: true }, states, devices, entities, areas: {}, config: { version: '2026.11.1', components: ['matter'] },
+      callService: async () => {}, connection: { subscribeMessage: async () => () => {} },
+      callApi: async (method, p) => { if (method === 'GET' && p === 'diagnostics/config_entry/ce_mat') return diag; throw new Error('404'); },
+      callWS: async (m) => {
+        if (m.type === 'manifest/list') return [{ domain: 'matter', name: 'Matter', iot_class: 'local_push' }];
+        if (m.type === 'config/entity_registry/list') return fullReg;
+        if (m.type === 'thread/list_datasets') return { datasets: [{ network_name: 'home-thread', preferred: true }] };
+        if (m.type === 'config_entries/get') return [{ entry_id: 'ce_mat', domain: 'matter', title: 'Matter' }];
+        if (m.type === 'matter/node_diagnostics' && matter[m.device_id]) return matter[m.device_id];
+        throw new Error('not in test: ' + m.type + ' ' + (m.device_id || ''));
+      }
+    };
+    for (let i = 0; i < 120 && !c._threadMeshOn; i++) await new Promise((r) => setTimeout(r, 25));
+  });
+  assert.deepEqual(await H.linkProblems(page), []);
+  const r = await page.evaluate(() => {
+    const c = window.card, by = (n) => c._devs.find((d) => d.n === n);
+    c._selDev(by('Leak sensor'));
+    const leakPanel = c.shadowRoot.getElementById('panel').innerText.replace(/\s+/g, ' ');
+    c._selDev(by('Rack plug'));
+    const leaderPanel = c.shadowRoot.getElementById('panel').innerText.replace(/\s+/g, ' ');
+    return {
+      leakParent: by('Leak sensor').meshParent && by('Leak sensor').meshParent.n,
+      btnParent: by('Remote button').meshParent && by('Remote button').meshParent.n,
+      leaderParent: by('Rack plug').meshParent,
+      leakRssi: by('Leak sensor').rssi,
+      btnRssi: by('Remote button').rssi,
+      leakSpoke: by('Leak sensor').spoke.getAttribute('class'),
+      leakPath: c._pathOf(by('Leak sensor')).join(' > '),
+      leakPanel,
+      leaderPanel
+    };
+  });
+  assert.equal(r.leakParent, 'Dishwasher plug');
+  assert.equal(r.btnParent, 'Rack plug');
+  assert.equal(r.leaderParent, null);
+  assert.equal(r.leakRssi, -59);
+  assert.equal(r.btnRssi, -74);
+  assert.match(r.leakSpoke, /meshl/);
+  assert.equal(r.leakPath, 'Leak sensor > Dishwasher plug (repeater) > Matter > Thread (home-thread) > Home Assistant');
+  assert.match(r.leakPanel, /Connected to Dishwasher plug/);
+  assert.match(r.leakPanel, /Signal \(LQI\) 3 \/ 3/);
+  assert.match(r.leakPanel, /Signal \(RSSI\) -59 dBm/);
+  assert.match(r.leaderPanel, /Leader · Router \/ repeater/);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
