@@ -95,6 +95,8 @@
       mergeWith: 'Merge with another device…',
       meshNodes: 'nodes',
       meshNote: 'Zigbee routes come from the Zigbee2MQTT network map.',
+      meshRefresh: 'Refresh mesh routes',
+      meshRefreshing: 'Refreshing mesh…',
       mobile: 'Mobile devices',
       mobileData: 'Mobile data',
       model: 'Model',
@@ -251,6 +253,8 @@
       mergeWith: 'Unir con otro equipo…',
       meshNodes: 'nodos',
       meshNote: 'Las rutas Zigbee vienen del mapa de red de Zigbee2MQTT.',
+      meshRefresh: 'Actualizar rutas de la malla',
+      meshRefreshing: 'Actualizando malla…',
       mobile: 'Dispositivos móviles',
       mobileData: 'Datos móviles',
       model: 'Modelo',
@@ -627,7 +631,7 @@
     static getStubConfig() { return {}; }
     setConfig(config) {
       // Option names are stable from 1.0. The ones that were replaced keep working and are reported once in the console.
-      var given = Object.assign({}, config || {}), self0 = this; this._optNotes = [];
+      var given = Object.assign({}, config || {}), self0 = this, prevCfg = this._cfg; this._optNotes = [];
       Object.keys(given).forEach(function (k) {
         if (DEPRECATED[k]) self0._optNotes.push('deprecated: ' + k + ' -> ' + DEPRECATED[k]);
         else if (OPTIONS.indexOf(k) < 0) self0._optNotes.push('unknown: ' + k);
@@ -645,11 +649,16 @@
       if (this._S) { this._S.layout = null; this._S.physical = null; } // what was chosen with the buttons gives way to the configuration
       function rest(c) { var o = {}; Object.keys(c || {}).sort().forEach(function (k) { if (LOOK.indexOf(k) < 0) o[k] = c[k]; }); return JSON.stringify(o); }
       var same = this._built && this._modelKey === rest(this._cfg);
+      var needLoad = !this._built || !prevCfg || String(prevCfg.demo || '') !== String(this._cfg.demo || '') ||
+        String(prevCfg.z2m_base_topic || '') !== String(this._cfg.z2m_base_topic || '') ||
+        (this._cfg.show_mesh !== false && prevCfg.show_mesh === false && !this._rawMesh && !this._rawZha && !this._rawThread);
       this._modelKey = rest(this._cfg);
-      if (!this._root) return;
+      if (!this._root) { if (needLoad) { this._built = false; this._demoHass = null; } return; }
       this._applyCfg();
-      if (same) { this._$('title').textContent = (this._cfg.title || this._t('title')) + (this._hass.demo ? ' · demo: ' + this._cfg.demo : ''); this._render(); }
-      else { this._built = false; this._demoHass = null; }
+      var ttl = (this._cfg.title || this._t('title')) + (this._hass && this._hass.demo ? ' · demo: ' + this._cfg.demo : '');
+      if (same) { this._$('title').textContent = ttl; this._render(); }
+      else if (!needLoad) { this._$('title').textContent = ttl; this._vb = null; this._remodel(); }
+      else { this._built = false; this._demoHass = null; if (this._hass && !this._loading) this._load(); }
     }
     static getConfigElement() { return document.createElement('connection-map-card-editor'); }
     // sizes of each level, in map units (the defaults are the original look)
@@ -717,7 +726,13 @@
         this._loadAnswers(),
         this._matterFast()
       ]);
+      this._loadMeshCache();
       this._model();
+      if (this._cfg.show_mesh !== false) {
+        if (this._rawMesh) this._applyMesh(this._rawMesh);
+        if (this._rawZha) this._applyZhaMesh(this._rawZha);
+        if (this._rawThread) this._applyThreadMesh(this._rawThread);
+      }
       this._loading = false;
       if (key !== this._modelKey) { this._load(); return; } // the configuration changed while loading
       this._built = true;
@@ -757,23 +772,111 @@
       var uiTask = this._unifiInsights().then(function (ch) { if (ch && gen === self._gen) self._remodel(); });
       var matTask = H.demo ? Promise.resolve() : this._matterInfo().then(function (ch) { if (ch && gen === self._gen) self._remodel(); });
       var btTask = this._btInfo().then(function (ch) { if (ch && gen === self._gen) self._remodel(); });
-      var meshTask = (async function () {
-        var base = self._cfg.z2m_base_topic || 'zigbee2mqtt', mesh = self._cfg.show_mesh !== false;
-        if (self._z2mBridge) {
-          try { var info = await self._mqttOnce(base + '/bridge/info', null, 5000); if (gen !== self._gen) return; self._z2mInfo(info); self._remodel(); } catch (e) { /* retained bridge/info not available */ }
-          if (mesh) { try { var nm = await self._mqttOnce(base + '/bridge/response/networkmap', { topic: base + '/bridge/request/networkmap', payload: JSON.stringify({ type: 'raw', routes: false }) }, 45000); if (gen !== self._gen) return; self._applyMesh(nm.data && nm.data.value); self._render(); } catch (e) { /* no answer */ } }
-        }
-        if (mesh && self._hasZha) {
-          try { var zd = await H.callWS({ type: 'zha/devices' }); if (gen !== self._gen) return; self._applyZhaMesh(zd); self._render(); } catch (e) { /* ZHA not loaded or not admin */ }
-        }
-        if (mesh && (self._matter || self._matterIds().length)) {
-          await matTask;
-          if (gen !== self._gen) return;
-          var tnodes = await self._threadMesh();
-          if (tnodes && gen === self._gen) { self._applyThreadMesh(tnodes); self._render(); }
-        }
-      })();
+      var meshTask = this._refreshMeshes(false, gen, matTask);
       await Promise.all([hostTask, uiTask, matTask, btTask, meshTask]);
+    }
+    _meshKey() {
+      var H = this._hass;
+      return !H || H.demo || !(H.user && H.user.id) ? '' : 'connection-map-card-mesh:' + H.user.id;
+    }
+    _loadMeshCache() {
+      var empty = { z2m: null, z2mTs: 0, z2mTopic: '', z2mInfo: null, zha: null, thread: null, threadTs: 0 }, ck = this._meshKey();
+      this._meshCache = empty;
+      if (!ck) { this._coordInfo = this._rawMesh = this._rawZha = this._rawThread = null; return; }
+      try {
+        var raw = JSON.parse(localStorage.getItem(ck) || 'null');
+        if (raw && typeof raw === 'object') this._meshCache = Object.assign(empty, raw);
+      } catch (e) { /* no storage */ }
+      var mc = this._meshCache, base = this._cfg.z2m_base_topic || 'zigbee2mqtt';
+      if (!mc.z2mTopic || mc.z2mTopic === base) {
+        if (mc.z2mInfo) this._coordInfo = mc.z2mInfo;
+        if (mc.z2m) this._rawMesh = mc.z2m;
+      }
+      if (mc.zha) this._rawZha = mc.zha;
+      if (mc.thread) this._rawThread = mc.thread;
+    }
+    _saveMeshCache() {
+      var ck = this._meshKey(); if (!ck || !this._meshCache) return;
+      try { localStorage.setItem(ck, JSON.stringify(this._meshCache)); } catch (e) { /* quota or disabled */ }
+    }
+    _meshStateSig() {
+      return (this._devs || []).filter(function (d) { return !!(d.ieee || d.threadMesh); }).map(function (d) {
+        return d.id + ':' + (d.meshParent ? d.meshParent.id : '') + ':' + (d.router ? 1 : 0);
+      }).sort().join('|');
+    }
+    async _refreshMeshes(force, gen, matWait) {
+      var H = this._hass, base = this._cfg.z2m_base_topic || 'zigbee2mqtt', mesh = this._cfg.show_mesh !== false;
+      var mc = this._meshCache = this._meshCache || { z2m: null, z2mTs: 0, z2mTopic: '', z2mInfo: null, zha: null, thread: null, threadTs: 0 };
+      if (this._z2mBridge) {
+        try {
+          var prevCi = JSON.stringify(this._coordInfo || null);
+          var info = await this._mqttOnce(base + '/bridge/info', null, 5000);
+          if (gen != null && gen !== this._gen) return;
+          this._z2mInfo(info);
+          mc.z2mInfo = this._coordInfo; mc.z2mTopic = base; this._saveMeshCache();
+          if (JSON.stringify(this._coordInfo || null) !== prevCi) this._remodel();
+        } catch (e) { /* retained bridge/info not available */ }
+        if (mesh) {
+          var known = {}; ((this._rawMesh && this._rawMesh.nodes) || []).forEach(function (n) { if (n && n.ieeeAddr) known[n.ieeeAddr] = 1; });
+          var missing = (this._devs || []).some(function (d) { return d.ieee && !known[d.ieee]; });
+          var stale = force || H.demo || !this._rawMesh || mc.z2mTopic !== base || missing || (Date.now() - (mc.z2mTs || 0) > 14400000);
+          if (stale) {
+            try {
+              var beforeZ = this._meshStateSig(), hadM = !!this._mesh;
+              var nm = await this._mqttOnce(base + '/bridge/response/networkmap', { topic: base + '/bridge/request/networkmap', payload: JSON.stringify({ type: 'raw', routes: false }) }, 45000);
+              if (gen != null && gen !== this._gen) return;
+              var val = nm && nm.data && nm.data.value;
+              if (val && Array.isArray(val.nodes)) {
+                var slim = {
+                  nodes: val.nodes.map(function (n) { return { ieeeAddr: n.ieeeAddr, type: n.type }; }),
+                  links: (val.links || []).map(function (l) { return { source: { ieeeAddr: l.source && l.source.ieeeAddr }, target: { ieeeAddr: l.target && l.target.ieeeAddr }, lqi: l.lqi, relationship: l.relationship }; })
+                };
+                mc.z2m = slim; mc.z2mTs = Date.now(); mc.z2mTopic = base; this._saveMeshCache();
+                this._applyMesh(slim);
+                if (!hadM || force || this._meshStateSig() !== beforeZ) this._render();
+              }
+            } catch (e) { /* no answer */ }
+          }
+        }
+      }
+      if (mesh && this._hasZha) {
+        try {
+          var beforeZha = this._meshStateSig(), hadZha = !!this._mesh;
+          var zd = await H.callWS({ type: 'zha/devices' });
+          if (gen != null && gen !== this._gen) return;
+          if (Array.isArray(zd)) {
+            var slimZha = zd.map(function (z) {
+              return { ieee: z.ieee, device_type: z.device_type, device_reg_id: z.device_reg_id, lqi: z.lqi, manufacturer: z.manufacturer, model: z.model,
+                neighbors: (z.neighbors || []).map(function (n) { return { ieee: n.ieee, device_type: n.device_type, relationship: n.relationship, lqi: n.lqi }; }) };
+            });
+            mc.zha = slimZha; this._saveMeshCache();
+            this._applyZhaMesh(slimZha);
+            if (!hadZha || force || this._meshStateSig() !== beforeZha) this._render();
+          }
+        } catch (e) { /* ZHA not loaded or not admin */ }
+      }
+      if (mesh && (this._matter || this._matterIds().length)) {
+        if (matWait) await matWait;
+        if (gen != null && gen !== this._gen) return;
+        var tKnown = {}; (this._rawThread || []).forEach(function (n) { if (n && n.node_id != null) tKnown[String(n.node_id)] = 1; });
+        var thDevs = (this._devs || []).filter(function (d) { return d.p === 'matter' && d.hub && d.hub.thread; });
+        var thMissing = thDevs.some(function (d) { return !d.threadMesh; });
+        var thStale = force || H.demo || !this._rawThread || !Object.keys(tKnown).length || thMissing || (Date.now() - (mc.threadTs || 0) > 3600000);
+        if (thStale) {
+          var beforeTh = this._meshStateSig(), hadTh = !!this._threadMeshOn;
+          var tnodes = await this._threadMesh();
+          if (gen != null && gen !== this._gen) return;
+          if (tnodes) {
+            var slimTh = tnodes.map(function (n) {
+              var a = (n && n.attributes) || {};
+              return { node_id: n.node_id, attributes: { '0/51/0': a['0/51/0'], '0/53/1': a['0/53/1'], '0/53/7': a['0/53/7'], '0/53/8': a['0/53/8'] } };
+            });
+            mc.thread = slimTh; mc.threadTs = Date.now(); this._saveMeshCache();
+            this._applyThreadMesh(slimTh);
+            if (!hadTh || force || this._meshStateSig() !== beforeTh) this._render();
+          }
+        }
+      }
     }
     // UniFi Insights topology API: switch-port, access-point and multi-VLAN client graph when device_tracker entities are absent.
     // Infrastructure MACs come from ha_device_id in the registry when present; opaque client node IDs (HMAC of MAC) are cached
@@ -2293,12 +2396,21 @@
       this._$('zexp').onclick = function (e) {
         e.stopPropagation(); var m = self._$('xmenu'), t = self._t.bind(self);
         if (m.style.display === 'flex') { m.style.display = 'none'; return; }
+        var hasTh = !!(self._matter && Object.keys(self._matter).some(function (k) { return self._matter[k] && self._matter[k].net === 'thread'; }));
+        var hasMeshSrc = self._cfg.show_mesh !== false && !!(self._z2mBridge || self._hasZha || hasTh);
         m.innerHTML = '<button class="btn" id="xa">' + esc(t('exportAnon')) + '</button><button class="btn" id="xf">' + esc(t('exportFull')) + '</button><p>' + esc(t('exportHint')) + '</p>' +
-          '<button class="btn" id="xd">' + esc(t('diagBtn')) + '</button>' + (Object.keys((self._ans && self._ans.dup) || {}).length ? '<button class="btn" id="xr">' + esc(t('dupReset')) + '</button>' : '');
+          '<button class="btn" id="xd">' + esc(t('diagBtn')) + '</button>' +
+          (hasMeshSrc ? '<button class="btn" id="xm">' + esc(t(self._meshBusy ? 'meshRefreshing' : 'meshRefresh')) + '</button>' : '') +
+          (Object.keys((self._ans && self._ans.dup) || {}).length ? '<button class="btn" id="xr">' + esc(t('dupReset')) + '</button>' : '');
         m.style.display = 'flex';
         m.querySelector('#xa').onclick = function () { m.style.display = 'none'; self._export(true); };
         m.querySelector('#xf').onclick = function () { m.style.display = 'none'; self._export(false); };
         m.querySelector('#xd').onclick = function () { m.style.display = 'none'; self._diagDialog(); };
+        var xm = m.querySelector('#xm'); if (xm) xm.onclick = function () {
+          if (self._meshBusy) return;
+          xm.textContent = t('meshRefreshing'); self._meshBusy = true;
+          self._refreshMeshes(true).then(function () { self._meshBusy = false; m.style.display = 'none'; }, function () { self._meshBusy = false; m.style.display = 'none'; });
+        };
         var xr = m.querySelector('#xr'); if (xr) xr.onclick = function () { m.style.display = 'none'; self._ans.dup = {}; self._saveAnswers(); self._remodel(); };
       };
       this._$('map').addEventListener('click', function () { self._$('xmenu').style.display = 'none'; });

@@ -89,7 +89,7 @@ Each dot is a device. Lines show the path its data takes to Home Assistant: a so
 **Buttons on the map**
 
 - **◎** switches between the detailed map and a compact one, with one bubble per hub and a red counter for the devices that are offline.
-- **⤓** saves what is on screen as a PNG, with or without names. Without names, hubs, routers, access points and devices are numbered, and the version, host and Thread network name are left out, so the image can be posted anywhere. The same menu has **Copy diagnostics**.
+- **⤓** saves what is on screen as a PNG, with or without names. Without names, hubs, routers, access points and devices are numbered, and the version, host and Thread network name are left out, so the image can be posted anywhere. The same menu has **Refresh mesh routes** and **Copy diagnostics**.
 
 **Status**
 
@@ -206,7 +206,7 @@ These keep working, and the visual editor writes the new form.
 
 **Mobile devices** are the phones, tablets and watches that run the companion app. At home each one is drawn on the access point it is on right now, and the map follows it when it moves. On mobile data, or away from home, its path becomes `Device → Mobile devices → Mobile data → Internet → Home Assistant`. The card cannot tell which remote access method is used (Home Assistant Cloud, a VPN, an exposed port), so it only says *Internet*.
 
-**Zigbee.** The coordinator is the radio node: a Connect ZBT / SkyConnect / Yellow radio, or the adapter Zigbee2MQTT or ZHA reports. A network coordinator (SLZB-06 and the like) is named after the device Home Assistant knows at its address. With `show_mesh`, devices behind a repeater are drawn next to it with their link quality.
+**Zigbee.** The coordinator is the radio node: a Connect ZBT / SkyConnect / Yellow radio, or the adapter Zigbee2MQTT or ZHA reports. A network coordinator (SLZB-06 and the like) is named after the device Home Assistant knows at its address. With `show_mesh`, devices behind a repeater are drawn next to it with their link quality. Zigbee and Thread mesh routes are cached in the browser so repeaters appear on the first draw, and Zigbee2MQTT's over-the-air scan (4 h) and Thread diagnostics (1 h) refresh automatically when a new device appears or on demand via **Refresh mesh routes** in the ⤓ menu.
 
 **Thread.** Matter devices on Thread get their own group immediately from their Thread entities and dataset, without waking sleepy battery sensors. With `show_mesh`, cached Matter `ThreadNetworkDiagnostics` neighbour and route tables place sleepy sensors and multi-hop routers behind their Thread repeater with RSSI and LQI. A Connect ZBT / SkyConnect stick is drawn as the Thread border router when OpenThread Border Router is set up and no Zigbee stack uses the stick. With ZHA and OTBR both present the card cannot tell, and keeps the stick as the Zigbee coordinator.
 
