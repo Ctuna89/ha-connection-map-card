@@ -221,12 +221,13 @@ Helpers and system integrations (template, group, Supervisor, Sun, Backup, HACS 
 
 ## Router support
 
-The card reads what router integrations report about their clients. Only Huawei has been tested on real hardware; the others follow the integrations' source code. Reports from people with this hardware are very welcome.
+The card reads what router integrations report about their clients. Huawei and UniFi have been tested on real hardware; the others follow the integrations' source code. Reports from people with this hardware are very welcome.
 
 | Integration | Access point per client | Cable / Wi-Fi | Band | Status |
 | --- | --- | --- | --- | --- |
 | Huawei Mesh Router (HACS) | `connected_via` | `interface_type` | yes | Tested |
-| UniFi Network | `ap_mac` → AP device | wired clients have no `essid` | `radio` (ng / na / 6e) | Untested on real hardware |
+| UniFi Network | `ap_mac` / `sw_mac` → AP or switch | `is_wired` (`sw_port`, `wired_rate_mbps`) / `essid` | `radio` (ng / na / 6e) | Tested |
+| UniFi Insights | `unifi_insights/topology` (switches, APs, VLANs) | wired port & speed / wireless | via UniFi Network if paired | Tested |
 | AVM FRITZ!Box Tools | `connected_to` | `connection_type` (LAN / WLAN) | no | Untested on real hardware |
 | NETGEAR / Orbi | *Access point MAC* sensor of each client (disabled by default: enable it) | *Link type* sensor (also disabled by default) | from the link type | Untested on real hardware |
 | Sagemcom F@st (HACS `sagemcom_fast`; Bell, Sky, ...) | the gateway itself (it reports no access points) | `interface_type` of each tracker | not reported | Untested on real hardware |
