@@ -339,7 +339,7 @@
   // Every option the card takes. Names are stable from 1.0; the replaced ones keep working.
   // Router integrations that register every client of the network as a device of its own, linked to the gateway.
   var CLIENTS_AS_DEVICES = ['netgear', 'sagemcom_fast'];
-  var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'sort', 'group_by_area', 'group_small', 'separate_services', 'physical_only', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'minimap', 'device_labels', 'animations',
+  var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'height', 'sort', 'group_by_area', 'group_small', 'separate_services', 'physical_only', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'minimap', 'device_labels', 'animations',
     'colors', 'lines', 'sizes', 'names', 'overrides', 'exclude_integrations', 'exclude_devices', 'computers', 'merge_duplicates', 'entities_without_device', 'devices_without_entities', 'recent_hours',
     'main_router', 'router_name', 'coordinator_name', 'z2m_base_topic', 'grid_options', 'layout_options', 'view_layout', 'visibility', 'card_mod'];
   var DEPRECATED = { core_size: 'sizes.core', mqtt_entities: 'entities_without_device' };
@@ -515,7 +515,7 @@
   var CSS = [
     ':host{--cm-cloud:#7c5cff;--cm-local:#0b8a77;--cm-radio:#b86e00;--cm-core:var(--primary-color,#03a9f4);--cm-bad:var(--error-color,#db4437);--cm-away:#a86400;--cm-recent:#d9a900;',
     '--cm-ink:var(--primary-text-color,#212121);--cm-muted:var(--secondary-text-color,#727272);--cm-line:var(--divider-color,rgba(0,0,0,.12));',
-    '--cm-bg:var(--ha-card-background,var(--card-background-color,#fff));--cm-faint:var(--secondary-background-color,rgba(127,127,127,.12));display:block}',
+    '--cm-bg:var(--ha-card-background,var(--card-background-color,#fff));--cm-faint:var(--secondary-background-color,rgba(127,127,127,.12));display:block;height:100%}',
     'ha-card{overflow:hidden}',
     '.wrap{padding:16px;display:flex;flex-direction:column;gap:12px}',
     '.head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between}',
@@ -533,7 +533,7 @@
     '.main{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}',
     '.main.wide{grid-template-columns:minmax(0,1fr) 300px;align-items:start}',
     '.map{position:relative;border:1px solid var(--cm-line);border-radius:14px;overflow:hidden;min-width:0}',
-    '.map svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}',
+    '.map>svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}',
     '.zoom{position:absolute;right:8px;top:8px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:132px}.zoom .btn.on{border-color:var(--cm-core);color:var(--cm-core)}',
     '.xmenu{position:absolute;right:8px;top:84px;z-index:4;display:none;flex-direction:column;gap:6px;background:var(--cm-bg);border:1px solid var(--cm-line);border-radius:12px;padding:10px;max-width:230px;box-shadow:0 2px 10px rgba(0,0,0,.18)}',
     '.xmenu p{margin:0;font-size:12px;color:var(--cm-muted)}.xmenu .btn{text-align:left;cursor:pointer}',
@@ -557,7 +557,7 @@
     '.note{display:none;font-size:12.5px;color:var(--cm-ink);background:rgba(255,166,0,.16);border-top:1px solid var(--warning-color,#ffa600);padding:7px 12px;line-height:1.5}',
     '.note div{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline}.note button{font:inherit;background:none;border:0;padding:0;color:var(--cm-core);cursor:pointer;text-decoration:underline}',
     '.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--cm-muted);padding:8px 12px;border-top:1px solid var(--cm-line)}',
-    '.legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.legend i{width:10px;height:10px;border-radius:50%;display:inline-block}',
+    '.legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.legend i{width:10px;height:10px;border-radius:50%;display:inline-block}.legend svg{width:26px;height:8px;flex:0 0 auto;display:block}',
     '.panel{border:1px solid var(--cm-line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:9px;min-width:0;color:var(--cm-ink)}',
     '.panel h2{font-size:17px;margin:0;font-weight:600}',
     '.eyebrow{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase}',
@@ -605,7 +605,13 @@
     '.dim{opacity:.12}',
     '.pulse{animation:cmpulse 2.4s ease-in-out infinite}@keyframes cmpulse{0%,100%{opacity:.3}50%{opacity:.85}}',
     '@media (prefers-reduced-motion:reduce){.pulse{animation:none}}',
-    '.tip{position:absolute;pointer-events:none;background:var(--cm-ink);color:var(--cm-bg);font-size:12px;padding:5px 8px;border-radius:7px;white-space:nowrap;transform:translate(-50%,calc(-100% - 14px));display:none;z-index:3;text-align:center;line-height:1.35}.tip b{display:block;font-weight:600}.tip span{opacity:.75;font-size:11px}'
+    '.tip{position:absolute;pointer-events:none;background:var(--cm-ink);color:var(--cm-bg);font-size:12px;padding:5px 8px;border-radius:7px;white-space:nowrap;transform:translate(-50%,calc(-100% - 14px));display:none;z-index:3;text-align:center;line-height:1.35}.tip b{display:block;font-weight:600}.tip span{opacity:.75;font-size:11px}',
+    'ha-card.fill{height:100%;box-sizing:border-box;display:flex;flex-direction:column}ha-card.fill .wrap{flex:1 1 0;min-height:0;box-sizing:border-box}ha-card.fill .main{flex:1 1 0;min-height:0}',
+    'ha-card.fill .main.wide{grid-template-rows:minmax(0,1fr);align-items:stretch}ha-card.fill .main:not(.wide){grid-template-rows:minmax(180px,1fr) minmax(0,auto);overflow:auto}',
+    'ha-card.fill .map,ha-card.custom-h .map{display:flex;flex-direction:column;min-height:0}ha-card.fill #svg{flex:1 1 0;min-height:120px;height:100%}',
+    'ha-card.custom-h #svg{height:var(--cm-map-h)!important}ha-card.custom-h .main.wide{align-items:stretch}',
+    'ha-card.fill .main.wide .panel{max-height:100%;overflow:auto;box-sizing:border-box}ha-card.custom-h .main.wide .panel{max-height:calc(var(--cm-map-h) + 46px);overflow:auto;box-sizing:border-box}',
+    'ha-card.fill .main.wide .list,ha-card.custom-h .main.wide .list{max-height:none;flex:1 1 auto;min-height:60px}'
   ].join('\n');
 
   class ConnectionMapCard extends HTMLElement {
@@ -622,11 +628,11 @@
       if (noteKey && noteKey !== ConnectionMapCard._warned) { ConnectionMapCard._warned = noteKey; console.warn('connection-map-card options — ' + this._optNotes.join(', ')); }
       this._given = given; config = given;
       this._cfg = Object.assign({
-        title: null, group_small: 1, exclude_integrations: [], exclude_devices: [], computers: [], show_trackers: false,
+        title: null, height: null, group_small: 1, exclude_integrations: [], exclude_devices: [], computers: [], show_trackers: false,
         show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', physical_only: false, group_by_area: false, mqtt_entities: true, entities_without_device: true, devices_without_entities: true, merge_duplicates: true, recent_hours: 24, layout: 'detailed', show_export: true
       }, config || {});
       // look-only options are applied by drawing again; anything else needs the model to be rebuilt
-      var LOOK = ['title', 'colors', 'lines', 'sizes', 'core_size', 'minimap', 'device_labels', 'animations', 'show_panel', 'layout', 'show_export', 'group_by_area'];
+      var LOOK = ['title', 'height', 'colors', 'lines', 'sizes', 'core_size', 'minimap', 'device_labels', 'animations', 'show_panel', 'layout', 'show_export', 'group_by_area', 'grid_options', 'layout_options', 'view_layout'];
       if (this._S) { this._S.layout = null; this._S.physical = null; } // what was chosen with the buttons gives way to the configuration
       function rest(c) { var o = {}; Object.keys(c || {}).sort().forEach(function (k) { if (LOOK.indexOf(k) < 0) o[k] = c[k]; }); return JSON.stringify(o); }
       var same = this._built && this._modelKey === rest(this._cfg);
@@ -643,13 +649,41 @@
       function num(v, d, lo, hi) { v = parseFloat(v); return isNaN(v) ? d : Math.max(lo, Math.min(hi, v)); }
       return { core: num(z.core, this._cfg.core_size === 'compact' ? 28 : 56, 20, 80), net: num(z.network, 28, 16, 40), hub: num(z.hub, 22, 14, 34), dev: num(z.device, 6.2, 3, 9) };
     }
+    _mapHeight() {
+      var h = this._cfg && this._cfg.height;
+      if (h == null || h === '' || h === 0 || h === '0' || h === 'auto') return '';
+      if (typeof h === 'number' || /^\d+(\.\d+)?$/.test(String(h).trim())) {
+        var n = parseFloat(h); return n > 0 ? Math.max(180, Math.round(n)) + 'px' : '';
+      }
+      var s = String(h).trim();
+      return /^\d+(\.\d+)?(px|vh|dvh|svh|rem|em|%)$/i.test(s) ? s : '';
+    }
+    _isGridFill() {
+      var go = this._cfg && this._cfg.grid_options;
+      if (go && go.rows === 'auto') return false;
+      var el = this, n = 0;
+      while (el && n++ < 6) {
+        if (el.classList && el.classList.contains('fit-rows')) return true;
+        el = el.parentElement || (el.getRootNode && el.getRootNode().host) || null;
+      }
+      return !!(go && typeof go.rows === 'number' && go.rows > 0 && this.clientHeight > 120);
+    }
+    _syncFill() {
+      if (!this._root) return;
+      var card = this._root.querySelector('ha-card'); if (!card) return;
+      var mh = this._mapHeight(), fill = !mh && this._isGridFill();
+      card.classList.toggle('custom-h', !!mh);
+      card.classList.toggle('fill', fill);
+    }
     // colours, line styles and widths come from the configuration: written as CSS so that a change needs no new model
     _applyCfg() {
-      var cfg = this._cfg, c = cfg.colors || {}, L = cfg.lines || {}, card = this._root.querySelector('ha-card');
+      var cfg = this._cfg, c = cfg.colors || {}, L = cfg.lines || {}, card = this._root.querySelector('ha-card'), mh = this._mapHeight();
       function col(v) { return /^[#a-z0-9(),.%\s-]+$/i.test(String(v || '')) ? String(v) : ''; }
       var vars = ''; ['cloud', 'local', 'radio', 'core'].forEach(function (k) { if (col(c[k])) vars += '--cm-' + k + ':' + col(c[k]) + ';'; });
       if (col(c.offline)) vars += '--cm-bad:' + col(c.offline) + ';'; if (col(c.away)) vars += '--cm-away:' + col(c.away) + ';'; if (col(c.recent)) vars += '--cm-recent:' + col(c.recent) + ';';
+      if (mh) vars += '--cm-map-h:' + mh + ';';
       card.setAttribute('style', vars); card.className = cfg.animations === false ? 'still' : '';
+      this._syncFill();
       var w = parseFloat(L.width); w = isNaN(w) ? 2 : Math.max(0.5, Math.min(6, w));
       function dash(st) { return st === 'dashed' ? 'stroke-dasharray:' + (w * 3) + ' ' + (w * 3) + ';stroke-linecap:butt;stroke-width:' + w : st === 'dotted' ? 'stroke-dasharray:1 ' + (w * 3) + ';stroke-linecap:round;stroke-width:' + (w * 1.5) : 'stroke-dasharray:none;stroke-width:' + w; }
       var st = { cloud: L.cloud || 'dashed', local: L.local || 'solid', radio: L.radio || 'solid', wifi: L.wifi || 'dotted' };
@@ -659,8 +693,9 @@
       this._$('panel').style.display = cfg.show_panel === false ? 'none' : '';
       var m = this._$('main'); if (m) m.classList.toggle('wide', m.getBoundingClientRect().width > 860 && cfg.show_panel !== false);
     }
+    connectedCallback() { this._syncFill(); }
     getCardSize() { return 12; }
-    getGridOptions() { return { columns: 'full', min_rows: 8 }; }
+    getGridOptions() { return { columns: 'full', rows: 14, min_rows: 4 }; }
 
     set hass(h) {
       if (this._cfg && this._cfg.demo) { if (!this._demoHass) this._demoHass = makeDemo(String(this._cfg.demo), h); h = this._demoHass; }
@@ -681,7 +716,12 @@
         '<div class="note" id="note" role="status"></div><div class="legend" id="legend"></div><div class="xmenu" id="xmenu"></div><div class="zoom"><button class="btn" id="zin">+</button><button class="btn" id="zout">−</button><button class="btn" id="zfit">⤢</button><button class="btn" id="zlay">◎</button><button class="btn" id="zexp">⤓</button></div></div>' +
         '<aside class="panel" id="panel"><div class="msg" id="loading"></div></aside></div></div><div class="modal" id="modal" role="dialog" aria-modal="true"></div></ha-card>';
       var self = this;
-      this._ro = new ResizeObserver(function (en) { var w = en[0].contentRect.width; self._$('main').classList.toggle('wide', w > 860 && self._cfg.show_panel !== false); if (self._vb) requestAnimationFrame(function () { self._setVB(); }); });
+      this._ro = new ResizeObserver(function () {
+        self._syncFill();
+        var m = self._$('main'); if (m) m.classList.toggle('wide', m.getBoundingClientRect().width > 860 && self._cfg.show_panel !== false);
+        if (self._vb) requestAnimationFrame(function () { self._setVB(); if (self._labs) self._declutter(); });
+      });
+      this._ro.observe(this);
       this._ro.observe(this._$('main'));
       this._applyCfg();
     }
@@ -2285,7 +2325,7 @@
       window.addEventListener('pointermove', function (e) {
         if (!drag.on) return; var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
         if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true; if (!drag.moved) return;
-        var sc = self._vb.w / svg.getBoundingClientRect().width; self._vb.x = drag.vb.x - dx * sc; self._vb.y = drag.vb.y - dy * sc; self._setVB();
+        var sc = 1 / (self._k || (svg.getBoundingClientRect().width / self._vb.w) || 1); self._vb.x = drag.vb.x - dx * sc; self._vb.y = drag.vb.y - dy * sc; self._setVB();
         self._$('tip').style.display = 'none';
       });
       window.addEventListener('pointerup', function () { if (drag.on && drag.moved) setTimeout(function () { self._declutter(); }, 30); drag.on = false; setTimeout(function () { drag.moved = false; }, 0); });
@@ -2395,7 +2435,7 @@
     // narrow screens: taller map, starting zoomed in on Home Assistant so labels and dots are usable
     _fit() {
       var svg = this._$('svg'), W = this._$('map').getBoundingClientRect().width || 800, v0 = this._vb0;
-      if (W < 600) {
+      if (W < 600 && !this._mapHeight() && !this._isGridFill()) {
         var H = Math.round(Math.min(window.innerHeight * 0.68, 640)); svg.style.height = H + 'px';
         var w = v0.w * 0.58, h = w * H / W; var co = this._core || { x: 0, y: 0 }; this._vb = { x: co.x / 2 - w / 2, y: co.y / 2 - h / 2 + 30, w: w, h: h };
       } else { svg.style.height = ''; this._vb = Object.assign({}, v0); }
@@ -2811,6 +2851,7 @@
       general: 'General',
       group_by_area: 'Group the devices of each hub by area',
       group_small: 'Group integrations with this many devices or fewer',
+      height: 'Map height in pixels (0: automatic)',
       language: 'Language',
       layout: 'Map',
       lcloud: 'Internet links',
@@ -2874,6 +2915,7 @@
       general: 'General',
       group_by_area: 'Agrupar por pieza los equipos de cada hub',
       group_small: 'Agrupar integraciones con esta cantidad de equipos o menos',
+      height: 'Alto del mapa en píxeles (0: automático)',
       language: 'Idioma',
       layout: 'Mapa',
       lcloud: 'Enlaces por internet',
@@ -2913,7 +2955,7 @@
   var LINE = ['solid', 'dashed', 'dotted'];
   var FIELDS = [
     { sec: 'general' }, { p: 'title', k: 'text' }, { p: 'language', k: 'select', o: [['', 'auto'], ['en', 'English'], ['es', 'Español']], d: '' },
-    { p: 'layout', k: 'select', o: [['detailed', 'detailed'], ['compact', 'compact']], d: 'detailed' }, { p: 'group_by_area', k: 'bool', d: false }, { p: 'sort', k: 'select', o: [['area', 'byArea'], ['name', 'byName']], d: 'area' }, { p: 'show_panel', k: 'bool', d: true }, { p: 'animations', k: 'bool', d: true },
+    { p: 'layout', k: 'select', o: [['detailed', 'detailed'], ['compact', 'compact']], d: 'detailed' }, { p: 'height', k: 'number', min: 0, max: 2400, d: 0 }, { p: 'group_by_area', k: 'bool', d: false }, { p: 'sort', k: 'select', o: [['area', 'byArea'], ['name', 'byName']], d: 'area' }, { p: 'show_panel', k: 'bool', d: true }, { p: 'animations', k: 'bool', d: true },
     { p: 'minimap', k: 'bool', d: true }, { p: 'show_export', k: 'bool', d: true }, { p: 'device_labels', k: 'bool', d: true },
     { sec: 'colors' }, { p: 'colors.cloud', k: 'color', d: '#7c5cff', l: 'cloud' }, { p: 'colors.local', k: 'color', d: '#0b8a77', l: 'local' }, { p: 'colors.radio', k: 'color', d: '#b86e00', l: 'radio' },
     { p: 'colors.core', k: 'color', d: '#03a9f4', l: 'core' }, { p: 'colors.offline', k: 'color', d: '#db4437', l: 'offline' }, { p: 'colors.away', k: 'color', d: '#a86400', l: 'away' }, { p: 'colors.recent', k: 'color', d: '#d9a900', l: 'crecent' },

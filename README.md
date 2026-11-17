@@ -122,6 +122,7 @@ Option names are **stable from 1.0**: they will not be renamed or removed withou
 | `title` | string | `Connection map` | Card title. |
 | `language` | string | Home Assistant's | Force the card language: `en` or `es`. |
 | `layout` | string | `detailed` | `detailed` draws every device as a dot; `compact` draws one bubble per hub or integration. The ◎ button switches without changing the configuration. |
+| `height` | number / string | automatic | Map height in pixels (for example `520`) or CSS length (`70vh`). In a Sections view, the card also supports Home Assistant's **Layout → Height** row slider (`grid_options.rows`) alongside *Fit height*. |
 | `group_by_area` | boolean | `false` | Inside each hub, hang the devices of an area with more than one device from a small area node (hub → area → devices). Clicking the node filters the map to that area. A Zigbee mesh keeps its own shape instead. |
 | `sort` | string | `area` | Order of the device lists: `area` (by area, then name) or `name`. The list of a hub has a button to switch. |
 | `colors` | map | | Override colours: `cloud`, `local`, `radio`, `core` (Home Assistant), `offline`, `recent`, `away`. |

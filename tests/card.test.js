@@ -126,6 +126,35 @@ test('compact map: one bubble per hub, same rules, offline devices counted on th
   }
 });
 
+test('configurable height supports both Sections fit-rows layout and explicit height option', async () => {
+  const page = await H.newPage(browser);
+  await H.mountDemo(page, { demo: 'unifi', height: 420 }, { settle: false });
+  const r1 = await page.evaluate(() => {
+    const c = window.card, svg = c.shadowRoot.getElementById('svg');
+    return { opts: c.getGridOptions(), h: Math.round(svg.getBoundingClientRect().height) };
+  });
+  assert.deepEqual(r1.opts, { columns: 'full', rows: 14, min_rows: 4 });
+  assert.equal(r1.h, 420);
+  assert.deepEqual(await H.labelProblems(page), []);
+  // Sections view .fit-rows wrapper constrains total card height without clipping legend or stretching legend SVGs
+  const r2 = await page.evaluate(async () => {
+    const host = document.getElementById('host');
+    host.classList.add('fit-rows'); host.style.height = '540px';
+    window.card.setConfig({ demo: 'unifi', grid_options: { columns: 'full', rows: 8 } });
+    await new Promise((r) => setTimeout(r, 100));
+    const cardRect = window.card.shadowRoot.querySelector('ha-card').getBoundingClientRect();
+    const legRect = window.card.shadowRoot.getElementById('legend').getBoundingClientRect();
+    const legSvgH = Math.round(window.card.shadowRoot.querySelector('#legend svg').getBoundingClientRect().height);
+    return { cardH: Math.round(cardRect.height), legH: Math.round(legRect.height), legSvgH, legBottom: Math.round(legRect.bottom), cardBottom: Math.round(cardRect.bottom) };
+  });
+  assert.equal(r2.cardH, 540);
+  assert.equal(r2.legSvgH, 8, 'legend line-sample SVG stays 8px tall');
+  assert.ok(r2.legH < 60, 'legend stays compact');
+  assert.ok(r2.legBottom <= r2.cardBottom + 1, 'legend stays inside fixed-row card');
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
 test('the map can be saved as an image, and without names it gives nothing away', async () => {
   const page = await H.newPage(browser);
   await H.mountDemo(page, { demo: 'unifi' });
