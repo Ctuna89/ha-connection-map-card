@@ -713,6 +713,37 @@ test('diagnostics describe the map without naming anything in the home', async (
   await page.close();
 });
 
+test('devices with no entities are grey, and the status list shows all, offline only or those only', async () => {
+  const page = await H.newPage(browser);
+  const r = await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {};
+    const dev = (id, name, n, state) => { devices[id] = { id, name, via_device_id: null, connections: [], identifiers: [['shelly', id]], disabled_by: null, area_id: null };
+      for (let k = 0; k < n; k++) { const e = 'sensor.' + id + '_' + k; entities[e] = { entity_id: e, device_id: id, platform: 'shelly' }; states[e] = { entity_id: e, state: state || 'on', attributes: {} }; } };
+    dev('a', 'Plug A', 2); dev('b', 'Plug B', 2); dev('c', 'Plug C', 2, 'unavailable'); dev('d', 'Plug D', 0); dev('e', 'Plug E', 0);
+    const man = [{ domain: 'shelly', name: 'Shelly', iot_class: 'local_push' }];
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false, colors: { no_entities: '#123456' } }); document.getElementById('host').appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+    const R = c.shadowRoot, sel = R.getElementById('show');
+    const shown = () => c._devs.filter((d) => d.vis).map((d) => d.n).sort();
+    const pick = (v) => { sel.value = v; sel.dispatchEvent(new Event('change')); return shown(); };
+    const grey = c._devs.filter((d) => d.g.classList.contains('bare')).map((d) => d.n).sort();
+    const fill = getComputedStyle(c._devs.find((d) => d.n === 'Plug D').g.querySelector('circle:last-of-type')).fill;
+    return { options: [...sel.options].map((o) => o.textContent), grey, fill, legend: R.getElementById('legend').textContent.includes('No entities'), noButton: !R.getElementById('offBtn'),
+      all: shown(), off: pick('off'), bare: pick('bare'), back: pick('') };
+  });
+  assert.deepEqual(r.options, ['All devices', 'Offline only', 'No entities only']);
+  assert.ok(r.noButton, 'the list replaces the button');
+  assert.deepEqual(r.grey, ['Plug D', 'Plug E']);
+  assert.equal(r.fill, 'rgb(18, 52, 86)', 'colors.no_entities sets the colour');
+  assert.ok(r.legend, 'the legend explains the grey dots');
+  assert.equal(r.all.length, 5);
+  assert.deepEqual(r.off, ['Plug C']);
+  assert.deepEqual(r.bare, ['Plug D', 'Plug E']);
+  assert.equal(r.back.length, 5);
+  await page.close();
+});
+
 test('every language has the same texts as English', async () => {
   const page = await H.newPage(browser);
   const r = await page.evaluate(() => window.__connectionMapCardTexts());

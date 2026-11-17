@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Devices with no entities (all of them disabled, or none created) are drawn in grey, with their own entry in the legend, instead of looking like any device that is online. `colors: { no_entities: ... }` changes the colour, also in the visual editor.
+
+### Changed
+
+- The "Offline only" button is now a list: all devices, offline only, or devices with no entities only. `devices_without_entities: false` still hides those for good.
+
 ## 0.8.4 — 2026-11-17
 
 UniFi, by [@HaniKazmi](https://github.com/HaniKazmi) in [#12](https://github.com/Ctuna89/ha-connection-map-card/pull/12), tested on a Cloud Gateway Max, a USW Flex Mini and a U7 Pro XG. Thank you again.

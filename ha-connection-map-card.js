@@ -26,6 +26,7 @@
       awayLong: 'Not connected to the network right now (off or sleeping)',
       back: 'Back to summary',
       backhaul: 'Link to main router',
+      bare: 'No entities',
       bluetooth: 'Bluetooth',
       bridgeItself: 'The bridge itself',
       btAdapter: 'Bluetooth adapter',
@@ -111,6 +112,7 @@
       offline: 'Offline',
       offlineNow: 'Offline now',
       online: 'Online',
+      onlyBare: 'No entities only',
       onlyOffline: 'Offline only',
       onlyPhysical: 'Physical only',
       onlyPhysicalTip: 'Hide accounts, online services and loose sensors: only things you can touch',
@@ -143,6 +145,7 @@
       runsOn: 'Runs on',
       search: 'Search device, model or area…',
       seeAll: 'Show all of',
+      showAll: 'All devices',
       signal: 'Signal (LQI)',
       skipped: 'devices could not be read and were left out.',
       skipped1: '1 device could not be read and was left out.',
@@ -176,6 +179,7 @@
       awayLong: 'No está conectado a la red ahora (apagado o en reposo)',
       back: 'Volver al resumen',
       backhaul: 'Enlace al router principal',
+      bare: 'Sin entidades',
       bluetooth: 'Bluetooth',
       bridgeItself: 'El puente mismo',
       btAdapter: 'Adaptador Bluetooth',
@@ -261,6 +265,7 @@
       offline: 'Sin conexión',
       offlineNow: 'Sin conexión ahora',
       online: 'Conectado',
+      onlyBare: 'Solo sin entidades',
       onlyOffline: 'Solo sin conexión',
       onlyPhysical: 'Solo físicos',
       onlyPhysicalTip: 'Oculta cuentas, servicios en línea y sensores sueltos: solo cosas que se pueden tocar',
@@ -293,6 +298,7 @@
       runsOn: 'Corre en',
       search: 'Buscar equipo, modelo o pieza…',
       seeAll: 'Ver todo',
+      showAll: 'Todos los equipos',
       signal: 'Señal (LQI)',
       skipped: 'equipos no se pudieron leer y quedaron fuera.',
       skipped1: '1 equipo no se pudo leer y quedó fuera.',
@@ -513,7 +519,7 @@
   function deg(a) { return a * Math.PI / 180; }
 
   var CSS = [
-    ':host{--cm-cloud:#7c5cff;--cm-local:#0b8a77;--cm-radio:#b86e00;--cm-core:var(--primary-color,#03a9f4);--cm-bad:var(--error-color,#db4437);--cm-away:#a86400;--cm-recent:#d9a900;',
+    ':host{--cm-cloud:#7c5cff;--cm-local:#0b8a77;--cm-radio:#b86e00;--cm-core:var(--primary-color,#03a9f4);--cm-bad:var(--error-color,#db4437);--cm-away:#a86400;--cm-recent:#d9a900;--cm-bare:var(--disabled-text-color,#9e9e9e);',
     '--cm-ink:var(--primary-text-color,#212121);--cm-muted:var(--secondary-text-color,#727272);--cm-line:var(--divider-color,rgba(0,0,0,.12));',
     '--cm-bg:var(--ha-card-background,var(--card-background-color,#fff));--cm-faint:var(--secondary-background-color,rgba(127,127,127,.12));display:block}',
     'ha-card{overflow:hidden}',
@@ -591,6 +597,8 @@
     '.dev.offline circle:last-of-type{animation:cmblink 2.4s ease-in-out infinite}@keyframes cmblink{50%{stroke-opacity:.25}}',
     '.dev.recent circle:last-of-type{fill:var(--cm-bg)!important;stroke:var(--cm-recent);stroke-width:2.2}',
     '.dev.away circle:last-of-type{fill:var(--cm-bg)!important;stroke:var(--cm-away);stroke-width:2.2;stroke-dasharray:2.5 2}',
+    // a device with no entities (all disabled, or none created) says nothing about itself: grey, neither online nor offline
+    '.dev.bare circle:last-of-type{fill:var(--cm-bare)!important;stroke:var(--cm-bare);fill-opacity:.35}',
     '.still .flow{display:none}.still *{animation:none!important;transition:none!important}',
     '@media (prefers-reduced-motion:reduce){.flow{display:none}.enter,.spoke.meshl,.dev circle,.disc,.dev,.hub,.mnode,.edge,.spoke,.elbl{animation:none!important;transition:none!important}}',
     '.elbl{font-size:calc(10px / var(--k,1));font-weight:600;fill:var(--cm-muted);paint-order:stroke;stroke:var(--cm-bg);stroke-width:calc(4px / var(--k,1));stroke-linejoin:round}',
@@ -601,7 +609,7 @@
     // text keeps the same size on screen whatever the zoom: --k is the current pixels-per-unit scale
     '.lbl{font-size:calc(12px / var(--k,1));font-weight:600;fill:var(--cm-ink)}.lbl.small{font-size:calc(11px / var(--k,1))}',
     '.sub{font-size:calc(10.5px / var(--k,1));fill:var(--cm-muted)}.tl{paint-order:stroke;stroke:var(--cm-bg);stroke-width:calc(3px / var(--k,1));stroke-linejoin:round}.tl.below{dominant-baseline:hanging}',
-    '@media (max-width:600px){.wrap{padding:12px;gap:9px}.stat{padding:3px 9px 3px 6px;font-size:12px;gap:5px}.tools input{flex:1 1 100%}.tools select{flex:1 1 100%;min-width:0}.tools .btn{flex:1 1 0;min-width:0}.zoom .btn{padding:7px 13px}.zoom{max-width:156px}.xmenu{top:104px}}',
+    '@media (max-width:600px){.wrap{padding:12px;gap:9px}.stat{padding:3px 9px 3px 6px;font-size:12px;gap:5px}.tools input{flex:1 1 100%}.tools select{flex:1 1 100%;min-width:0}.tools #show{flex:1 1 0}.tools .btn{flex:1 1 0;min-width:0}.zoom .btn{padding:7px 13px}.zoom{max-width:156px}.xmenu{top:104px}}',
     '.dim{opacity:.12}',
     '.pulse{animation:cmpulse 2.4s ease-in-out infinite}@keyframes cmpulse{0%,100%{opacity:.3}50%{opacity:.85}}',
     '@media (prefers-reduced-motion:reduce){.pulse{animation:none}}',
@@ -648,7 +656,7 @@
       var cfg = this._cfg, c = cfg.colors || {}, L = cfg.lines || {}, card = this._root.querySelector('ha-card');
       function col(v) { return /^[#a-z0-9(),.%\s-]+$/i.test(String(v || '')) ? String(v) : ''; }
       var vars = ''; ['cloud', 'local', 'radio', 'core'].forEach(function (k) { if (col(c[k])) vars += '--cm-' + k + ':' + col(c[k]) + ';'; });
-      if (col(c.offline)) vars += '--cm-bad:' + col(c.offline) + ';'; if (col(c.away)) vars += '--cm-away:' + col(c.away) + ';'; if (col(c.recent)) vars += '--cm-recent:' + col(c.recent) + ';';
+      if (col(c.offline)) vars += '--cm-bad:' + col(c.offline) + ';'; if (col(c.away)) vars += '--cm-away:' + col(c.away) + ';'; if (col(c.recent)) vars += '--cm-recent:' + col(c.recent) + ';'; if (col(c.no_entities)) vars += '--cm-bare:' + col(c.no_entities) + ';';
       card.setAttribute('style', vars); card.className = cfg.animations === false ? 'still' : '';
       var w = parseFloat(L.width); w = isNaN(w) ? 2 : Math.max(0.5, Math.min(6, w));
       function dash(st) { return st === 'dashed' ? 'stroke-dasharray:' + (w * 3) + ' ' + (w * 3) + ';stroke-linecap:butt;stroke-width:' + w : st === 'dotted' ? 'stroke-dasharray:1 ' + (w * 3) + ';stroke-linecap:round;stroke-width:' + (w * 1.5) : 'stroke-dasharray:none;stroke-width:' + w; }
@@ -676,7 +684,7 @@
     _skeleton() {
       this._root = this.attachShadow({ mode: 'open' });
       this._root.innerHTML = '<style>' + CSS + '</style><style id="dyn"></style><ha-card><div class="wrap"><div class="head"><h1 id="title"></h1><div class="stats" id="stats"></div></div>' +
-        '<div class="tools"><input id="q" type="search"><select id="area"></select><button class="btn" id="offBtn" aria-pressed="false"></button><button class="btn" id="physBtn" aria-pressed="false"></button></div>' +
+        '<div class="tools"><input id="q" type="search"><select id="area"></select><select id="show"></select><button class="btn" id="physBtn" aria-pressed="false"></button></div>' +
         '<div class="main" id="main"><div class="map" id="map"><svg id="svg" viewBox="0 0 1000 700" role="img"></svg><div class="tip" id="tip"></div><div class="mini" id="mini"></div>' +
         '<div class="note" id="note" role="status"></div><div class="legend" id="legend"></div><div class="xmenu" id="xmenu"></div><div class="zoom"><button class="btn" id="zin">+</button><button class="btn" id="zout">−</button><button class="btn" id="zfit">⤢</button><button class="btn" id="zlay">◎</button><button class="btn" id="zexp">⤓</button></div></div>' +
         '<aside class="panel" id="panel"><div class="msg" id="loading"></div></aside></div></div><div class="modal" id="modal" role="dialog" aria-modal="true"></div></ha-card>';
@@ -2094,12 +2102,14 @@
       var M = { cloud: 'var(--cm-cloud)', local: 'var(--cm-local)', radio: 'var(--cm-radio)', core: 'var(--cm-core)' };
       this._M = M;
       this._$('q').placeholder = t('search');
-      this._$('offBtn').textContent = t('onlyOffline');
+      var sh = this._$('show'), shv = (this._S && this._S.show) || '';
+      sh.innerHTML = [['', 'showAll'], ['off', 'onlyOffline'], ['bare', 'onlyBare']].map(function (o) { return '<option value="' + o[0] + '">' + esc(t(o[1])) + '</option>'; }).join(''); sh.value = shv; sh.setAttribute('aria-label', t('status'));
       var pb = this._$('physBtn'); pb.textContent = t('onlyPhysical'); pb.title = t('onlyPhysicalTip'); pb.setAttribute('aria-pressed', this._physical());
       this._$('legend').innerHTML = ['cloud', 'local', 'radio'].map(function (m) { return '<span><i style="background:' + M[m] + '"></i>' + esc(t(m)) + '</span>'; }).join('') +
         '<span><i style="border:2px solid var(--cm-bad)"></i>' + esc(t('offline')) + '</span>' +
         '<span><i style="border:2px solid var(--cm-recent)"></i>' + esc(t('recent')) + '</span>' +
         '<span><i style="border:2px dashed var(--cm-away)"></i>' + esc(t('away')) + '</span>' +
+        ((this._devs || []).some(function (d) { return d.bare; }) ? '<span><i style="background:var(--cm-bare);opacity:.6"></i>' + esc(t('bare')) + '</span>' : '') +
         '<span><svg width="26" height="8"><line x1="2" y1="4" x2="24" y2="4" stroke="var(--cm-local)" style="' + this._lineCss.cable + '"/></svg>' + esc(t('cable')) + '</span>' +
         '<span><svg width="26" height="8"><line x1="2" y1="4" x2="24" y2="4" stroke="var(--cm-local)" style="' + this._lineCss.wifi + '"/></svg>' + esc(t('wifi')) + '</span>';
       this._$('zlay').title = t('layoutBtn'); this._$('zexp').title = t('exportBtn'); this._$('zexp').style.display = this._cfg.show_export === false ? 'none' : '';
@@ -2173,7 +2183,7 @@
         el('circle', { cx: d.x, cy: d.y, r: Z.dev, fill: M[d.hub.m] }, g); d.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selDev(d); });
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selDev(d); });
-        hov(g, d, d.x, d.y, function () { return [d.n, [d.off ? t('offline') : d.recent ? t('recent') + ' · ' + self._ago(d.seen) : d.remote ? t('remote') : d.away ? t('away') : '', d.a, d.hub.kind === 'hub' ? d.hub.n : (d.via || self._intName(d.p))].filter(Boolean).join(' · ')]; });
+        hov(g, d, d.x, d.y, function () { return [d.n, [d.off ? t('offline') : d.recent ? t('recent') + ' · ' + self._ago(d.seen) : d.remote ? t('remote') : d.away ? t('away') : d.bare ? t('bare') : '', d.a, d.hub.kind === 'hub' ? d.hub.n : (d.via || self._intName(d.p))].filter(Boolean).join(' · ')]; });
       });
       // core
       var gc = el('g', { 'class': 'mnode', tabindex: 0, role: 'button', 'aria-label': 'Home Assistant' }, gN); this._coreG = gc;
@@ -2301,7 +2311,7 @@
       this._$('q').addEventListener('input', function (e) { self._S.q = e.target.value.trim().toLowerCase(); self._apply(); self._list(); });
       this._$('area').onchange = function (e) { self._S.area = e.target.value; self._apply(); self._list(); };
       this._$('physBtn').onclick = function () { self._S.physical = !self._physical(); self._vb = null; self._remodel(); };
-      this._$('offBtn').onclick = function (e) { self._S.off = !self._S.off; e.target.setAttribute('aria-pressed', self._S.off); self._apply(); self._list(); };
+      this._$('show').onchange = function (e) { self._S.show = e.target.value; self._apply(); self._list(); };
     }
     _setVB() {
       var v = this._vb, svg = this._$('svg'); svg.setAttribute('viewBox', v.x + ' ' + v.y + ' ' + v.w + ' ' + v.h);
@@ -2550,7 +2560,7 @@
 
     _filters() {
       var self = this, t = this._t.bind(this), M = this._M;
-      this._S = this._S || { med: { cloud: true, local: true, radio: true }, q: '', area: '', off: false, sel: null, sort: this._cfg.sort === 'name' ? 'name' : 'area' };
+      this._S = this._S || { med: { cloud: true, local: true, radio: true }, q: '', area: '', show: '', sel: null, sort: this._cfg.sort === 'name' ? 'name' : 'area' };
       var stats = this._$('stats'); stats.innerHTML = '';
       ['cloud', 'local', 'radio'].forEach(function (m) {
         var n = self._devs.filter(function (d) { return d.hub.m === m; }).length; if (!n) return;
@@ -2567,7 +2577,7 @@
     _marks() {
       if (!this._devs || !this._S) return;
       var t = this._t.bind(this);
-      this._devs.forEach(function (d) { if (d.g) { d.g.classList.toggle('offline', !!d.off); d.g.classList.toggle('recent', !!d.recent); d.g.classList.toggle('away', !!d.away && !d.recent); } });
+      this._devs.forEach(function (d) { if (d.g) { d.g.classList.toggle('offline', !!d.off); d.g.classList.toggle('recent', !!d.recent); d.g.classList.toggle('away', !!d.away && !d.recent); d.g.classList.toggle('bare', !!d.bare && !d.off && !d.recent && !d.away); } });
       (this._hubs || []).forEach(function (h) { if (h.g) h.g.classList.toggle('offline', !!h.off); });
       (this._hubs || []).forEach(function (h) { if (!h.badge) return; var o = h.dv.filter(function (d) { return d.off; }).length; h.badge.textContent = o; h.badge.parentNode.style.display = o ? '' : 'none'; });
       var ob = this._$('offStat'), n = this._devs.filter(function (d) { return d.off; }).length;
@@ -2575,16 +2585,16 @@
       this._apply();
       if (!this._S.sel) this._list();
     }
-    _vis(d) { var S = this._S; return S.med[d.hub.m] && (!S.off || d.off || d.recent) && (!S.area || d.a === S.area) && (!S.q || (d.n + ' ' + d.mo + ' ' + d.a + ' ' + d.hub.n + ' ' + (d.via || '')).toLowerCase().indexOf(S.q) >= 0); }
+    _vis(d) { var S = this._S; return S.med[d.hub.m] && (S.show === 'off' ? (d.off || d.recent) : S.show === 'bare' ? !!d.bare : true) && (!S.area || d.a === S.area) && (!S.q || (d.n + ' ' + d.mo + ' ' + d.a + ' ' + d.hub.n + ' ' + (d.via || '')).toLowerCase().indexOf(S.q) >= 0); }
     _apply() {
-      var self = this, S = this._S, f = S.q || S.area || S.off;
+      var self = this, S = this._S, f = S.q || S.area || S.show;
       this._devs.forEach(function (d) { d.vis = self._vis(d); if (d.g) { d.g.classList.toggle('dim', !d.vis); d.spoke.classList.toggle('dim', !d.vis); } });
       this._hubs.forEach(function (h) { if (!h.g) return; var on = S.med[h.m] && (!f || h.dv.some(function (d) { return d.vis; })); h.g.classList.toggle('dim', !on); h.edge.classList.toggle('dim', !on); });
     }
 
     _item(d) {
       var M = this._M, t = this._t.bind(this);
-      return '<button class="item' + (this._S.sel === d ? ' sel' : '') + '" data-id="' + esc(d.id) + '"><i style="' + (d.off ? 'border:2px solid var(--cm-bad)' : d.recent ? 'border:2px solid var(--cm-recent)' : d.away ? 'border:2px dashed var(--cm-away)' : 'background:' + M[d.hub.m]) + '"></i><span class="nm">' + esc(d.n) + '</span><small class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away)' : '') + '">' + (d.off ? esc(t('offline')) : d.recent ? esc(this._ago(d.seen)) : d.remote ? esc(t('remote')) : d.away ? esc(t('away')) : esc(d.hub.kind === 'other' ? (d.via || d.a || d.hub.n) : (d.a || d.hub.n))) + '</small></button>';
+      return '<button class="item' + (this._S.sel === d ? ' sel' : '') + '" data-id="' + esc(d.id) + '"><i style="' + (d.off ? 'border:2px solid var(--cm-bad)' : d.recent ? 'border:2px solid var(--cm-recent)' : d.away ? 'border:2px dashed var(--cm-away)' : d.bare ? 'background:var(--cm-bare);opacity:.6' : 'background:' + M[d.hub.m]) + '"></i><span class="nm">' + esc(d.n) + '</span><small class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away)' : '') + '">' + (d.off ? esc(t('offline')) : d.recent ? esc(this._ago(d.seen)) : d.remote ? esc(t('remote')) : d.away ? esc(t('away')) : esc(d.hub.kind === 'other' ? (d.via || d.a || d.hub.n) : (d.a || d.hub.n))) + '</small></button>';
     }
     _bind() {
       var self = this, p = this._$('panel');
@@ -2670,7 +2680,7 @@
       var S = this._S, t = this._t.bind(this), self = this;
       if (S.sel && S.sel.dv) return this._selHub(S.sel, true);
       if (S.sel) return;
-      var f = S.q || S.area || S.off, vis = this._devs.filter(function (d) { return d.vis; });
+      var f = S.q || S.area || S.show, vis = this._devs.filter(function (d) { return d.vis; });
       var html = '<div class="eyebrow" style="color:var(--cm-core)">' + esc(t('summary')) + '</div><h2>' + (f ? vis.length + ' ' + esc(t('found')) : this._devs.length + ' ' + esc(t('devices'))) + '</h2>';
       if (f) html += '<div class="list">' + (vis.map(function (d) { return self._item(d); }).join('') || '<p>' + esc(t('none')) + '</p>') + '</div>';
       else {
@@ -2685,7 +2695,7 @@
     _selHub(h, keep) {
       if (!h) return; var t = this._t.bind(this), self = this, S = this._S;
       if (!keep) S.sel = h; this._clear(); h.g.classList.add('sel'); this._hot(h);
-      var f = S.q || S.area || S.off, list = h.dv.filter(function (d) { return !f || d.vis; }).sort(function (a, b) { return (S.sort === 'name' ? 0 : (a.a || '~').localeCompare(b.a || '~')) || a.n.localeCompare(b.n); }), off = h.dv.filter(function (d) { return d.off; }).length;
+      var f = S.q || S.area || S.show, list = h.dv.filter(function (d) { return !f || d.vis; }).sort(function (a, b) { return (S.sort === 'name' ? 0 : (a.a || '~').localeCompare(b.a || '~')) || a.n.localeCompare(b.n); }), off = h.dv.filter(function (d) { return d.off; }).length;
       var desc = h.thread ? t('threadDesc') : h.rx ? t('btHeard') : h.bt ? t('btDesc') : h.kind === 'hub' ? t('hubDesc') : h.kind === 'other' ? t('otherDesc') : t('intDesc');
       var route = h.own && !h.plain ? [t('device'), t('integration'), h.n, 'Home Assistant'] : h.plain ? [t('device'), h.n, 'Home Assistant'] : h.m === 'radio' ? [t('device'), this._coord || t('radio'), h.n, 'Home Assistant'] :
         h.kind === 'hub' ? [t('device'), h.n, h.sub, this._mname(h.m), 'Home Assistant'] : [t('device'), h.kind === 'other' ? t('integration') : h.n, this._mname(h.m), 'Home Assistant'];
@@ -2789,6 +2799,7 @@
       away: 'Off the network',
       byArea: 'By area',
       byName: 'By name',
+      cbare: 'No entities',
       cloud: 'Internet',
       colors: 'Colours',
       compact: 'Compact: one bubble per hub',
@@ -2852,6 +2863,7 @@
       away: 'Fuera de la red',
       byArea: 'Por pieza',
       byName: 'Por nombre',
+      cbare: 'Sin entidades',
       cloud: 'Internet',
       colors: 'Colores',
       compact: 'Compacto: una burbuja por hub',
@@ -2916,7 +2928,7 @@
     { p: 'layout', k: 'select', o: [['detailed', 'detailed'], ['compact', 'compact']], d: 'detailed' }, { p: 'group_by_area', k: 'bool', d: false }, { p: 'sort', k: 'select', o: [['area', 'byArea'], ['name', 'byName']], d: 'area' }, { p: 'show_panel', k: 'bool', d: true }, { p: 'animations', k: 'bool', d: true },
     { p: 'minimap', k: 'bool', d: true }, { p: 'show_export', k: 'bool', d: true }, { p: 'device_labels', k: 'bool', d: true },
     { sec: 'colors' }, { p: 'colors.cloud', k: 'color', d: '#7c5cff', l: 'cloud' }, { p: 'colors.local', k: 'color', d: '#0b8a77', l: 'local' }, { p: 'colors.radio', k: 'color', d: '#b86e00', l: 'radio' },
-    { p: 'colors.core', k: 'color', d: '#03a9f4', l: 'core' }, { p: 'colors.offline', k: 'color', d: '#db4437', l: 'offline' }, { p: 'colors.away', k: 'color', d: '#a86400', l: 'away' }, { p: 'colors.recent', k: 'color', d: '#d9a900', l: 'crecent' },
+    { p: 'colors.core', k: 'color', d: '#03a9f4', l: 'core' }, { p: 'colors.offline', k: 'color', d: '#db4437', l: 'offline' }, { p: 'colors.away', k: 'color', d: '#a86400', l: 'away' }, { p: 'colors.recent', k: 'color', d: '#d9a900', l: 'crecent' }, { p: 'colors.no_entities', k: 'color', d: '#9e9e9e', l: 'cbare' },
     { sec: 'lines' }, { p: 'lines.cloud', k: 'select', o: LINE, d: 'dashed', l: 'lcloud' }, { p: 'lines.local', k: 'select', o: LINE, d: 'solid', l: 'llocal' },
     { p: 'lines.wifi', k: 'select', o: LINE, d: 'dotted', l: 'lwifi' }, { p: 'lines.radio', k: 'select', o: LINE, d: 'solid', l: 'lradio' }, { p: 'lines.width', k: 'range', min: 0.5, max: 6, step: 0.5, d: 2, l: 'width' },
     { sec: 'sizes' }, { p: 'sizes.core', k: 'range', min: 20, max: 80, step: 1, d: 56, l: 'score' }, { p: 'sizes.network', k: 'range', min: 16, max: 40, step: 1, d: 28, l: 'snetwork' },

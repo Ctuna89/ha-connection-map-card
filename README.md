@@ -82,7 +82,7 @@ Each dot is a device. Lines show the path its data takes to Home Assistant: a so
 **Filters**
 
 - **Search** by name, model, area or integration, or pick an **area**.
-- **Offline only** shows what is not answering.
+- The status list next to the search narrows the map to **Offline only** (what is not answering) or **No entities only** (devices that Home Assistant knows but that have no enabled entities, drawn in grey).
 - **Physical only** hides accounts, online services and loose sensors, and leaves the things you can touch.
 - The coloured counters at the top switch internet, local network and local radio on and off.
 
@@ -124,7 +124,7 @@ Option names are **stable from 1.0**: they will not be renamed or removed withou
 | `layout` | string | `detailed` | `detailed` draws every device as a dot; `compact` draws one bubble per hub or integration. The ◎ button switches without changing the configuration. |
 | `group_by_area` | boolean | `false` | Inside each hub, hang the devices of an area with more than one device from a small area node (hub → area → devices). Clicking the node filters the map to that area. A Zigbee mesh keeps its own shape instead. |
 | `sort` | string | `area` | Order of the device lists: `area` (by area, then name) or `name`. The list of a hub has a button to switch. |
-| `colors` | map | | Override colours: `cloud`, `local`, `radio`, `core` (Home Assistant), `offline`, `recent`, `away`. |
+| `colors` | map | | Override colours: `cloud`, `local`, `radio`, `core` (Home Assistant), `offline`, `recent`, `away`, `no_entities`. |
 | `lines` | map | | Line style per kind of link, each `solid`, `dashed` or `dotted`: `cloud` (default `dashed`), `local` (cable, `solid`), `wifi` (`dotted`), `radio` (`solid`). `width` sets the thickness (default `2`). |
 | `sizes` | map | | Radius of each level of bubbles: `core` (Home Assistant, default `56`), `network` (router, coordinator, internet: `28`), `hub` (hubs and integrations: `22`), `device` (`6.2`). Below 48 the centre only says "HA". |
 | `show_panel` | boolean | `true` | Show the side panel with the summary and details. |
