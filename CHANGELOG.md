@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+Both by [@HaniKazmi](https://github.com/HaniKazmi) ([#18](https://github.com/Ctuna89/ha-connection-map-card/pull/18), [#20](https://github.com/Ctuna89/ha-connection-map-card/pull/20)). Thank you.
+
+### Added
+
+- `height`: the height of the map, in pixels or as a CSS length (`520`, `'70vh'`). Also in the visual editor.
+- "Refresh mesh routes" in the ⤓ menu, when there is a Zigbee or Thread mesh.
+
+### Changed
+
+- The Zigbee and Thread mesh is kept in the browser, so repeaters are in place on the first draw. Zigbee2MQTT is asked for a new network scan every 4 hours at most (it used to be on every load, and takes 5 to 45 seconds over the air), Thread every hour, and right away when a device that is not in the saved mesh shows up.
+- Sections views: the card now has a height of 14 rows by default and fills it, and the height control of the layout tab works (it was locked to "fit height"). **If the card is in a sections view, its height may change after updating**: set the rows you want in the layout tab.
+- Changing an option that needs no new data (such as `show_mesh` or `physical_only`) redraws the map without loading everything again.
+
 ## 0.8.5 — 2026-11-17
 
 ### Added
