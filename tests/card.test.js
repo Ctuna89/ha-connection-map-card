@@ -744,6 +744,41 @@ test('devices with no entities are grey, and the status list shows all, offline 
   await page.close();
 });
 
+test('devices disabled in Home Assistant: hidden, shown by the "Disabled only" choice, or always with show_disabled', async () => {
+  const page = await H.newPage(browser);
+  const mount = (config) => page.evaluate(async (config) => {
+    const devices = {}, entities = {}, states = {};
+    const dev = (id, name, dom, n, disabled) => { devices[id] = { id, name, via_device_id: null, connections: [], identifiers: [[dom, id]], disabled_by: disabled ? 'user' : null, area_id: null };
+      for (let k = 0; k < n; k++) { const e = 'sensor.' + id + '_' + k; entities[e] = { entity_id: e, device_id: id, platform: dom }; states[e] = { entity_id: e, state: 'on', attributes: {} }; } };
+    dev('a', 'Plug A', 'tuya', 2); dev('b', 'Plug B', 'tuya', 2); dev('c', 'Plug C', 'tuya', 2);
+    dev('x', 'Anmaice', 'tuya', 0, true); dev('y', 'Old lamp', 'tuya', 0, true); dev('gw', 'Old AP', 'unifi', 0, true);
+    const man = [{ domain: 'tuya', name: 'Tuya', iot_class: 'cloud_push' }, { domain: 'unifi', name: 'UniFi', iot_class: 'local_polling' }];
+    document.getElementById('host').innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig(Object.assign({ animations: false, devices_without_entities: false }, config)); document.getElementById('host').appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} }, callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((r) => setTimeout(r, 25));
+    const R = c.shadowRoot;
+    const snap = () => ({ drawn: c._devs.map((d) => d.n).sort(), shown: c._devs.filter((d) => d.vis).map((d) => d.n).sort(), dashed: c._devs.filter((d) => d.g && d.g.classList.contains('disabled')).map((d) => d.n).sort(),
+      options: [...R.getElementById('show').options].map((o) => o.value), value: R.getElementById('show').value, legend: R.getElementById('legend').textContent.includes('Disabled'), routers: c._routers.length });
+    const pick = (v) => { const sel = R.getElementById('show'); sel.value = v; sel.dispatchEvent(new Event('change')); return snap(); };
+    return { first: snap(), dis: pick('dis'), back: pick('') };
+  }, config);
+  let r = await mount({});
+  assert.deepEqual(r.first.drawn, ['Plug A', 'Plug B', 'Plug C'], 'hidden by default');
+  assert.deepEqual(r.first.options, ['', 'off', 'bare', 'dis'], 'the choice is offered because there are disabled devices');
+  assert.deepEqual(r.dis.shown, ['Anmaice', 'Old lamp'], 'only the disabled ones');
+  assert.deepEqual(r.dis.dashed, ['Anmaice', 'Old lamp']);
+  assert.equal(r.dis.value, 'dis'); assert.ok(r.dis.legend);
+  assert.equal(r.dis.routers, 0, 'a disabled access point is not a network node');
+  assert.deepEqual(r.back.drawn, ['Plug A', 'Plug B', 'Plug C'], 'and they leave the map again');
+  assert.deepEqual(await H.linkProblems(page), []);
+  r = await mount({ show_disabled: true });
+  assert.deepEqual(r.first.drawn, ['Anmaice', 'Old lamp', 'Plug A', 'Plug B', 'Plug C'], 'show_disabled keeps them on the map');
+  assert.deepEqual(r.first.dashed, ['Anmaice', 'Old lamp']);
+  assert.deepEqual(await H.linkProblems(page), []); assert.deepEqual(await H.labelProblems(page), []);
+  await page.close();
+});
+
 test('every language has the same texts as English', async () => {
   const page = await H.newPage(browser);
   const r = await page.evaluate(() => window.__connectionMapCardTexts());

@@ -51,6 +51,8 @@
       diagCopy: 'Copy',
       diagHint: 'It has no names, addresses or entity IDs: only counts and how each group was classified. Paste it in a GitHub issue.',
       diagTitle: 'Diagnostics',
+      disabled: 'Disabled',
+      disabledLong: 'Disabled in Home Assistant',
       disk: 'Disk',
       dupDiff: 'No, they are different',
       dupGroup: 'Group',
@@ -113,6 +115,7 @@
       offlineNow: 'Offline now',
       online: 'Online',
       onlyBare: 'No entities only',
+      onlyDisabled: 'Disabled only',
       onlyOffline: 'Offline only',
       onlyPhysical: 'Physical only',
       onlyPhysicalTip: 'Hide accounts, online services and loose sensors: only things you can touch',
@@ -204,6 +207,8 @@
       diagCopy: 'Copiar',
       diagHint: 'No lleva nombres, direcciones ni IDs de entidades: solo cantidades y cómo se clasificó cada grupo. Pégalo en un issue de GitHub.',
       diagTitle: 'Diagnóstico',
+      disabled: 'Desactivado',
+      disabledLong: 'Desactivado en Home Assistant',
       disk: 'Disco',
       dupDiff: 'No, son distintos',
       dupGroup: 'Grupo',
@@ -266,6 +271,7 @@
       offlineNow: 'Sin conexión ahora',
       online: 'Conectado',
       onlyBare: 'Solo sin entidades',
+      onlyDisabled: 'Solo desactivados',
       onlyOffline: 'Solo sin conexión',
       onlyPhysical: 'Solo físicos',
       onlyPhysicalTip: 'Oculta cuentas, servicios en línea y sensores sueltos: solo cosas que se pueden tocar',
@@ -345,7 +351,7 @@
   // Every option the card takes. Names are stable from 1.0; the replaced ones keep working.
   // Router integrations that register every client of the network as a device of its own, linked to the gateway.
   var CLIENTS_AS_DEVICES = ['netgear', 'sagemcom_fast'];
-  var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'sort', 'group_by_area', 'group_small', 'separate_services', 'physical_only', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'minimap', 'device_labels', 'animations',
+  var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'sort', 'group_by_area', 'group_small', 'separate_services', 'physical_only', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'show_disabled', 'minimap', 'device_labels', 'animations',
     'colors', 'lines', 'sizes', 'names', 'overrides', 'exclude_integrations', 'exclude_devices', 'computers', 'merge_duplicates', 'entities_without_device', 'devices_without_entities', 'recent_hours',
     'main_router', 'router_name', 'coordinator_name', 'z2m_base_topic', 'grid_options', 'layout_options', 'view_layout', 'visibility', 'card_mod'];
   var DEPRECATED = { core_size: 'sizes.core', mqtt_entities: 'entities_without_device' };
@@ -598,6 +604,7 @@
     '.dev.recent circle:last-of-type{fill:var(--cm-bg)!important;stroke:var(--cm-recent);stroke-width:2.2}',
     '.dev.away circle:last-of-type{fill:var(--cm-bg)!important;stroke:var(--cm-away);stroke-width:2.2;stroke-dasharray:2.5 2}',
     // a device with no entities (all disabled, or none created) says nothing about itself: grey, neither online nor offline
+    '.dev.disabled circle:last-of-type{fill:var(--cm-bg)!important;stroke:var(--cm-bare);stroke-width:2;stroke-dasharray:1.5 2}',
     '.dev.bare circle:last-of-type{fill:var(--cm-bare)!important;stroke:var(--cm-bare);fill-opacity:.35}',
     '.still .flow{display:none}.still *{animation:none!important;transition:none!important}',
     '@media (prefers-reduced-motion:reduce){.flow{display:none}.enter,.spoke.meshl,.dev circle,.disc,.dev,.hub,.mnode,.edge,.spoke,.elbl{animation:none!important;transition:none!important}}',
@@ -1546,7 +1553,7 @@
         if (!x.ents.length) x.ents = es.map(function (e) { return e.entity_id; });
         var ie = (d.identifiers || []).map(function (i) { return String(i[1] || ''); }).filter(function (s) { return s.indexOf('zigbee2mqtt_0x') === 0; })[0];
         x.ieee = ie ? ie.slice(12) : null;
-        x.trk = x.ieee ? null : findTrk(d); x.trkSure = !!x.trk && findTrk.sure; x.also = []; x.bare = !es.length;
+        x.trk = x.ieee ? null : findTrk(d); x.trkSure = !!x.trk && findTrk.sure; x.also = []; x.bare = !es.length; x.dis = !!d.disabled_by;
         x.svc = d.entry_type === 'service' || ['service', 'virtual', 'system', 'entity', 'helper'].indexOf((self._man[p] || {}).integration_type) >= 0;
         // the companion app reports how the phone is connected (Android: network_type, iOS: connection_type)
         if (p === 'mobile_app') x.net = (es.filter(function (e) { return /^sensor\..*_(network|connection)_type$/.test(e.entity_id); })[0] || {}).entity_id || null;
@@ -1580,17 +1587,24 @@
         return !!(dk.model || ek.length);
       });
       var skipped = this._skipped = [];
+      this._nDis = 0; var incDis = !!cfg.show_disabled || !!(this._S && this._S.show === 'dis');
       var one = function (id) {
         var d = devices[id];
-        if (d.disabled_by || cfg.exclude_devices.indexOf(id) >= 0) return;
+        if (cfg.exclude_devices.indexOf(id) >= 0) return;
         if (d.entry_type === 'service' && d.via_device_id) return; // virtual rooms/zones/groups exposed by a hub
-        var es = byDev[id] || [], p = primary(es), bare = false;
+        // A device switched off in Home Assistant ("Enable device") is still set up there: it is only drawn on request
+        var dis = !!d.disabled_by, es = dis ? [] : (byDev[id] || []), p = primary(es), bare = false;
+        if (dis) {
+          var dp = platOf(id);
+          if (!dp || d.entry_type === 'service' || ROUTER_INTS.indexOf(dp) >= 0 || COORD_INTS.indexOf(dp) >= 0 || SKIP.indexOf(dp) >= 0 || cfg.exclude_integrations.indexOf(dp) >= 0) return;
+          self._nDis++; if (!incDis) return;
+        }
         if (!p) {
           // No entities (the integration creates none for it, or they are all disabled): a remote that only sends events,
           // a lock the integration cannot control. It is still a device of that integration.
           p = platOf(id); bare = true;
           if (es.length || !p) return;
-          if (ROUTER_INTS.indexOf(p) < 0 && (cfg.devices_without_entities === false || d.entry_type === 'service' || p === 'bluetooth')) return; // a gateway without entities is still the gateway
+          if (!dis && ROUTER_INTS.indexOf(p) < 0 && (cfg.devices_without_entities === false || d.entry_type === 'service' || p === 'bluetooth')) return; // a gateway without entities is still the gateway
         }
         var nm = (d.name_by_user || d.name || id).trim();
         if (COORD_INTS.indexOf(p) >= 0) { coords.push(nm.replace(/\s*\([^)]*\)\s*$/, '').replace(/^Home Assistant\s+/, '')); return; }
@@ -2103,13 +2117,14 @@
       this._M = M;
       this._$('q').placeholder = t('search');
       var sh = this._$('show'), shv = (this._S && this._S.show) || '';
-      sh.innerHTML = [['', 'showAll'], ['off', 'onlyOffline'], ['bare', 'onlyBare']].map(function (o) { return '<option value="' + o[0] + '">' + esc(t(o[1])) + '</option>'; }).join(''); sh.value = shv; sh.setAttribute('aria-label', t('status'));
+      sh.innerHTML = [['', 'showAll'], ['off', 'onlyOffline'], ['bare', 'onlyBare']].concat(this._nDis ? [['dis', 'onlyDisabled']] : []).map(function (o) { return '<option value="' + o[0] + '">' + esc(t(o[1])) + '</option>'; }).join(''); sh.value = shv; sh.setAttribute('aria-label', t('status'));
       var pb = this._$('physBtn'); pb.textContent = t('onlyPhysical'); pb.title = t('onlyPhysicalTip'); pb.setAttribute('aria-pressed', this._physical());
       this._$('legend').innerHTML = ['cloud', 'local', 'radio'].map(function (m) { return '<span><i style="background:' + M[m] + '"></i>' + esc(t(m)) + '</span>'; }).join('') +
         '<span><i style="border:2px solid var(--cm-bad)"></i>' + esc(t('offline')) + '</span>' +
         '<span><i style="border:2px solid var(--cm-recent)"></i>' + esc(t('recent')) + '</span>' +
         '<span><i style="border:2px dashed var(--cm-away)"></i>' + esc(t('away')) + '</span>' +
-        ((this._devs || []).some(function (d) { return d.bare; }) ? '<span><i style="background:var(--cm-bare);opacity:.6"></i>' + esc(t('bare')) + '</span>' : '') +
+        ((this._devs || []).some(function (d) { return d.bare && !d.dis; }) ? '<span><i style="background:var(--cm-bare);opacity:.6"></i>' + esc(t('bare')) + '</span>' : '') +
+        ((this._devs || []).some(function (d) { return d.dis; }) ? '<span><i style="border:2px dotted var(--cm-bare)"></i>' + esc(t('disabled')) + '</span>' : '') +
         '<span><svg width="26" height="8"><line x1="2" y1="4" x2="24" y2="4" stroke="var(--cm-local)" style="' + this._lineCss.cable + '"/></svg>' + esc(t('cable')) + '</span>' +
         '<span><svg width="26" height="8"><line x1="2" y1="4" x2="24" y2="4" stroke="var(--cm-local)" style="' + this._lineCss.wifi + '"/></svg>' + esc(t('wifi')) + '</span>';
       this._$('zlay').title = t('layoutBtn'); this._$('zexp').title = t('exportBtn'); this._$('zexp').style.display = this._cfg.show_export === false ? 'none' : '';
@@ -2183,7 +2198,7 @@
         el('circle', { cx: d.x, cy: d.y, r: Z.dev, fill: M[d.hub.m] }, g); d.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selDev(d); });
         g.addEventListener('keydown', function (e) { if (e.key === 'Enter') self._selDev(d); });
-        hov(g, d, d.x, d.y, function () { return [d.n, [d.off ? t('offline') : d.recent ? t('recent') + ' · ' + self._ago(d.seen) : d.remote ? t('remote') : d.away ? t('away') : d.bare ? t('bare') : '', d.a, d.hub.kind === 'hub' ? d.hub.n : (d.via || self._intName(d.p))].filter(Boolean).join(' · ')]; });
+        hov(g, d, d.x, d.y, function () { return [d.n, [d.off ? t('offline') : d.recent ? t('recent') + ' · ' + self._ago(d.seen) : d.remote ? t('remote') : d.away ? t('away') : d.dis ? t('disabled') : d.bare ? t('bare') : '', d.a, d.hub.kind === 'hub' ? d.hub.n : (d.via || self._intName(d.p))].filter(Boolean).join(' · ')]; });
       });
       // core
       var gc = el('g', { 'class': 'mnode', tabindex: 0, role: 'button', 'aria-label': 'Home Assistant' }, gN); this._coreG = gc;
@@ -2311,7 +2326,12 @@
       this._$('q').addEventListener('input', function (e) { self._S.q = e.target.value.trim().toLowerCase(); self._apply(); self._list(); });
       this._$('area').onchange = function (e) { self._S.area = e.target.value; self._apply(); self._list(); };
       this._$('physBtn').onclick = function () { self._S.physical = !self._physical(); self._vb = null; self._remodel(); };
-      this._$('show').onchange = function (e) { self._S.show = e.target.value; self._apply(); self._list(); };
+      this._$('show').onchange = function (e) {
+        var was = self._S.show; self._S.show = e.target.value;
+        // disabled devices are only part of the map while they are asked for, unless show_disabled keeps them
+        if ((was === 'dis') !== (self._S.show === 'dis') && !self._cfg.show_disabled) { self._vb = null; self._remodel(); }
+        self._apply(); self._list();
+      };
     }
     _setVB() {
       var v = this._vb, svg = this._$('svg'); svg.setAttribute('viewBox', v.x + ' ' + v.y + ' ' + v.w + ' ' + v.h);
@@ -2577,7 +2597,7 @@
     _marks() {
       if (!this._devs || !this._S) return;
       var t = this._t.bind(this);
-      this._devs.forEach(function (d) { if (d.g) { d.g.classList.toggle('offline', !!d.off); d.g.classList.toggle('recent', !!d.recent); d.g.classList.toggle('away', !!d.away && !d.recent); d.g.classList.toggle('bare', !!d.bare && !d.off && !d.recent && !d.away); } });
+      this._devs.forEach(function (d) { if (d.g) { d.g.classList.toggle('offline', !!d.off); d.g.classList.toggle('recent', !!d.recent); d.g.classList.toggle('away', !!d.away && !d.recent); d.g.classList.toggle('bare', !!d.bare && !d.dis && !d.off && !d.recent && !d.away); d.g.classList.toggle('disabled', !!d.dis); } });
       (this._hubs || []).forEach(function (h) { if (h.g) h.g.classList.toggle('offline', !!h.off); });
       (this._hubs || []).forEach(function (h) { if (!h.badge) return; var o = h.dv.filter(function (d) { return d.off; }).length; h.badge.textContent = o; h.badge.parentNode.style.display = o ? '' : 'none'; });
       var ob = this._$('offStat'), n = this._devs.filter(function (d) { return d.off; }).length;
@@ -2585,7 +2605,7 @@
       this._apply();
       if (!this._S.sel) this._list();
     }
-    _vis(d) { var S = this._S; return S.med[d.hub.m] && (S.show === 'off' ? (d.off || d.recent) : S.show === 'bare' ? !!d.bare : true) && (!S.area || d.a === S.area) && (!S.q || (d.n + ' ' + d.mo + ' ' + d.a + ' ' + d.hub.n + ' ' + (d.via || '')).toLowerCase().indexOf(S.q) >= 0); }
+    _vis(d) { var S = this._S; return S.med[d.hub.m] && (S.show === 'off' ? (d.off || d.recent) : S.show === 'bare' ? (!!d.bare && !d.dis) : S.show === 'dis' ? !!d.dis : true) && (!S.area || d.a === S.area) && (!S.q || (d.n + ' ' + d.mo + ' ' + d.a + ' ' + d.hub.n + ' ' + (d.via || '')).toLowerCase().indexOf(S.q) >= 0); }
     _apply() {
       var self = this, S = this._S, f = S.q || S.area || S.show;
       this._devs.forEach(function (d) { d.vis = self._vis(d); if (d.g) { d.g.classList.toggle('dim', !d.vis); d.spoke.classList.toggle('dim', !d.vis); } });
@@ -2594,7 +2614,7 @@
 
     _item(d) {
       var M = this._M, t = this._t.bind(this);
-      return '<button class="item' + (this._S.sel === d ? ' sel' : '') + '" data-id="' + esc(d.id) + '"><i style="' + (d.off ? 'border:2px solid var(--cm-bad)' : d.recent ? 'border:2px solid var(--cm-recent)' : d.away ? 'border:2px dashed var(--cm-away)' : d.bare ? 'background:var(--cm-bare);opacity:.6' : 'background:' + M[d.hub.m]) + '"></i><span class="nm">' + esc(d.n) + '</span><small class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away)' : '') + '">' + (d.off ? esc(t('offline')) : d.recent ? esc(this._ago(d.seen)) : d.remote ? esc(t('remote')) : d.away ? esc(t('away')) : esc(d.hub.kind === 'other' ? (d.via || d.a || d.hub.n) : (d.a || d.hub.n))) + '</small></button>';
+      return '<button class="item' + (this._S.sel === d ? ' sel' : '') + '" data-id="' + esc(d.id) + '"><i style="' + (d.off ? 'border:2px solid var(--cm-bad)' : d.recent ? 'border:2px solid var(--cm-recent)' : d.away ? 'border:2px dashed var(--cm-away)' : d.dis ? 'border:2px dotted var(--cm-bare)' : d.bare ? 'background:var(--cm-bare);opacity:.6' : 'background:' + M[d.hub.m]) + '"></i><span class="nm">' + esc(d.n) + '</span><small class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away)' : '') + '">' + (d.off ? esc(t('offline')) : d.recent ? esc(this._ago(d.seen)) : d.remote ? esc(t('remote')) : d.away ? esc(t('away')) : esc(d.hub.kind === 'other' ? (d.via || d.a || d.hub.n) : (d.a || d.hub.n))) + '</small></button>';
     }
     _bind() {
       var self = this, p = this._$('panel');
@@ -2739,7 +2759,7 @@
         '<dt>' + esc(t('integration')) + '</dt><dd>' + esc(this._intName(d.p)) + '</dd>' +
         (d.also && d.also.length ? '<dt>' + esc(t('alsoAs')) + '</dt><dd>' + esc(d.also.map(function (o) { return o.as; }).filter(function (v, i, l) { return l.indexOf(v) === i; }).join(', ')) + '</dd>' : '') +
         (d.entity ? '<dt>' + esc(t('entity')) + '</dt><dd style="word-break:break-all">' + esc(d.entity) + '</dd>' : '') +
-        '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away);font-weight:600' : '') + '">' + esc(d.bare ? t('noEntities') : d.off ? t('offline') : d.recent ? t('recentLong') + ' ' + this._ago(d.seen) : d.remote ? t('remoteLong') : d.away ? t('awayLong') : t('online')) + '</dd>' +
+        '<dt>' + esc(t('status')) + '</dt><dd class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away);font-weight:600' : '') + '">' + esc(d.dis ? t('disabledLong') : d.bare ? t('noEntities') : d.off ? t('offline') : d.recent ? t('recentLong') + ' ' + this._ago(d.seen) : d.remote ? t('remoteLong') : d.away ? t('awayLong') : t('online')) + '</dd>' +
         (d.meshParent && !d.ieee && !d.threadMesh ? '<dt>' + esc(t('parentDev')) + '</dt><dd>' + esc(d.meshParent.n) + '</dd>' : '') +
         (d.router != null && (d.ieee || d.threadRole) ? '<dt>' + esc(t('role')) + '</dt><dd>' + esc(d.threadLeader ? t('roleLeader') : d.router ? t('roleRouter') : t('roleEnd')) + '</dd>' : '') +
         (d.ieee && this._mesh ? '<dt>' + esc(t('connectedTo')) + '</dt><dd>' + esc(d.meshParent ? d.meshParent.n : (this._coord || t('coordinator'))) + '</dd>' : '') +
@@ -2844,6 +2864,7 @@
       router_name: 'Name of the local network node',
       score: 'Home Assistant',
       sdevice: 'Devices',
+      show_disabled: 'Devices disabled in Home Assistant, in grey',
       show_export: 'Button to save the map as an image',
       show_mesh: 'Zigbee and Thread mesh routes',
       show_panel: 'Side panel',
@@ -2908,6 +2929,7 @@
       router_name: 'Nombre del nodo de red local',
       score: 'Home Assistant',
       sdevice: 'Equipos',
+      show_disabled: 'Equipos desactivados en Home Assistant, en gris',
       show_export: 'Botón para guardar el mapa como imagen',
       show_mesh: 'Rutas de la malla Zigbee y Thread',
       show_panel: 'Panel lateral',
@@ -2933,7 +2955,7 @@
     { p: 'lines.wifi', k: 'select', o: LINE, d: 'dotted', l: 'lwifi' }, { p: 'lines.radio', k: 'select', o: LINE, d: 'solid', l: 'lradio' }, { p: 'lines.width', k: 'range', min: 0.5, max: 6, step: 0.5, d: 2, l: 'width' },
     { sec: 'sizes' }, { p: 'sizes.core', k: 'range', min: 20, max: 80, step: 1, d: 56, l: 'score' }, { p: 'sizes.network', k: 'range', min: 16, max: 40, step: 1, d: 28, l: 'snetwork' },
     { p: 'sizes.hub', k: 'range', min: 14, max: 34, step: 1, d: 22, l: 'shub' }, { p: 'sizes.device', k: 'range', min: 3, max: 9, step: 0.2, d: 6.2, l: 'sdevice' },
-    { sec: 'content' }, { p: 'physical_only', k: 'bool', d: false }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'separate_services', k: 'bool', d: true }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'select', o: [['ask', 'dupAsk'], ['auto', 'dupAuto'], ['off', 'dupOff']], d: 'ask' }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
+    { sec: 'content' }, { p: 'physical_only', k: 'bool', d: false }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'separate_services', k: 'bool', d: true }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_disabled', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'select', o: [['ask', 'dupAsk'], ['auto', 'dupAuto'], ['off', 'dupOff']], d: 'ask' }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
     { p: 'exclude_integrations', k: 'list' }, { p: 'computers', k: 'list' }, { p: 'main_router', k: 'text' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
     { p: 'demo', k: 'select', o: [['', 'none'], ['unifi', 'UniFi'], ['fritz', 'FRITZ!Box'], ['large', '350']], d: '' }
   ];

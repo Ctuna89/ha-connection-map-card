@@ -82,7 +82,7 @@ Each dot is a device. Lines show the path its data takes to Home Assistant: a so
 **Filters**
 
 - **Search** by name, model, area or integration, or pick an **area**.
-- The status list next to the search narrows the map to **Offline only** (what is not answering) or **No entities only** (devices that Home Assistant knows but that have no enabled entities, drawn in grey).
+- The status list next to the search narrows the map to **Offline only** (what is not answering) **No entities only** (devices that Home Assistant knows but that have no enabled entities, drawn in grey) or **Disabled only** (devices switched off with "Enable device" in Home Assistant, which are otherwise not on the map; offered when there are any).
 - **Physical only** hides accounts, online services and loose sensors, and leaves the things you can touch.
 - The coloured counters at the top switch internet, local network and local radio on and off.
 
@@ -144,6 +144,7 @@ Option names are **stable from 1.0**: they will not be renamed or removed withou
 | `entities_without_device` | boolean | `true` | Draw the entities of device integrations that give them no device, MQTT entities written by hand included. |
 | `devices_without_entities` | boolean | `true` | Draw devices that have no entities (a remote that only sends events, a lock its integration cannot control). |
 | `show_trackers` | boolean | `false` | Show devices that only have `device_tracker` entities (every phone and laptop your router reports). |
+| `show_disabled` | boolean | `false` | Keep the devices disabled in Home Assistant on the map, as grey dotted rings. Without it they only appear while "Disabled only" is chosen in the status list. |
 | `show_mesh` | boolean | `true` | Load the Zigbee network map (Zigbee2MQTT or ZHA) and Matter Thread network diagnostics to show repeaters and signal quality. |
 | `recent_hours` | number | `24` | How long a battery device that stopped answering counts as *seen recently* before it is shown as offline. `0` turns it off. The time is taken from when its entities became unavailable, so after a Home Assistant restart it counts from the restart. |
 | `exclude_integrations` | list | `[]` | Integration domains to hide, for example `[mobile_app, bambu_lab]`. |
