@@ -65,6 +65,8 @@ views:
       - type: custom:connection-map-card
 ```
 
+In a **sections** view the card takes the full width and 14 rows by default. Change the rows in the card's **Layout** tab, or set `height`.
+
 To see what the card does with hardware you don't have, add `demo: unifi`, `demo: fritz` or `demo: large` (about 350 devices).
 
 ## Using the map
@@ -82,7 +84,7 @@ Each dot is a device. Lines show the path its data takes to Home Assistant: a so
 **Filters**
 
 - **Search** by name, model, area or integration, or pick an **area**.
-- The status list next to the search narrows the map to **Offline only** (what is not answering) **No entities only** (devices that Home Assistant knows but that have no enabled entities, drawn in grey) or **Disabled only** (devices switched off with "Enable device" in Home Assistant, which are otherwise not on the map; offered when there are any).
+- The status list next to the search narrows the map to **Offline only** (what is not answering), **No entities only** (devices that Home Assistant knows but that have no enabled entities) or **Disabled only** (devices switched off with "Enable device" in Home Assistant, which are otherwise not on the map; offered when there are any).
 - **Physical only** hides accounts, online services and loose sensors, and leaves the things you can touch.
 - The coloured counters at the top switch internet, local network and local radio on and off.
 
@@ -98,10 +100,12 @@ Each dot is a device. Lines show the path its data takes to Home Assistant: a so
 | Red ring | Offline: all the entities of the device report *unavailable*. Also used for a bridge. |
 | Yellow ring | Seen recently: a battery device that went silent less than 24 hours ago is probably asleep, not gone. |
 | Dashed amber ring | Off the network: the router reports it as disconnected (powered off or sleeping). For a phone: away from home, reaching Home Assistant over the internet. |
+| Grey dot | No entities: Home Assistant knows the device, but it has no enabled entities, so its status is unknown. |
+| Grey dotted ring | Disabled in Home Assistant ("Enable device" switched off). Only drawn with "Disabled only" or `show_disabled`. |
 
 **Notices under the map**
 
-The card never leaves something out silently. A strip under the map tells you when an access point could not be drawn, when labels are hidden at the current zoom, when a device could not be read, and when two entries look like the same device.
+The card never leaves something out silently. A strip under the map tells you when an access point could not be drawn, when labels are hidden at the current zoom (this one can be turned off with `show_label_warning`), when a device could not be read, and when two entries look like the same device.
 
 **Is this one device?**
 
@@ -122,7 +126,7 @@ Option names are **stable from 1.0**: they will not be renamed or removed withou
 | `title` | string | `Connection map` | Card title. |
 | `language` | string | Home Assistant's | Force the card language: `en` or `es`. |
 | `layout` | string | `detailed` | `detailed` draws every device as a dot; `compact` draws one bubble per hub or integration. The ◎ button switches without changing the configuration. |
-| `height` | number / string | automatic | Map height in pixels (for example `520`) or CSS length (`70vh`). In a Sections view, the card also supports Home Assistant's **Layout → Height** row slider (`grid_options.rows`) alongside *Fit height*. |
+| `height` | number / string | automatic | Map height in pixels (for example `520`) or CSS length (`70vh`). In a sections view the card is 14 rows high by default and fills them; the **Layout** tab of the card changes the rows (`grid_options.rows`) or sets *Fit height*. |
 | `group_by_area` | boolean | `false` | Inside each hub, hang the devices of an area with more than one device from a small area node (hub → area → devices). Clicking the node filters the map to that area. A Zigbee mesh keeps its own shape instead. |
 | `sort` | string | `area` | Order of the device lists: `area` (by area, then name) or `name`. The list of a hub has a button to switch. |
 | `colors` | map | | Override colours: `cloud`, `local`, `radio`, `core` (Home Assistant), `offline`, `recent`, `away`, `no_entities`. |
@@ -206,13 +210,13 @@ These keep working, and the visual editor writes the new form.
 
 **Hubs.** A device is drawn behind a hub when Home Assistant links it to a parent device (`via_device`) that has at least two children or looks like a bridge. Virtual rooms, zones, Zigbee2MQTT groups and storage pools that some hubs expose are skipped. A parent that is just another device of the same integration, such as a power strip and its outlets, stays inside its integration's group with its children next to it.
 
-**Access points.** With a router integration that reports its clients, every hub and device is attached to the access point it actually uses. Hubs on the main router sit in the middle of the local sector; each access point's hubs stay together at the sides.
+**Access points.** With a router integration that reports its clients, every hub and device is attached to the access point it actually uses. Hubs on the main router sit in the middle of the local sector; each access point's hubs stay together at the sides. Network switches (UniFi, and others recognised by their model) are drawn as **SW** nodes, with the port and link speed of what hangs from them.
 
-**Mobile devices** are the phones, tablets and watches that run the companion app. At home each one is drawn on the access point it is on right now, and the map follows it when it moves. On mobile data, or away from home, its path becomes `Device → Mobile devices → Mobile data → Internet → Home Assistant`. The card cannot tell which remote access method is used (Home Assistant Cloud, a VPN, an exposed port), so it only says *Internet*.
+**Mobile devices** are the phones, tablets and watches that run the companion app. At home each one is drawn on the access point it is on right now, and the map follows it when it moves. On mobile data, or away from home, its path becomes `Device → Mobile devices → Mobile data → Internet → Home Assistant`. The card cannot tell which remote access method is used (Home Assistant Cloud, a VPN, an exposed port), so it only says *Internet*. Desktop computers that run the companion app (an iMac, a Mac mini) go to a **Computers** group instead; see `computers`.
 
-**Zigbee.** The coordinator is the radio node: a Connect ZBT / SkyConnect / Yellow radio, or the adapter Zigbee2MQTT or ZHA reports. A network coordinator (SLZB-06 and the like) is named after the device Home Assistant knows at its address. With `show_mesh`, devices behind a repeater are drawn next to it with their link quality. Zigbee and Thread mesh routes are cached in the browser so repeaters appear on the first draw, and Zigbee2MQTT's over-the-air scan (4 h) and Thread diagnostics (1 h) refresh automatically when a new device appears or on demand via **Refresh mesh routes** in the ⤓ menu.
+**Zigbee.** The coordinator is the radio node: a Connect ZBT / SkyConnect / Yellow radio, or the adapter Zigbee2MQTT or ZHA reports. A network coordinator (SLZB-06 and the like) is named after the device Home Assistant knows at its address. With `show_mesh`, devices behind a repeater are drawn next to it with their link quality. The mesh is kept in the browser, so repeaters are in place on the first draw. Zigbee2MQTT's over-the-air network scan (which takes 5 to 45 seconds) runs again every 4 hours at most and the Thread diagnostics every hour, right away when a device that is not in the saved mesh appears, or when you choose **Refresh mesh routes** in the ⤓ menu.
 
-**Thread.** Matter devices on Thread get their own group immediately from their Thread entities and dataset, without waking sleepy battery sensors. With `show_mesh`, cached Matter `ThreadNetworkDiagnostics` neighbour and route tables place sleepy sensors and multi-hop routers behind their Thread repeater with RSSI and LQI. A Connect ZBT / SkyConnect stick is drawn as the Thread border router when OpenThread Border Router is set up and no Zigbee stack uses the stick. With `thread_via_border_router: true` (or a device name/ID), Thread devices in homes with a LAN border router such as an Apple TV 4K or HomePod hang from that device on the local network instead. With ZHA and OTBR both present the card cannot tell, and keeps the stick as the Zigbee coordinator.
+**Thread.** Matter devices on Thread get their own group immediately from their Thread entities and dataset, without waking sleepy battery sensors. With `show_mesh`, cached Matter `ThreadNetworkDiagnostics` neighbour and route tables place sleepy sensors and multi-hop routers behind their Thread repeater with RSSI and LQI. A Connect ZBT / SkyConnect stick is drawn as the Thread border router when OpenThread Border Router is set up and no Zigbee stack uses the stick; with ZHA and OTBR both present the card cannot tell, and keeps the stick as the Zigbee coordinator. When Thread reaches your home through a border router on the network (an Apple TV 4K, a HomePod, a Nest Hub, an eero), set `thread_via_border_router: true` (or that device's name): the Thread devices then hang from it, on the local network.
 
 **Z-Wave.** The controller of the network (node 1: a USB stick, a Connect ZWA-2) is the hub of its nodes, linked straight to Home Assistant.
 
@@ -220,9 +224,11 @@ These keep working, and the visual editor writes the new form.
 
 **Services and devices.** An entry that its integration registers as a service (an account, an API, a weather forecast) is not a thing in the house. Services and physical devices are never folded into the same "Other …" group, and "Physical only" hides the services.
 
-**Without a device, or without entities.** Some integrations give their entities no device at all: each entity you can operate (light, switch, lock, cover, …) is a dot, and the integration's plain sensors are one dot. A device with no entities is drawn too; the card cannot know its status, so it is never shown as offline.
+**Without a device, or without entities.** Some integrations give their entities no device at all: each entity you can operate (light, switch, lock, cover, …) is a dot, and the integration's plain sensors are one dot. A device with no entities is drawn too, as a grey dot: the card cannot know its status, so it is never shown as offline. Devices disabled in Home Assistant are left out unless you ask for them ("Disabled only", or `show_disabled`); then they are grey dotted rings in their integration's group. Disabled routers, access points and coordinators are never drawn.
 
 Helpers and local system plumbing (template, group, Supervisor, Sun, Backup, HACS, Spook and similar) are ignored, while Home Assistant Cloud stays as a cloud service; helper entities attached to a physical device do not override its integration. Devices whose only entities are `update` entities are ignored as well.
+
+**Same name, different areas.** Two devices with the same name in different areas (two air conditioners called *Cooling*) are not taken for one device, and are shown as `Area · Name`.
 
 ## Router support
 
@@ -249,6 +255,7 @@ The card works for every user: it reads the device and entity registries the fro
 | Cloud or local, from each integration's `iot_class` | A built-in list of common cloud integrations is used instead. |
 | Services | Recognised only when the device registry marks the entry as a service; the integration's own type is not available. |
 | Entities without a device | Not drawn, except MQTT entities. |
+| Helpers and system integrations | Only a built-in list (template, group, Sun, Spook, …) is left out. |
 | Which Bluetooth adapter or proxy hears each device | One plain *Bluetooth* group. |
 | Which adapter Zigbee2MQTT uses, and the Zigbee / Thread mesh | The coordinator is named from the registry; no repeaters. |
 | Host details (OS, virtual machine) | Not shown. |
@@ -261,7 +268,7 @@ The layout is built on a few rules, and the tests check them on the demo install
 - **Dots never collide.** A device with children sits on a ring with its children on the next ring out, inside its own slice of the circle.
 - **A group's own link reaches its bubble through a free lane**, not over its dots.
 - **Labels never overlap** each other, a bubble, or the map's buttons. A label that does not fit is hidden until you zoom in.
-- **Nothing is left out silently.** What cannot be drawn is counted in the strip under the map.
+- **Nothing is left out silently.** What cannot be drawn is counted in the strip under the map. Only the notice about hidden labels can be turned off (`show_label_warning: false`).
 
 With a single group (for example a home with only its local network), that group's node sits at the centre and Home Assistant moves to the side, so the free space is used.
 
@@ -280,6 +287,10 @@ Common cases:
 | A cloud account under "Other cloud devices", or still there with "Physical only" | Its integration does not declare itself as a service. |
 | "Network coordinator (address)" instead of the adapter's name | Home Assistant has no device with that address in its configuration URL. Set `coordinator_name`. |
 | A device in the wrong group | Set `overrides` for its integration, and please open an issue with the integration name. |
+| The wrong router in the middle of the local network | Set `main_router` to its name or its integration. |
+| Thread devices in a plain *Thread* group although an Apple TV, HomePod or Nest Hub is your border router | Set `thread_via_border_router: true`, or its name if you have more than one. |
+| The card's height changed in a sections view after updating to 0.8.6 | The card now fills 14 rows by default. Set the rows in its **Layout** tab, or `height`. |
+| An iMac or another desktop computer under "Mobile devices" | Add its name to `computers`. |
 
 ## Translating
 
