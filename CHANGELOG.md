@@ -1,19 +1,31 @@
 # Changelog
 
-## Unreleased
+## 0.8.6 — 2026-11-18
 
-Both by [@HaniKazmi](https://github.com/HaniKazmi) ([#18](https://github.com/Ctuna89/ha-connection-map-card/pull/18), [#20](https://github.com/Ctuna89/ha-connection-map-card/pull/20)). Thank you.
+Five contributions by [@HaniKazmi](https://github.com/HaniKazmi): [#18](https://github.com/Ctuna89/ha-connection-map-card/pull/18), [#20](https://github.com/Ctuna89/ha-connection-map-card/pull/20), [#21](https://github.com/Ctuna89/ha-connection-map-card/pull/21), [#24](https://github.com/Ctuna89/ha-connection-map-card/pull/24) and [#25](https://github.com/Ctuna89/ha-connection-map-card/pull/25). Everything in this release is their work. Thank you.
 
 ### Added
 
 - `height`: the height of the map, in pixels or as a CSS length (`520`, `'70vh'`). Also in the visual editor.
 - "Refresh mesh routes" in the ⤓ menu, when there is a Zigbee or Thread mesh.
+- `thread_via_border_router` (off by default), for homes where Thread arrives through a border router on the network (Apple TV 4K, HomePod, Nest Hub, eero) and not through a stick on Home Assistant. With `true` the border router is found on its own when there is only one candidate; a device name picks it by hand. The Thread devices are then drawn behind that device, on the local network, and it is not drawn a second time as a client.
+- `show_label_warning` (on by default): set it to `false` to hide the notice about labels hidden at the current zoom. The other notices (errors, devices that could not be read, duplicates, access points not drawn) always show.
+- Devices with the same name in different areas are told apart as "Area · Name" on the map and in the lists.
 
 ### Changed
 
 - The Zigbee and Thread mesh is kept in the browser, so repeaters are in place on the first draw. Zigbee2MQTT is asked for a new network scan every 4 hours at most (it used to be on every load, and takes 5 to 45 seconds over the air), Thread every hour, and right away when a device that is not in the saved mesh shows up.
 - Sections views: the card now has a height of 14 rows by default and fills it, and the height control of the layout tab works (it was locked to "fit height"). **If the card is in a sections view, its height may change after updating**: set the rows you want in the layout tab.
 - Changing an option that needs no new data (such as `show_mesh` or `physical_only`) redraws the map without loading everything again.
+- Helper and system integrations are recognised from what Home Assistant says about them, not only from a fixed list, and are left out of the map. Home Assistant Cloud stays.
+- A device is linked to a router client by name only when the match is unique. A device that shared its name with another could be shown on the wrong access point; it now shows none unless its MAC or IP address matches.
+
+### Fixed
+
+- A physical device with helper entities attached (a template or calibration sensor on an ESPHome or Shelly device) could disappear from the map.
+- `physical_only` hid MQTT devices such as those of Zigbee2MQTT, and a Proxmox host whose guests were all hidden.
+- Zigbee2MQTT groups and Proxmox storage pools were drawn as devices.
+- Two devices with the same name in different areas were suspected of being one device.
 
 ## 0.8.5 — 2026-11-17
 
