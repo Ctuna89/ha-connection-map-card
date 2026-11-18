@@ -142,6 +142,7 @@ Option names are **stable from 1.0**: they will not be renamed or removed withou
 | `physical_only` | boolean | `false` | Leave out everything that is not a physical device: entries that integrations register as services (accounts, APIs, weather) and the plain sensors of integrations without devices. The "Physical only" button switches it. |
 | `group_small` | number | `1` | Integrations with this many devices or fewer (and no hub) are folded into an "Other …" group. Services and physical devices are never folded together, and radio integrations and mobile devices are never folded. `0` never folds. With more than 18 integrations of physical devices the card raises this to 2, and with more than 30 to 3, unless you set it yourself. |
 | `separate_services` | boolean | `true` | Fold small integrations of services (accounts, APIs, a ping or a media server) and small integrations of physical devices into separate "Other …" groups. `false` folds them into one group per side, with fewer nodes on the map. |
+| `show_bt_proxies` | boolean | `true` | Draw a separate bubble for each Bluetooth adapter or proxy that holds a connection or hears a device best. `false` folds all Bluetooth devices into one *Bluetooth* bubble while grouping connections behind each proxy inside it. |
 | `thread_via_border_router` | boolean / string | `false` | Hang Matter-over-Thread devices from their LAN Thread border router (for example an Apple TV 4K, HomePod, Nest Hub or eero) instead of a standalone *Thread* radio group. Set to `true` to detect a single border router automatically, or pass the device's name or ID in YAML. |
 | `merge_duplicates` | string | `ask` | What to do with two entries that look like the same device: `ask` (a question, remembered), `auto` (draw it once without asking) or `off` (leave both). Entries known by the same network address are merged in `ask` and `auto`. |
 | `entities_without_device` | boolean | `true` | Draw the entities of device integrations that give them no device, MQTT entities written by hand included. |
@@ -215,7 +216,7 @@ These keep working, and the visual editor writes the new form.
 
 **Z-Wave.** The controller of the network (node 1: a USB stick, a Connect ZWA-2) is the hub of its nodes, linked straight to Home Assistant.
 
-**Bluetooth.** A device registered by a Bluetooth address and no network address goes to a Bluetooth group, whatever its integration. For an admin user it is drawn behind the adapter or proxy that hears it best (for example an ESP32 running ESPHome), with its signal.
+**Bluetooth.** A device registered by a Bluetooth address and no network address goes to a Bluetooth group, whatever its integration. For an admin user it is drawn behind the adapter or proxy that holds its active GATT connection or hears it best (for example an ESP32 running ESPHome), with its signal; set `show_bt_proxies: false` to keep a single *Bluetooth* bubble.
 
 **Services and devices.** An entry that its integration registers as a service (an account, an API, a weather forecast) is not a thing in the house. Services and physical devices are never folded into the same "Other …" group, and "Physical only" hides the services.
 
