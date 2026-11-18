@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.7 — 2026-11-18
+
+Bluetooth proxies, by [@HaniKazmi](https://github.com/HaniKazmi) in [#27](https://github.com/Ctuna89/ha-connection-map-card/pull/27). Thank you again.
+
+### Added
+
+- `show_bt_proxies` (on by default). Set it to `false` to draw all Bluetooth devices in one *Bluetooth* bubble, with a small ring per proxy or adapter inside it and the devices listed under each proxy in the side panel. Also in the visual editor.
+
+### Changed
+
+- A Bluetooth device with an open connection is drawn behind the proxy that holds that connection, even when it no longer advertises or when a far proxy hears a weak stray packet from it.
+- Which proxy hears each device is kept in the browser, so the proxies are in place on the first draw instead of after a few seconds of listening.
+- An ESPHome Bluetooth proxy is named after the device it runs on, and shows that device's access point.
+
+### Documentation
+
+- The README covers everything added from 0.8.1 to 0.8.6: the grey marks for devices without entities and for disabled devices, the default height in sections views, switches, the Computers group, the mesh cache, Thread through a border router, devices with the same name in different areas, and new common cases.
+
 ## 0.8.6 — 2026-11-18
 
 Five contributions by [@HaniKazmi](https://github.com/HaniKazmi): [#18](https://github.com/Ctuna89/ha-connection-map-card/pull/18), [#20](https://github.com/Ctuna89/ha-connection-map-card/pull/20), [#21](https://github.com/Ctuna89/ha-connection-map-card/pull/21), [#24](https://github.com/Ctuna89/ha-connection-map-card/pull/24) and [#25](https://github.com/Ctuna89/ha-connection-map-card/pull/25). Everything in this release is their work. Thank you.
