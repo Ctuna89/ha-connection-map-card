@@ -1178,6 +1178,64 @@ test('Thread mesh places end devices behind their Matter router plug with RSSI a
   await page.close();
 });
 
+test('thread_via_border_router hangs Thread devices from their LAN border router without duplicating it', async () => {
+  const page = await H.newPage(browser);
+  const run = (tbrOpt) => page.evaluate(async (tbrOpt) => {
+    const devices = {}, entities = {}, states = {}, matter = {};
+    const dev = (id, name, o = {}) => {
+      devices[id] = { id, name, manufacturer: o.mf || '', model: o.mo || '', via_device_id: null, connections: o.mac ? [['mac', o.mac]] : [], identifiers: [[o.dom || 'matter', id]], disabled_by: null, area_id: null };
+    };
+    const ent = (eid, device_id, platform, state, attributes) => {
+      entities[eid] = { entity_id: eid, device_id, platform }; states[eid] = { entity_id: eid, state: state || 'on', attributes: attributes || {} };
+    };
+    dev('gw', 'UDM Gateway', { dom: 'unifi', mac: 'aa:00:00:00:00:01' }); ent('sensor.gw_a', 'gw', 'unifi'); ent('sensor.gw_b', 'gw', 'unifi');
+    dev('ap', 'AP Living', { dom: 'unifi', mac: 'aa:00:00:00:00:02' }); ent('sensor.ap_a', 'ap', 'unifi');
+    dev('atv', 'Apple TV', { dom: 'apple_tv', mf: 'Apple', mo: 'Apple TV 4K (gen 3)', mac: 'ca:e9:12:00:af:af' });
+    ent('media_player.apple_tv', 'atv', 'apple_tv'); ent('remote.apple_tv', 'atv', 'apple_tv');
+    ent('device_tracker.apple_tv', null, 'unifi', 'home', { mac: 'ca:e9:12:00:af:af', ap_mac: 'aa:00:00:00:00:02', essid: 'Home', radio: 'na' });
+    dev('th1', 'Air sensor', { dom: 'matter' }); ent('sensor.air', 'th1', 'matter');
+    dev('th2', 'Thread plug', { dom: 'matter' }); ent('switch.tplug', 'th2', 'matter');
+    matter.th1 = { network_type: 'thread', network_name: 'MyHomeThread', node_type: 'sleepy_end_device', active_fabrics: [{ vendor_name: 'Apple Home' }] };
+    matter.th2 = { network_type: 'thread', network_name: 'MyHomeThread', node_type: 'routing_end_device', active_fabrics: [{ vendor_name: 'Apple Home' }] };
+    const man = [
+      { domain: 'unifi', name: 'UniFi', iot_class: 'local_push' },
+      { domain: 'apple_tv', name: 'Apple TV', iot_class: 'local_push' },
+      { domain: 'matter', name: 'Matter', iot_class: 'local_push' }
+    ];
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false, group_small: 0, thread_via_border_router: tbrOpt }); host.appendChild(c); window.card = c;
+    c.hass = {
+      language: 'en', states, devices, entities, areas: {}, config: { version: '1' },
+      connection: { subscribeMessage: async () => () => {} },
+      callWS: async (m) => { if (m.type === 'manifest/list') return man; if (m.type === 'matter/node_diagnostics' && matter[m.device_id]) return matter[m.device_id]; throw new Error('not in test'); }
+    };
+    for (let i = 0; i < 120 && !(c._built && c._matter); i++) await new Promise((res) => setTimeout(res, 25));
+    await new Promise((res) => setTimeout(res, 40));
+    const by = (n) => c._devs.find((d) => d.n === n), h = by('Air sensor').hub;
+    return {
+      hub: [h.n, h.m, h.kind, h.sub],
+      fromAp: h.from && h.from.router && h.from.router.n,
+      atvDot: !!by('Apple TV'),
+      path: c._pathOf(by('Air sensor')).join(' > '),
+      anon: c._exportSvg(true).text
+    };
+  }, tbrOpt);
+  const off = await run(false);
+  assert.deepEqual(off.hub, ['Thread', 'radio', 'other', 'MyHomeThread']);
+  assert.equal(off.atvDot, true);
+  const on = await run(true);
+  assert.deepEqual(on.hub, ['Apple TV', 'local', 'hub', 'Thread border router · MyHomeThread']);
+  assert.equal(on.fromAp, 'AP Living');
+  assert.equal(on.atvDot, false, 'the border router is the hub itself, not drawn twice');
+  assert.equal(on.path, 'Air sensor > Apple TV (Thread) > Matter > AP Living (Wi-Fi 5 GHz) > UDM Gateway > Home Assistant');
+  assert.ok(!on.anon.includes('MyHomeThread') && !on.anon.includes('Apple TV'), 'anonymous image hides border router and Thread network names');
+  assert.deepEqual(await H.linkProblems(page), []);
+  const named = await run('Apple TV');
+  assert.equal(named.hub[0], 'Apple TV');
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
 test('UniFi / UniFi Insights: switches are SW nodes, bare and blocked clients are filtered, and cached client MACs avoid repeat calls', async () => {
   const page = await H.newPage(browser);
   const r = await page.evaluate(async () => {

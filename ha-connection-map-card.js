@@ -358,7 +358,7 @@
   var CLIENTS_AS_DEVICES = ['netgear', 'sagemcom_fast'];
   var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'height', 'sort', 'group_by_area', 'group_small', 'separate_services', 'physical_only', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'show_disabled', 'minimap', 'device_labels', 'animations',
     'colors', 'lines', 'sizes', 'names', 'overrides', 'exclude_integrations', 'exclude_devices', 'computers', 'merge_duplicates', 'entities_without_device', 'devices_without_entities', 'recent_hours',
-    'main_router', 'router_name', 'coordinator_name', 'z2m_base_topic', 'grid_options', 'layout_options', 'view_layout', 'visibility', 'card_mod'];
+    'main_router', 'router_name', 'coordinator_name', 'thread_via_border_router', 'z2m_base_topic', 'grid_options', 'layout_options', 'view_layout', 'visibility', 'card_mod'];
   var DEPRECATED = { core_size: 'sizes.core', mqtt_entities: 'entities_without_device' };
   var NS = 'http://www.w3.org/2000/svg';
 
@@ -1038,7 +1038,7 @@
           return a.device_class === 'battery' || /^battery/.test(e.translation_key || '') || /_battery(_level|_voltage|_type)?$/.test(e.entity_id || '');
         });
         if (isTh && isBat) sleepy[id] = true;
-        if (isTh) res[id] = { net: 'thread', name: (c && c.name) || dsName, type: (c && c.type) || (isBat ? 'sleepy_end_device' : ''), mac: (c && c.mac) || null, ip: (c && c.ip) || null };
+        if (isTh) res[id] = { net: 'thread', name: (c && c.name) || dsName, type: (c && c.type) || (isBat ? 'sleepy_end_device' : ''), mac: (c && c.mac) || null, ip: (c && c.ip) || null, fabs: (c && c.fabs) || [] };
         else if (c) res[id] = Object.assign({}, c);
       });
       Object.keys(res).forEach(function (id) { if (res[id].net === 'thread' && !res[id].name && thName) res[id].name = thName; });
@@ -1059,7 +1059,12 @@
             if (!r || !r.network_type) return;
             var mac = r.mac_address && /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(r.mac_address) ? low(r.mac_address) : null;
             var ip = ((r.ip_adresses || r.ip_addresses || []).filter(function (x) { return /^\d+\.\d+\.\d+\.\d+$/.test(String(x || '')); })[0]) || null;
-            res[id] = { net: r.network_type, name: r.network_name || (res[id] && res[id].name) || '', type: r.node_type || '', mac: mac, ip: ip };
+            var fabs = [];
+            (r.active_fabrics || []).forEach(function (fb) {
+              var vn = String(fb.fabric_label || fb.vendor_name || '').trim();
+              if (vn && !/home assistant|open home|keychain|^home$/i.test(vn) && fabs.indexOf(vn) < 0) fabs.push(vn);
+            });
+            res[id] = { net: r.network_type, name: r.network_name || (res[id] && res[id].name) || '', type: r.node_type || '', mac: mac, ip: ip, fabs: fabs };
           }, function (e) { if (e && e.code === 'unknown_command') dead = true; });
         }));
       }
@@ -1810,6 +1815,45 @@
         if (!hubs[key]) hubs[key] = { key: key, n: name, m: medium, kind: kind, p: p, dv: [] };
         return hubs[key];
       }
+      var tbrDev = null, hasThreadMat = false, threadFabs = [];
+      if (cfg.thread_via_border_router && self._matter && self._medium('matter') === 'local' && cfg.exclude_integrations.indexOf('matter') < 0) {
+        Object.keys(self._matter).forEach(function (mid) {
+          var md = self._matter[mid], dd = devices[mid];
+          if (md && md.net === 'thread' && dd && !dd.disabled_by && cfg.exclude_devices.indexOf(mid) < 0) {
+            hasThreadMat = true;
+            (md.fabs || []).forEach(function (fb) { if (threadFabs.indexOf(fb) < 0) threadFabs.push(fb); });
+          }
+        });
+      }
+      if (hasThreadMat) {
+        if (typeof cfg.thread_via_border_router === 'string' && cfg.thread_via_border_router.trim()) {
+          var qTbr = cfg.thread_via_border_router.trim().toLowerCase();
+          Object.keys(devices).forEach(function (k) {
+            var dd = devices[k];
+            if (tbrDev || dd.disabled_by || dd.entry_type === 'service' || cfg.exclude_devices.indexOf(k) >= 0) return;
+            var dp0 = primary(byDev[k] || []) || platOf(k);
+            if (ROUTER_INTS.indexOf(dp0) >= 0 || COORD_INTS.indexOf(dp0) >= 0) return;
+            if (k.toLowerCase() === qTbr || String(dd.name_by_user || dd.name || '').trim().toLowerCase() === qTbr) tbrDev = dd;
+          });
+        } else if (!self._otbr) {
+          var tbrCands = Object.keys(devices).map(function (k) { return devices[k]; }).filter(function (dd) {
+            if (dd.disabled_by || dd.entry_type === 'service' || cfg.exclude_devices.indexOf(dd.id) >= 0) return false;
+            var dp = primary(byDev[dd.id] || []) || platOf(dd.id), mm = (dd.manufacturer || '') + ' ' + (dd.model || '');
+            if (!dp || SKIP.indexOf(dp) >= 0 || cfg.exclude_integrations.indexOf(dp) >= 0 || ROUTER_INTS.indexOf(dp) >= 0 || COORD_INTS.indexOf(dp) >= 0 || dp === 'mobile_app') return false;
+            return (dp === 'apple_tv' && (!dd.model || /4k|homepod/i.test(dd.model))) ||
+              /homepod|apple\s*tv\s*4k|nest\s*(hub\s*(2nd|max)|wifi\s*pro)|eero\s*(6|pro|max)/i.test(mm);
+          });
+          if (tbrCands.length > 1 && threadFabs.length) {
+            var fabStr = threadFabs.join(' ');
+            var narrowed = tbrCands.filter(function (dd) {
+              var mm = (dd.manufacturer || '') + ' ' + (dd.model || '') + ' ' + (platOf(dd.id) || '');
+              return (/apple/i.test(fabStr) && /apple|homepod/i.test(mm)) || (/google|nest/i.test(fabStr) && /google|nest/i.test(mm)) || (/amazon|eero/i.test(fabStr) && /amazon|eero/i.test(mm));
+            });
+            if (narrowed.length) tbrCands = narrowed;
+          }
+          if (tbrCands.length === 1) tbrDev = tbrCands[0];
+        }
+      }
       var hasUnifiHw = Object.keys(devices).some(function (k) {
         var dk = devices[k]; if (dk.disabled_by || dk.entry_type === 'service') return false;
         var pk = platOf(k); if (pk !== 'unifi' && pk !== 'unifi_insights') return false;
@@ -1876,7 +1920,7 @@
           routers.push({ id: id, n: nm, p: p, sw: isSw2, ents: es.map(function (e) { return e.entity_id; }) }); return;
         }
         if ((children[id] || 0) > 0 && isHubDevice(d)) return; // the hub itself is drawn as a hub node
-        if (zwHub(id) === d) return; // so is a Z-Wave controller with nodes of its own
+        if (zwHub(id) === d || (tbrDev && id === tbrDev.id)) return; // so is a Z-Wave controller or LAN Thread border router
         var v = d.via_device_id ? devices[d.via_device_id] : null;
         if (v && ROUTER_INTS.indexOf(platOf(v.id)) >= 0) v = null; // "via the router" is the network, not a hub
         var zw = !v && zwHub(id); if (zw) v = zw;
@@ -1904,8 +1948,19 @@
           } else hub = hubFor('bt', t('bluetooth'), 'radio', 'other', null);
           hub.bt = hub.own = true;
         } else if (p === 'matter' && medium === 'local' && self._matter && self._matter[id] && self._matter[id].net === 'thread') {
-          hub = hubFor('thread', self._otbr || 'Thread', 'radio', 'other', null); hub.thread = hub.own = true; hub.net = self._matter[id].name || hub.net || '';
-          hub.otbr = !!self._otbr; hub.sub = hub.otbr ? t('threadBr') + (hub.net ? ' · ' + hub.net : '') : hub.net;
+          var mat = self._matter[id];
+          if (tbrDev) {
+            var tbrMed = self._medium(primary(byDev[tbrDev.id] || []) || platOf(tbrDev.id));
+            if (tbrMed === 'radio') tbrMed = 'local';
+            hub = hubFor('dev:' + tbrDev.id, (tbrDev.name_by_user || tbrDev.name || 'Thread').trim(), tbrMed, 'hub', p);
+            hub.devId = tbrDev.id; hub.thread = true; hub.net = mat.name || hub.net || '';
+            hub.sub = [t('threadBr'), hub.net].filter(Boolean).join(' · ') || self._intName(p);
+            if (!hub.trk) hub.trk = findTrk(tbrDev);
+            if (!hub.ents) { hub.mo = [tbrDev.manufacturer, tbrDev.model].filter(Boolean).join(' · '); hub.ents = (byDev[tbrDev.id] || []).filter(function (e) { return !e.hidden; }).map(function (e) { return e.entity_id; }); }
+          } else {
+            hub = hubFor('thread', self._otbr || 'Thread', 'radio', 'other', null); hub.thread = hub.own = true; hub.net = mat.name || hub.net || '';
+            hub.otbr = !!self._otbr; hub.sub = hub.otbr ? t('threadBr') + (hub.net ? ' · ' + hub.net : '') : hub.net;
+          }
         } else {
           // phones and tablets roam: each one is drawn on the access point it is on right now (see _mobSig)
           var ap = ''; if (p === 'mobile_app' && medium === 'local') { var mc = self._conn(findTrk(d)); ap = mc && mc.via && mc.home !== false ? String(mc.via) : ''; }
@@ -2523,7 +2578,7 @@
         }
         var below = Math.sin(deg(h.ac)) > -0.35;
         tlabel(g, h.x, h.y, h.outer + Z.dev + 1, below, h.n.length > 26 ? h.n.slice(0, 25) + '…' : h.n, h.kind === 'hub' || (h.own && !h.plain) ? h.sub : '', false, 2 + i / 1000, h.kind === 'hub' || h.rx ? 'Hub ' + (++anon.hub) : '');
-        if (h.thread && h.sub) g.lastChild.lastChild.setAttribute('data-anon', h.otbr ? t('threadBr') : ''); // the Thread network's name is the home's own
+        if (h.thread && h.sub) g.lastChild.lastChild.setAttribute('data-anon', h.otbr || h.devId ? t('threadBr') : ''); // the Thread network's name is the home's own
         obst.push({ x: h.x, y: h.y, r: h.outer + Z.dev + 1, hr: Z.hub + 2 });
         h.g = g;
         g.addEventListener('click', function (e) { e.stopPropagation(); self._selHub(h); });
@@ -2871,7 +2926,7 @@
       this._apply();
       if (!this._S.sel) this._list();
     }
-    _vis(d) { var S = this._S; return S.med[d.hub.m] && (S.show === 'off' ? (d.off || d.recent) : S.show === 'bare' ? (!!d.bare && !d.dis) : S.show === 'dis' ? !!d.dis : true) && (!S.area || d.a === S.area) && (!S.q || (d.n + ' ' + d.mo + ' ' + d.a + ' ' + d.hub.n + ' ' + (d.via || '')).toLowerCase().indexOf(S.q) >= 0); }
+    _vis(d) { var S = this._S; return S.med[d.hub.m] && (S.show === 'off' ? (d.off || d.recent) : S.show === 'bare' ? (!!d.bare && !d.dis) : S.show === 'dis' ? !!d.dis : true) && (!S.area || d.a === S.area) && (!S.q || (d.n + ' ' + d.mo + ' ' + d.a + ' ' + d.hub.n + ' ' + (d.hub.sub || '') + ' ' + (d.via || '')).toLowerCase().indexOf(S.q) >= 0); }
     _apply() {
       var self = this, S = this._S, f = S.q || S.area || S.show;
       this._devs.forEach(function (d) { d.vis = self._vis(d); if (d.g) { d.g.classList.toggle('dim', !d.vis); d.spoke.classList.toggle('dim', !d.vis); } });
@@ -2920,7 +2975,7 @@
       } else {
         var lp = d.meshParent, lg = 0;
         while (lp && lg++ < 6) { r.push(lp.n + (d.threadMesh ? ' (' + t('repeater') + ')' : '')); lp = lp.meshParent; }
-        if (d.hub.kind === 'hub') r.push(d.hub.n);
+        if (d.hub.kind === 'hub') r.push(d.hub.n + (d.hub.thread ? ' (Thread)' : ''));
         var c = this._conn(d.trk) || (d.hub.kind === 'hub' ? this._conn(d.hub.trk) : null);
         var how = this._ifaceText(c), hop = c && c.via ? c.via + (how ? ' (' + how + ')' : '') : null;
         if (m === 'cloud') {
@@ -2986,7 +3041,7 @@
       var f = S.q || S.area || S.show, list = h.dv.filter(function (d) { return !f || d.vis; }).sort(function (a, b) { return (S.sort === 'name' ? 0 : (a.a || '~').localeCompare(b.a || '~')) || a.n.localeCompare(b.n); }), off = h.dv.filter(function (d) { return d.off; }).length;
       var desc = h.thread ? t('threadDesc') : h.rx ? t('btHeard') : h.bt ? t('btDesc') : h.kind === 'hub' ? t('hubDesc') : h.kind === 'other' ? t('otherDesc') : t('intDesc');
       var route = h.own && !h.plain ? [t('device'), t('integration'), h.n, 'Home Assistant'] : h.plain ? [t('device'), h.n, 'Home Assistant'] : h.m === 'radio' ? [t('device'), this._coord || t('radio'), h.n, 'Home Assistant'] :
-        h.kind === 'hub' ? [t('device'), h.n, h.sub, this._mname(h.m), 'Home Assistant'] : [t('device'), h.kind === 'other' ? t('integration') : h.n, this._mname(h.m), 'Home Assistant'];
+        h.kind === 'hub' ? [t('device'), h.n, h.thread ? this._intName(h.p) : h.sub, this._mname(h.m), 'Home Assistant'] : [t('device'), h.kind === 'other' ? t('integration') : h.n, this._mname(h.m), 'Home Assistant'];
       if (h.m === 'radio' && !h.own && this._mesh) desc += ' ' + t('meshNote');
       else if (h.thread && this._threadMeshOn) desc += ' ' + t('threadMeshNote');
       this._$('panel').innerHTML = '<div class="eyebrow" style="color:' + this._M[h.m] + '">' + esc(t(h.m)) + (h.kind === 'hub' ? ' · ' + esc(t('hub')) : '') + '</div><h2>' + esc(h.n) + '</h2>' + this._route(route) + '<p>' + esc(desc) + '</p>' +
@@ -3143,6 +3198,7 @@
       snetwork: 'Network nodes (router, coordinator, internet)',
       solid: 'Solid',
       sort: 'Order of the lists',
+      thread_via_border_router: 'Branch Thread devices under their border router (e.g. Apple TV)',
       title: 'Title',
       width: 'Line width',
       yaml: 'names, overrides, exclude_devices and z2m_base_topic are edited in YAML.'
@@ -3209,6 +3265,7 @@
       snetwork: 'Nodos de red (router, coordinador, internet)',
       solid: 'Continua',
       sort: 'Orden de las listas',
+      thread_via_border_router: 'Agrupar equipos Thread bajo su border router (p. ej., Apple TV)',
       title: 'Título',
       width: 'Grosor de línea',
       yaml: 'names, overrides, exclude_devices y z2m_base_topic se editan en YAML.'
@@ -3225,7 +3282,7 @@
     { p: 'lines.wifi', k: 'select', o: LINE, d: 'dotted', l: 'lwifi' }, { p: 'lines.radio', k: 'select', o: LINE, d: 'solid', l: 'lradio' }, { p: 'lines.width', k: 'range', min: 0.5, max: 6, step: 0.5, d: 2, l: 'width' },
     { sec: 'sizes' }, { p: 'sizes.core', k: 'range', min: 20, max: 80, step: 1, d: 56, l: 'score' }, { p: 'sizes.network', k: 'range', min: 16, max: 40, step: 1, d: 28, l: 'snetwork' },
     { p: 'sizes.hub', k: 'range', min: 14, max: 34, step: 1, d: 22, l: 'shub' }, { p: 'sizes.device', k: 'range', min: 3, max: 9, step: 0.2, d: 6.2, l: 'sdevice' },
-    { sec: 'content' }, { p: 'physical_only', k: 'bool', d: false }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'separate_services', k: 'bool', d: true }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_disabled', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'select', o: [['ask', 'dupAsk'], ['auto', 'dupAuto'], ['off', 'dupOff']], d: 'ask' }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
+    { sec: 'content' }, { p: 'physical_only', k: 'bool', d: false }, { p: 'group_small', k: 'number', min: 0, max: 20, d: 1 }, { p: 'separate_services', k: 'bool', d: true }, { p: 'thread_via_border_router', k: 'bool', d: false }, { p: 'show_trackers', k: 'bool', d: false }, { p: 'show_disabled', k: 'bool', d: false }, { p: 'show_mesh', k: 'bool', d: true }, { p: 'entities_without_device', k: 'bool', d: true }, { p: 'devices_without_entities', k: 'bool', d: true }, { p: 'merge_duplicates', k: 'select', o: [['ask', 'dupAsk'], ['auto', 'dupAuto'], ['off', 'dupOff']], d: 'ask' }, { p: 'recent_hours', k: 'number', min: 0, max: 720, d: 24 },
     { p: 'exclude_integrations', k: 'list' }, { p: 'computers', k: 'list' }, { p: 'main_router', k: 'text' }, { p: 'router_name', k: 'text' }, { p: 'coordinator_name', k: 'text' },
     { p: 'demo', k: 'select', o: [['', 'none'], ['unifi', 'UniFi'], ['fritz', 'FRITZ!Box'], ['large', '350']], d: '' }
   ];
