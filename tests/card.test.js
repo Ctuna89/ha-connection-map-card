@@ -734,6 +734,94 @@ test('physical_only: accounts, services and loose sensors are left out, and the 
   await page.close();
 });
 
+test('helper entities do not hide a device, MQTT and Proxmox hosts survive physical_only, and room-scoped names stay distinct', async () => {
+  const page = await H.newPage(browser);
+  const run = (phys) => page.evaluate(async (phys) => {
+    const devices = {}, entities = {}, states = {}, areas = { a: { area_id: 'a', name: 'Bedroom' }, b: { area_id: 'b', name: 'Study' } };
+    const dev = (id, name, o = {}) => {
+      devices[id] = { id, name, manufacturer: o.mf || '', model: o.mo || '', entry_type: o.service ? 'service' : null,
+        via_device_id: o.via || null, connections: o.conns || [], identifiers: [[o.dom || 'esphome', id]], config_entries: o.ce || [], disabled_by: null, area_id: o.area || null };
+    };
+    const ent = (eid, device_id, platform) => {
+      entities[eid] = { entity_id: eid, device_id, platform }; states[eid] = { entity_id: eid, state: 'on', attributes: {} };
+    };
+    // ESPHome device with name_by_user === name and more helper/template sensors attached than its own sensor: still an ESPHome device and still matches its tracker by name
+    dev('gw', 'wM-Bus Gateway', { dom: 'esphome' }); devices.gw.name_by_user = 'wM-Bus Gateway';
+    dev('rt', 'UDM Gateway', { dom: 'unifi', conns: [['mac', 'aa:00:00:00:00:01']] }); ent('sensor.rt_a', 'rt', 'unifi'); ent('sensor.rt_b', 'rt', 'unifi');
+    ent('device_tracker.wm_bus_gateway', null, 'unifi'); states['device_tracker.wm_bus_gateway'].state = 'home'; states['device_tracker.wm_bus_gateway'].attributes = { ip: '10.0.0.42' };
+    ent('device_tracker.fake_ver', null, 'unifi'); states['device_tracker.fake_ver'].state = 'home'; states['device_tracker.fake_ver'].attributes = { ip: '1.2.3.4' };
+    ent('device_tracker.lan_cam', null, 'unifi'); states['device_tracker.lan_cam'].state = 'home'; states['device_tracker.lan_cam'].attributes = { ip: '192.168.50.88' };
+    ent('sensor.water', 'gw', 'esphome');
+    for (let i = 0; i < 4; i++) ent('sensor.calc_' + i, 'gw', 'template');
+    // Version string in a device name ("v1.2.3.4") is not mistaken for an IP, while a private LAN IP in config_entries matches
+    dev('ver', 'Hub v1.2.3.4', { dom: 'esphome' }); ent('sensor.ver', 'ver', 'esphome');
+    dev('cam', 'Porch unit', { dom: 'esphome', ce: ['ce_cam'] }); ent('sensor.cam', 'cam', 'esphome');
+    // Home Assistant Cloud (integration_type: 'system') stays visible as a cloud service unless physical_only is on
+    dev('nabu', 'Home Assistant Cloud', { dom: 'cloud', service: true }); ent('binary_sensor.remote_ui', 'nabu', 'cloud');
+    // Zigbee2MQTT bridge (mqtt has integration_type: 'service' in HA's manifest!) + real device + virtual Group
+    dev('z2m', 'Zigbee2MQTT Bridge', { dom: 'mqtt', mf: 'Zigbee2MQTT' }); ent('sensor.z2m_state', 'z2m', 'mqtt');
+    dev('soil', 'Soil sensor', { dom: 'mqtt', mf: 'Xiaomi', via: 'z2m' }); ent('sensor.soil', 'soil', 'mqtt');
+    dev('grp', 'Blinds group', { dom: 'mqtt', mf: 'Zigbee2MQTT', mo: 'Group', via: 'z2m' }); ent('cover.blinds', 'grp', 'mqtt');
+    // Proxmox physical host + two VM/container service children + storage service child
+    dev('pve', 'proxmox1', { dom: 'proxmoxve', mf: 'Proxmox', mo: 'Node' }); ent('sensor.pve_cpu', 'pve', 'proxmoxve');
+    dev('vm1', 'haos', { dom: 'proxmoxve', mo: 'QEMU', service: true, via: 'pve' }); ent('binary_sensor.vm1', 'vm1', 'proxmoxve');
+    dev('ct1', 'docker', { dom: 'proxmoxve', mo: 'LXC', service: true, via: 'pve' }); ent('binary_sensor.ct1', 'ct1', 'proxmoxve');
+    dev('stg', 'local-zfs', { dom: 'proxmoxve', mo: 'Storage', service: true, via: 'pve' }); ent('sensor.stg', 'stg', 'proxmoxve');
+    // Two climate devices named "Cooling" in different rooms: never suspected as duplicates, disambiguated by area
+    dev('c1', 'Cooling', { dom: 'mitsubishi', mf: 'Mitsubishi', area: 'a' }); ent('climate.c1', 'c1', 'mitsubishi');
+    dev('c2', 'Cooling', { dom: 'halcyon', mf: 'Mitsubishi', area: 'b' }); ent('climate.c2', 'c2', 'halcyon');
+    const man = [
+      { domain: 'unifi', name: 'UniFi', iot_class: 'local_push', integration_type: 'hub' },
+      { domain: 'esphome', name: 'ESPHome', iot_class: 'local_push', integration_type: 'device' },
+      { domain: 'template', name: 'Template', iot_class: 'calculated', integration_type: 'helper' },
+      { domain: 'cloud', name: 'Home Assistant Cloud', iot_class: 'cloud_push', integration_type: 'system' },
+      { domain: 'mqtt', name: 'MQTT', iot_class: 'local_push', integration_type: 'service' },
+      { domain: 'proxmoxve', name: 'Proxmox VE', iot_class: 'local_polling', integration_type: 'hub' },
+      { domain: 'mitsubishi', name: 'Mitsubishi', iot_class: 'local_push', integration_type: 'device' },
+      { domain: 'halcyon', name: 'Halcyon', iot_class: 'local_push', integration_type: 'device' }
+    ];
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false, group_small: 0, physical_only: phys }); host.appendChild(c); window.card = c;
+    c.hass = {
+      language: 'en', states, devices, entities, areas, config: { version: '1' },
+      connection: { subscribeMessage: async () => () => {} },
+      callWS: async (m) => {
+        if (m.type === 'manifest/list') return man;
+        if (m.type === 'config_entries/get') return [{ entry_id: 'ce_cam', domain: 'esphome', title: 'Porch (192.168.50.88)' }];
+        throw new Error('not in test');
+      }
+    };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((res) => setTimeout(res, 25));
+    return {
+      names: c._devs.map((d) => d.n).sort(),
+      gwTrk: c._devs.find((d) => d.n === 'wM-Bus Gateway').trk,
+      verTrk: c._devs.find((d) => d.n === 'Hub v1.2.3.4').trk,
+      camTrk: c._devs.find((d) => d.n === 'Porch unit').trk,
+      labels: c._devs.filter((d) => d.n === 'Cooling').map((d) => d.label).sort(),
+      hubs: c._hubs.map((h) => h.n).sort(),
+      dupPending: c._dupPending.length
+    };
+  }, phys);
+  const all = await run(false);
+  assert.ok(all.names.includes('wM-Bus Gateway'), 'template helpers do not hide the ESPHome device');
+  assert.ok(all.names.includes('Home Assistant Cloud'), 'Home Assistant Cloud is kept despite integration_type: system');
+  assert.equal(all.gwTrk, 'device_tracker.wm_bus_gateway', 'name_by_user === name does not mark the slug ambiguous');
+  assert.equal(all.verTrk, null, 'version string v1.2.3.4 is not mistaken for a LAN IP');
+  assert.equal(all.camTrk, 'device_tracker.lan_cam', 'RFC1918 LAN IP in single-device config entry matches tracker');
+  assert.ok(!all.names.includes('Blinds group') && !all.names.includes('local-zfs'), 'Zigbee2MQTT groups and Proxmox storage are skipped');
+  assert.ok(all.names.includes('haos') && all.names.includes('docker') && all.hubs.includes('proxmox1'));
+  assert.deepEqual(all.labels, ['Bedroom · Cooling', 'Study · Cooling']);
+  assert.equal(all.dupPending, 0, 'devices in different areas are not suspected as duplicates');
+  assert.deepEqual(await H.linkProblems(page), []);
+  const phys = await run(true);
+  assert.ok(!phys.names.includes('Home Assistant Cloud'), 'Home Assistant Cloud is hidden in physical_only mode');
+  assert.ok(phys.names.includes('Soil sensor'), 'Zigbee2MQTT devices stay visible in physical_only mode');
+  assert.ok(phys.names.includes('proxmox1') && !phys.names.includes('haos'), 'physical Proxmox host remains when virtual guests are hidden');
+  assert.deepEqual(await H.linkProblems(page), []);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
 // ---- shared by the tests below: a small home with a TV set up twice, a phone set up twice and a speaker known by one address
 async function mountDupHome(page, config, extra) {
   await page.evaluate(async ([config, extra]) => {
@@ -1090,6 +1178,64 @@ test('Thread mesh places end devices behind their Matter router plug with RSSI a
   await page.close();
 });
 
+test('thread_via_border_router hangs Thread devices from their LAN border router without duplicating it', async () => {
+  const page = await H.newPage(browser);
+  const run = (tbrOpt) => page.evaluate(async (tbrOpt) => {
+    const devices = {}, entities = {}, states = {}, matter = {};
+    const dev = (id, name, o = {}) => {
+      devices[id] = { id, name, manufacturer: o.mf || '', model: o.mo || '', via_device_id: null, connections: o.mac ? [['mac', o.mac]] : [], identifiers: [[o.dom || 'matter', id]], disabled_by: null, area_id: null };
+    };
+    const ent = (eid, device_id, platform, state, attributes) => {
+      entities[eid] = { entity_id: eid, device_id, platform }; states[eid] = { entity_id: eid, state: state || 'on', attributes: attributes || {} };
+    };
+    dev('gw', 'UDM Gateway', { dom: 'unifi', mac: 'aa:00:00:00:00:01' }); ent('sensor.gw_a', 'gw', 'unifi'); ent('sensor.gw_b', 'gw', 'unifi');
+    dev('ap', 'AP Living', { dom: 'unifi', mac: 'aa:00:00:00:00:02' }); ent('sensor.ap_a', 'ap', 'unifi');
+    dev('atv', 'Apple TV', { dom: 'apple_tv', mf: 'Apple', mo: 'Apple TV 4K (gen 3)', mac: 'ca:e9:12:00:af:af' });
+    ent('media_player.apple_tv', 'atv', 'apple_tv'); ent('remote.apple_tv', 'atv', 'apple_tv');
+    ent('device_tracker.apple_tv', null, 'unifi', 'home', { mac: 'ca:e9:12:00:af:af', ap_mac: 'aa:00:00:00:00:02', essid: 'Home', radio: 'na' });
+    dev('th1', 'Air sensor', { dom: 'matter' }); ent('sensor.air', 'th1', 'matter');
+    dev('th2', 'Thread plug', { dom: 'matter' }); ent('switch.tplug', 'th2', 'matter');
+    matter.th1 = { network_type: 'thread', network_name: 'MyHomeThread', node_type: 'sleepy_end_device', active_fabrics: [{ vendor_name: 'Apple Home' }] };
+    matter.th2 = { network_type: 'thread', network_name: 'MyHomeThread', node_type: 'routing_end_device', active_fabrics: [{ vendor_name: 'Apple Home' }] };
+    const man = [
+      { domain: 'unifi', name: 'UniFi', iot_class: 'local_push' },
+      { domain: 'apple_tv', name: 'Apple TV', iot_class: 'local_push' },
+      { domain: 'matter', name: 'Matter', iot_class: 'local_push' }
+    ];
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false, group_small: 0, thread_via_border_router: tbrOpt }); host.appendChild(c); window.card = c;
+    c.hass = {
+      language: 'en', states, devices, entities, areas: {}, config: { version: '1' },
+      connection: { subscribeMessage: async () => () => {} },
+      callWS: async (m) => { if (m.type === 'manifest/list') return man; if (m.type === 'matter/node_diagnostics' && matter[m.device_id]) return matter[m.device_id]; throw new Error('not in test'); }
+    };
+    for (let i = 0; i < 120 && !(c._built && c._matter); i++) await new Promise((res) => setTimeout(res, 25));
+    await new Promise((res) => setTimeout(res, 40));
+    const by = (n) => c._devs.find((d) => d.n === n), h = by('Air sensor').hub;
+    return {
+      hub: [h.n, h.m, h.kind, h.sub],
+      fromAp: h.from && h.from.router && h.from.router.n,
+      atvDot: !!by('Apple TV'),
+      path: c._pathOf(by('Air sensor')).join(' > '),
+      anon: c._exportSvg(true).text
+    };
+  }, tbrOpt);
+  const off = await run(false);
+  assert.deepEqual(off.hub, ['Thread', 'radio', 'other', 'MyHomeThread']);
+  assert.equal(off.atvDot, true);
+  const on = await run(true);
+  assert.deepEqual(on.hub, ['Apple TV', 'local', 'hub', 'Thread border router · MyHomeThread']);
+  assert.equal(on.fromAp, 'AP Living');
+  assert.equal(on.atvDot, false, 'the border router is the hub itself, not drawn twice');
+  assert.equal(on.path, 'Air sensor > Apple TV (Thread) > Matter > AP Living (Wi-Fi 5 GHz) > UDM Gateway > Home Assistant');
+  assert.ok(!on.anon.includes('MyHomeThread') && !on.anon.includes('Apple TV'), 'anonymous image hides border router and Thread network names');
+  assert.deepEqual(await H.linkProblems(page), []);
+  const named = await run('Apple TV');
+  assert.equal(named.hub[0], 'Apple TV');
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
 test('UniFi / UniFi Insights: switches are SW nodes, bare and blocked clients are filtered, and cached client MACs avoid repeat calls', async () => {
   const page = await H.newPage(browser);
   const r = await page.evaluate(async () => {
@@ -1192,6 +1338,30 @@ test('UniFi / UniFi Insights: switches are SW nodes, bare and blocked clients ar
   assert.equal(r.atvPath, 'Living TV Box > Apple TV > USW Flex Mini (Ethernet · 1 Gbps · Port 2) > Cloud Gateway Max > Home Assistant');
   assert.equal(r.sonosPath, 'Arc Ultra > Sonos > U7 Pro XG (Wi-Fi) > Cloud Gateway Max > Home Assistant');
   assert.deepEqual(await H.linkProblems(page), []);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('show_label_warning: false hides the zoom label notice while keeping other notices and diagnostics', async () => {
+  const page = await H.newPage(browser, { width: 420, height: 700 });
+  await H.mountDemo(page, { demo: 'large' }, { settle: false });
+  const r1 = await page.evaluate(() => {
+    window.card._zoom(2.2);
+    const note = window.card.shadowRoot.getElementById('note');
+    return { hidden: window.card._hiddenNames, shown: note.style.display !== 'none', text: note.innerText };
+  });
+  assert.ok(r1.hidden > 0);
+  assert.equal(r1.shown, true);
+  assert.match(r1.text, /labels? (is|are) hidden at this zoom/);
+  const r2 = await page.evaluate(() => {
+    window.card.setConfig({ demo: 'large', show_label_warning: false });
+    window.card._zoom(2.2);
+    const note = window.card.shadowRoot.getElementById('note');
+    return { hidden: window.card._hiddenNames, diag: window.card._diagnostics().totals.labels_hidden, shown: note.style.display !== 'none', text: note.innerText };
+  });
+  assert.ok(r2.hidden > 0);
+  assert.equal(r2.diag, r2.hidden, 'diagnostics still count hidden labels');
+  assert.doesNotMatch(r2.text, /hidden at this zoom/);
   assert.deepEqual(page.errors, []);
   await page.close();
 });
