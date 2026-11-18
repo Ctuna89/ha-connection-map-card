@@ -576,6 +576,88 @@ test('a Connect stick is the Zigbee coordinator or the Thread border router, dep
   await page.close();
 });
 
+test('Bluetooth GATT allocations win over stray advertisements, and show_bt_proxies can collapse proxies', async () => {
+  const page = await H.newPage(browser);
+  const run = (showProxies) => page.evaluate(async (showProxies) => {
+    const devices = {}, entities = {}, states = {}, areas = { a: { area_id: 'a', name: 'Bedroom' }, b: { area_id: 'b', name: 'Study' } };
+    const dev = (id, name, o = {}) => {
+      devices[id] = { id, name, via_device_id: o.via || null, connections: o.conns || [], identifiers: o.ids || [], disabled_by: null, area_id: o.area || null };
+    };
+    const ent = (eid, device_id, platform, state, attributes) => {
+      entities[eid] = { entity_id: eid, device_id, platform }; states[eid] = { entity_id: eid, state: state || 'on', attributes: attributes || {} };
+    };
+    dev('gw', 'UDM Gateway', { conns: [['mac', 'aa:00:00:00:00:01']] }); ent('sensor.gw_a', 'gw', 'unifi'); ent('sensor.gw_b', 'gw', 'unifi');
+    // Two ESPHome presence sensors acting as BLE proxies (each has a bare bluetooth scanner child via_device_id)
+    dev('esp1', 'Presence sensor', { conns: [['mac', '88:13:bf:bd:4c:c0']], area: 'a' }); ent('binary_sensor.occ1', 'esp1', 'esphome');
+    dev('btchild1', 'bd4cc2', { via: 'esp1', conns: [['bluetooth', '88:13:bf:bd:4c:c2']], ids: [['bluetooth', '88:13:bf:bd:4c:c2']] });
+    dev('esp2', 'Presence sensor', { conns: [['mac', '88:13:bf:fd:3e:58']], area: 'b' }); ent('binary_sensor.occ2', 'esp2', 'esphome');
+    dev('btchild2', 'fd3e5a', { via: 'esp2', conns: [['bluetooth', '88:13:bf:fd:3e:5a']], ids: [['bluetooth', '88:13:bf:fd:3e:5a']] });
+    ent('device_tracker.esp1', null, 'unifi', 'home', { mac: '88:13:bf:bd:4c:c0', ap_mac: 'aa:00:00:00:00:01', essid: 'IoT', radio: 'ng' });
+    // Connected GATT climate controller on Bedroom proxy, even though Study proxy hears a stray -99 dBm advertisement;
+    // second GATT controller on Study proxy whose advertisements already aged out
+    dev('ac1', 'Bedroom AC', { conns: [['bluetooth', '30:be:3b:bf:ce:1e']] }); ent('climate.ac1', 'ac1', 'mitsubishi');
+    dev('ac2', 'Study AC', { conns: [['bluetooth', '30:be:3b:bf:ce:5d']] }); ent('climate.ac2', 'ac2', 'mitsubishi');
+    const man = [{ domain: 'unifi', name: 'UniFi', iot_class: 'local_push' }, { domain: 'esphome', name: 'ESPHome', iot_class: 'local_push' }, { domain: 'mitsubishi', name: 'Mitsubishi', iot_class: 'local_push' }];
+    const host = document.getElementById('host'); host.innerHTML = '';
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false, group_small: 0, show_bt_proxies: showProxies }); host.appendChild(c); window.card = c;
+    c.hass = {
+      language: 'en', states, devices, entities, areas, config: { version: '1' },
+      callWS: async (m) => { if (m.type === 'manifest/list') return man; throw new Error('not in test'); },
+      connection: {
+        subscribeMessage: async (cb, msg) => {
+          if (msg.type === 'bluetooth/subscribe_scanner_details') cb({ add: [
+            { source: '88:13:BF:BD:4C:C2', name: 'esp1 (88:13:BF:BD:4C:C2)', scanner_type: 'remote' },
+            { source: '88:13:BF:FD:3E:5A', name: 'esp2 (88:13:BF:FD:3E:5A)', scanner_type: 'remote' }
+          ] });
+          if (msg.type === 'bluetooth/subscribe_connection_allocations') cb([
+            { source: '88:13:BF:BD:4C:C2', slots: 3, free: 2, allocated: ['30:BE:3B:BF:CE:1E'] },
+            { source: '88:13:BF:FD:3E:5A', slots: 3, free: 2, allocated: ['30:BE:3B:BF:CE:5D'] }
+          ]);
+          if (msg.type === 'bluetooth/subscribe_advertisements') cb({ add: [
+            { address: '30:BE:3B:BF:CE:1E', source: '88:13:BF:FD:3E:5A', rssi: -99 }
+          ] });
+          return () => {};
+        }
+      }
+    };
+    for (let i = 0; i < 180 && !(c._built && c._bt); i++) await new Promise((res) => setTimeout(res, 25));
+    await new Promise((res) => setTimeout(res, 40));
+    const by = (n) => c._devs.find((d) => d.n === n), btHub = c._hubs.find((h) => h.bt && !h.rx);
+    c._selDev(by('Bedroom AC'));
+    const devPanel = c.shadowRoot.getElementById('panel').innerText.replace(/\s+/g, ' ');
+    if (btHub) c._selHub(btHub);
+    const hubPanel = c.shadowRoot.getElementById('panel').innerText.replace(/\s+/g, ' ');
+    return {
+      espDrawn: c._devs.filter((d) => d.p === 'esphome').length,
+      ac1Hub: by('Bedroom AC').hub.n,
+      ac2Hub: by('Study AC').hub.n,
+      ac1ProxyRing: by('Bedroom AC').parentNode && by('Bedroom AC').parentNode.n,
+      ac2ProxyRing: by('Study AC').parentNode && by('Study AC').parentNode.n,
+      ac1Path: c._pathOf(by('Bedroom AC')).join(' > '),
+      panel: devPanel,
+      hubPanel
+    };
+  }, showProxies);
+  const split = await run(true);
+  assert.equal(split.espDrawn, 2, 'ESPHome parent devices stay on the map despite bare bluetooth scanner children');
+  assert.equal(split.ac1Hub, 'Bedroom · Presence sensor', 'active GATT slot wins over stray -99 dBm advertisement');
+  assert.equal(split.ac2Hub, 'Study · Presence sensor', 'connected GATT device without advertisements still resolves its proxy');
+  assert.match(split.ac1Path, /Bedroom · Presence sensor \(Bluetooth proxy\) > UDM Gateway \(Wi-Fi 2\.4 GHz\) > Home Assistant$/);
+  assert.deepEqual(await H.linkProblems(page), []);
+  const single = await run(false);
+  assert.equal(single.ac1Hub, 'Bluetooth');
+  assert.equal(single.ac2Hub, 'Bluetooth');
+  assert.equal(single.ac1ProxyRing, 'Bedroom · Presence sensor');
+  assert.equal(single.ac2ProxyRing, 'Study · Presence sensor');
+  assert.match(single.ac1Path, /Bedroom AC > Mitsubishi > Bedroom · Presence sensor > Bluetooth > Home Assistant$/);
+  assert.match(single.panel, /Connected to Bedroom · Presence sensor/);
+  assert.match(single.hubPanel, /Bedroom · Presence sensor · 1/i);
+  assert.match(single.hubPanel, /Study · Presence sensor · 1/i);
+  assert.deepEqual(await H.linkProblems(page), []);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
 test('group_by_area also works in a group with power strips: singles by area, each strip with its outlets', async () => {
   const page = await H.newPage(browser);
   const r = await page.evaluate(async () => {
