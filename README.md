@@ -201,7 +201,7 @@ These keep working, and the visual editor writes the new form.
 | **Local network** | Everything else (`local_push`, `local_polling`). |
 | **Local radio** | Zigbee (ZHA, Zigbee2MQTT, deCONZ), Z-Wave, Thread, Bluetooth, EnOcean, Insteon, 433 MHz. |
 
-**Hubs.** A device is drawn behind a hub when Home Assistant links it to a parent device (`via_device`) that has at least two children or looks like a bridge. Virtual rooms and zones that some hubs expose (Hue rooms) are skipped. A parent that is just another device of the same integration, such as a power strip and its outlets, stays inside its integration's group with its children next to it.
+**Hubs.** A device is drawn behind a hub when Home Assistant links it to a parent device (`via_device`) that has at least two children or looks like a bridge. Virtual rooms, zones, Zigbee2MQTT groups and storage pools that some hubs expose are skipped. A parent that is just another device of the same integration, such as a power strip and its outlets, stays inside its integration's group with its children next to it.
 
 **Access points.** With a router integration that reports its clients, every hub and device is attached to the access point it actually uses. Hubs on the main router sit in the middle of the local sector; each access point's hubs stay together at the sides.
 
@@ -219,7 +219,7 @@ These keep working, and the visual editor writes the new form.
 
 **Without a device, or without entities.** Some integrations give their entities no device at all: each entity you can operate (light, switch, lock, cover, …) is a dot, and the integration's plain sensors are one dot. A device with no entities is drawn too; the card cannot know its status, so it is never shown as offline.
 
-Helpers and system integrations (template, group, Supervisor, Sun, Backup, HACS and similar) are ignored. Devices whose only entities are `update` entities are ignored as well.
+Helpers and local system plumbing (template, group, Supervisor, Sun, Backup, HACS, Spook and similar) are ignored, while Home Assistant Cloud stays as a cloud service; helper entities attached to a physical device do not override its integration. Devices whose only entities are `update` entities are ignored as well.
 
 ## Router support
 
@@ -235,7 +235,7 @@ The card reads what router integrations report about their clients. Huawei and U
 | Sagemcom F@st (HACS `sagemcom_fast`; Bell, Sky, ...) | the gateway itself (it reports no access points) | `interface_type` of each tracker | not reported | Untested on real hardware |
 | TP-Link Omada, ASUSWRT, OpenWrt (luci / ubus), Nmap, Ping | — | — | — | Routers and access points appear; clients are not linked to an access point because these integrations don't report it |
 
-A client is matched to its device by MAC address, by the IP in the device's configuration URL, or by name.
+A client is matched to its device by MAC address (including masked prefixes), by the IP in the device's configuration URL or private LAN IP in its config entry, or by name when unambiguous.
 
 ## What needs an admin user
 

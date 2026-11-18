@@ -336,7 +336,8 @@
   // Integrations that are helpers / system plumbing, not devices.
   var SKIP = ['hassio', 'sun', 'backup', 'proximity', 'template', 'group', 'switch_as_x', 'min_max', 'derivative',
     'utility_meter', 'threshold', 'trend', 'statistics', 'integration', 'hacs', 'marketplace', 'homeassistant',
-    'homeassistant_sky_connect', 'homeassistant_hardware', 'homeassistant_yellow', 'homeassistant_green', 'person', 'zone'];
+    'homeassistant_sky_connect', 'homeassistant_hardware', 'homeassistant_yellow', 'homeassistant_green', 'person', 'zone',
+    'spook', 'spook_calibration', 'spook_inverse', 'spook_time_in_state', 'energy', 'bluetooth_adapters', 'dhcp', 'ssdp', 'zeroconf', 'usb'];
   var ZIGBEE = ['zha', 'zigbee2mqtt', 'deconz'];
   var RADIO = ['zha', 'zwave_js', 'zwave_me', 'deconz', 'insteon', 'zigbee2mqtt', 'enocean', 'rfxtrx'];
   // Integrations for routers / access points: drawn as the local network itself, not as devices.
@@ -347,7 +348,7 @@
   var COORD_INTS = ['homeassistant_sky_connect', 'homeassistant_hardware', 'homeassistant_yellow', 'homeassistant_connect_zbt2'];
   // Short, user-facing names for integrations whose official name is long or technical.
   var SHORT = { hisense_ac_plugin: 'Hisense', anthropic: 'Claude', openai_conversation: 'ChatGPT', google_generative_ai_conversation: 'Gemini',
-    samsungtv: 'Samsung TV', androidtv_remote: 'Android TV', dlna_dmr: 'DLNA', wake_on_lan: 'Wake on LAN', hue: 'Philips Hue',
+    samsungtv: 'Samsung TV', samsungtv_smart: 'Samsung TV', nintendo_switch_presence: 'Nintendo Switch', androidtv_remote: 'Android TV', dlna_dmr: 'DLNA', wake_on_lan: 'Wake on LAN', hue: 'Philips Hue',
     google_translate: 'Google TTS', waze_travel_time: 'Waze', radio_browser: 'Radio Browser', huawei_mesh_router: 'Huawei Mesh' };
   var VIRT = { oracle: 'VirtualBox', kvm: 'KVM', qemu: 'QEMU', vmware: 'VMware', microsoft: 'Hyper-V', xen: 'Xen', parallels: 'Parallels', lxc: 'LXC', docker: 'Docker' };
   var CLOUD_GUESS = ['smartthings', 'tuya', 'spotify', 'met', 'google_translate', 'anthropic', 'openai_conversation', 'nest',
@@ -757,11 +758,12 @@
       var t = this._t.bind(this);
       this._$('title').textContent = (this._cfg.title || t('title')) + (H.demo ? ' · demo: ' + this._cfg.demo : '');
       var ld = this._$('loading'); if (ld) ld.textContent = t('loading');
-      var key = this._modelKey, man = {};
-      this._man = man; this._src = {}; this._bt = null; this._mesh = false; this._threadMeshOn = false; this._rawThread = null;
+      var key = this._modelKey, man = {}, entries = {};
+      this._man = man; this._src = {}; this._entries = entries; this._bt = null; this._mesh = false; this._threadMeshOn = false; this._rawThread = null;
       this._uiClients = null; this._uiInfra = null; this._uiByMac = null; this._haIps = [];
       await Promise.all([
         H.callWS({ type: 'manifest/list' }).then(function (l) { (l || []).forEach(function (m) { man[m.domain] = m; }); }, function () { /* non-admin: fall back to guesses */ }),
+        H.callWS({ type: 'config_entries/get' }).then(function (l) { (l || []).forEach(function (ce) { if (ce && ce.entry_id) entries[ce.entry_id] = ce; }); }, function () { /* optional */ }),
         H.callWS({ type: 'entity/source' }).then(function (s) { self._src = s || {}; }, function () { /* older versions: registry only */ }),
         this._loadAnswers(),
         this._matterFast()
@@ -1375,7 +1377,7 @@
     // Merge by hand: for the same device set up twice under names the card would never connect
     _mergeDialog(d) {
       var self = this, t = this._t.bind(this);
-      var m = this._modal('<h2>' + esc(t('mergeTitle')) + '</h2><p><b>' + esc(d.n) + '</b> · ' + esc(this._intName(d.p)) + '</p><input id="mgQ" type="search" placeholder="' + esc(t('mergeSearch')) + '"><div class="list" id="mgList"></div><p>' + esc(t('mergeHint')) + '</p><div class="acts"><button class="btn" id="mgClose">' + esc(t('close')) + '</button></div>');
+      var m = this._modal('<h2>' + esc(t('mergeTitle')) + '</h2><p><b>' + esc(d.label || d.n) + '</b> · ' + esc(this._intName(d.p)) + '</p><input id="mgQ" type="search" placeholder="' + esc(t('mergeSearch')) + '"><div class="list" id="mgList"></div><p>' + esc(t('mergeHint')) + '</p><div class="acts"><button class="btn" id="mgClose">' + esc(t('close')) + '</button></div>');
       var q = m.querySelector('#mgQ'), list = m.querySelector('#mgList');
       var fill = function () {
         var k = q.value.trim().toLowerCase();
@@ -1553,6 +1555,14 @@
       if (SHORT[p]) return SHORT[p];
       return (this._man[p] && this._man[p].name) || p.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
     }
+    _isSkip(p) {
+      if (!p) return false;
+      if (SKIP.indexOf(p) >= 0) return true;
+      var m = this._man && this._man[p];
+      if (!m) return false;
+      if (m.iot_class === 'calculated' || m.integration_type === 'helper') return true;
+      return m.integration_type === 'system' && p !== 'cloud' && String(m.iot_class || '').indexOf('cloud') !== 0;
+    }
     _medium(p) {
       var o = (this._cfg && this._cfg.overrides) || {};
       if (o[p] === 'cloud' || o[p] === 'local' || o[p] === 'radio') return o[p];
@@ -1575,15 +1585,35 @@
     }
     _modelRaw() {
       var H = this._hass, cfg = this._cfg, self = this, t = this._t.bind(this);
-      var devices = H.devices || {}, entities = H.entities || {}, areas = H.areas || {};
+      var devices = H.devices || {}, entities = H.entities || {}, areas = H.areas || {}, entries = this._entries || {};
       var byDev = {};
       Object.keys(entities).forEach(function (id) { var e = entities[id]; if (e.device_id) (byDev[e.device_id] = byDev[e.device_id] || []).push(e); });
-      var children = {};
-      Object.keys(devices).forEach(function (id) { var d = devices[id]; if (d.via_device_id) children[d.via_device_id] = (children[d.via_device_id] || 0) + 1; });
       function primary(list) {
-        var c = {}; list.forEach(function (e) { if (e.platform) c[e.platform] = (c[e.platform] || 0) + 1; });
-        return Object.keys(c).sort(function (a, b) { return c[b] - c[a]; })[0];
+        var c = {}, fb = {};
+        list.forEach(function (e) {
+          if (!e.platform) return;
+          if (self._isSkip(e.platform)) fb[e.platform] = (fb[e.platform] || 0) + 1;
+          else c[e.platform] = (c[e.platform] || 0) + 1;
+        });
+        var ks = Object.keys(c);
+        if (ks.length) return ks.sort(function (a, b) { return c[b] - c[a]; })[0];
+        return Object.keys(fb).sort(function (a, b) { return fb[b] - fb[a]; })[0];
       }
+      function platOf(id) { return primary(byDev[id] || []) || (((devices[id] || {}).identifiers || [])[0] || [])[0] || ''; }
+      function isVirtualChild(d, p) {
+        if (p === 'mqtt' && /zigbee2mqtt/i.test(d.manufacturer || '') && /^group$/i.test(d.model || '')) return true;
+        if (d.entry_type === 'service' && d.via_device_id) {
+          if (p === 'proxmoxve' && /^(vm|container|qemu|lxc)$/i.test(d.model || '')) return false;
+          return true;
+        }
+        return false;
+      }
+      var children = {};
+      Object.keys(devices).forEach(function (id) {
+        var d = devices[id]; if (!d.via_device_id || d.disabled_by) return;
+        var p = platOf(id);
+        if (p && p !== 'bluetooth' && !isVirtualChild(d, p)) children[d.via_device_id] = (children[d.via_device_id] || 0) + 1;
+      });
       // Z-Wave: Home Assistant does not link the nodes to their controller, but every node is identified as
       // "<network>-<node>" and the controller is node 1. With that, the controller (the USB stick, a Connect ZWA-2) is
       // drawn as the hub of its network, the way a Zigbee2MQTT bridge or a Hue Bridge is.
@@ -1595,7 +1625,6 @@
         });
       });
       function zwHub(id) { var c = zwCtrl[zwHome[id]]; return c && zwNodes[zwHome[id]] > 1 ? c : null; }
-      function platOf(id) { return primary(byDev[id] || []) || (((devices[id] || {}).identifiers || [])[0] || [])[0] || ''; }
       function isHubDevice(v) { return v && !v.disabled_by && ((children[v.id] || 0) >= 2 || (byDev[v.id] || []).length <= 5); }
       var hubs = {}, devs = [], routers = [], routerByMac = {}, coords = [];
       this._z2mBridge = null;
@@ -1661,43 +1690,103 @@
         var a = (H.states[eid] || {}).attributes || {};
         return { devId: null, mac: a.mac ? String(a.mac).toLowerCase() : null, ip: a.ip || a.ip_address || null, ts: eid.slice(15) };
       }
+      var areaSlugs = {}, slugMeta = {}, ambigSlug = {}, entryTopCnt = {};
+      Object.keys(areas).forEach(function (aid) { var s = slug(areas[aid] && areas[aid].name); if (s) areaSlugs[s] = 1; });
+      Object.keys(devices).forEach(function (k) {
+        var dk = devices[k]; if (dk.disabled_by) return;
+        if (!dk.via_device_id) (dk.config_entries || []).forEach(function (cid) { entryTopCnt[cid] = (entryTopCnt[cid] || 0) + 1; });
+        var pk = platOf(k); if (!pk || self._isSkip(pk) || ROUTER_INTS.indexOf(pk) >= 0) return;
+        var seenS = {};
+        [dk.name_by_user, dk.name].forEach(function (nm0) {
+          var s0 = slug(nm0); if (!s0 || seenS[s0]) return;
+          seenS[s0] = 1;
+          var prev = slugMeta[s0];
+          if (!prev) slugMeta[s0] = { p: pk, a: dk.area_id || '' };
+          else if (prev.p === pk || (prev.a && dk.area_id && prev.a !== dk.area_id)) ambigSlug[s0] = 1;
+        });
+      });
+      function isLanIp(s) {
+        var q = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s || '');
+        if (!q) return false;
+        var a = +q[1], b = +q[2], c = +q[3], d = +q[4];
+        if (a > 255 || b > 255 || c > 255 || d > 255) return false;
+        return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+      }
+      function extractIps(dev) {
+        var out = [];
+        if (dev.configuration_url) {
+          try {
+            var h = new URL(dev.configuration_url).hostname;
+            var pu = dev.via_device_id && devices[dev.via_device_id] ? devices[dev.via_device_id].configuration_url : null;
+            var ph = pu ? new URL(pu).hostname : null;
+            if (h && h !== ph && /^\d+\.\d+\.\d+\.\d+$/.test(h)) out.push(h);
+          } catch (e) { /* invalid URL */ }
+        }
+        var txts = [dev.name || ''];
+        if (!dev.via_device_id) (dev.config_entries || []).forEach(function (cid) { if (entryTopCnt[cid] === 1 && entries[cid] && entries[cid].title) txts.push(entries[cid].title); });
+        txts.forEach(function (txt) {
+          var m = String(txt).match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/g) || [];
+          m.forEach(function (ip) { if (isLanIp(ip) && out.indexOf(ip) < 0) out.push(ip); });
+        });
+        return out;
+      }
       function findTrk(dev) {
-        if (!dev || dev.entry_type === 'service') return null;
+        findTrk.sure = false;
+        if (!dev) return null;
+        var dp = platOf(dev.id);
+        if (dev.entry_type === 'service' && !(dp === 'proxmoxve' && /^(vm|container|qemu|lxc)$/i.test(dev.model || ''))) return null;
         var md = self._matter && self._matter[dev.id];
-        if (!trk.length) { findTrk.sure = false; return md && md.net === 'wifi' ? 'matter:' + dev.id : null; }
-        var best = null;
-        var macs = (dev.connections || []).filter(function (c) { return c[0] === 'mac'; }).map(function (c) { return String(c[1]).toLowerCase(); });
+        if (!trk.length) return md && md.net === 'wifi' ? 'matter:' + dev.id : null;
+        var best = null, macs = [], wild = [];
+        [dev.connections || [], dev.identifiers || []].forEach(function (lst) {
+          lst.forEach(function (c) {
+            if (!c || c[0] !== 'mac' || !c[1]) return;
+            var ms = String(c[1]).toLowerCase();
+            if (ms.indexOf('*') >= 0) wild.push(new RegExp('^' + ms.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[0-9a-f]{2}') + '$', 'i'));
+            else if (macs.indexOf(ms) < 0) macs.push(ms);
+          });
+        });
         if (md && md.mac && macs.indexOf(md.mac) < 0) macs.push(md.mac);
-        var host = null; try { host = dev.configuration_url ? new URL(dev.configuration_url).hostname : null; } catch (e) { host = null; }
-        var ips = [host, md && md.ip].filter(Boolean);
+        var ips = extractIps(dev);
+        if (md && md.ip && ips.indexOf(md.ip) < 0) ips.push(md.ip);
         trk.forEach(function (eid) {
           if (best) return; var tm = trkMeta(eid);
           if (tm.devId && tm.devId === dev.id) best = eid;
           else if (tm.mac && macs.indexOf(tm.mac) >= 0) best = eid;
+          else if (tm.mac && wild.some(function (rx) { return rx.test(tm.mac); })) best = eid;
           else if (tm.ip && ips.indexOf(tm.ip) >= 0) best = eid;
         });
-        findTrk.sure = !!best;
-        var ds = slug(dev.name_by_user || dev.name), dt = ds.split('_').filter(Boolean);
-        if (!best && ds) trk.forEach(function (eid) {
-          if (best) return; var tm = trkMeta(eid); if (!tm.ts) return;
-          var ts = tm.ts, tt = ts.split('_');
-          if (ts === ds || (dt.length >= 2 && dt.every(function (x) { return tt.indexOf(x) >= 0; })) ||
-            (dt.length === 1 && dt[0].length >= 5 && tt.indexOf(dt[0]) >= 0 && tt.length <= 3)) best = eid;
-        });
+        if (best) { findTrk.sure = true; return best; }
+        var names = dev.name_by_user && dev.name_by_user !== dev.name ? [dev.name_by_user, dev.name] : [dev.name_by_user || dev.name];
+        for (var ni = 0; ni < names.length && !best; ni++) {
+          var ds = slug(names[ni]);
+          if (!ds || areaSlugs[ds] || ambigSlug[ds]) continue;
+          var dt = ds.split('_').filter(Boolean), exact = [], fuzzy = [];
+          trk.forEach(function (eid) {
+            var tm = trkMeta(eid); if (!tm.ts) return;
+            var ts = tm.ts, tt = ts.split('_');
+            if (ts === ds) exact.push(eid);
+            else if ((dt.length >= 2 && dt.every(function (x) { return tt.indexOf(x) >= 0; })) ||
+              (dt.length === 1 && dt[0].length >= 5 && tt.indexOf(dt[0]) >= 0 && tt.length <= 3)) fuzzy.push(eid);
+          });
+          if (exact.length === 1) best = exact[0];
+          else if (!exact.length && fuzzy.length === 1) best = fuzzy[0];
+        }
         if (!best && md && md.net === 'wifi') best = 'matter:' + dev.id;
         return best;
       }
       this._findTrk = findTrk;
       function mk(id, d, es, p, hub) {
+        var nm = (d.name_by_user || d.name || id).trim();
         var x = {
-          id: id, n: (d.name_by_user || d.name || id).trim(), mo: [d.manufacturer, d.model].filter(Boolean).join(' · '), mf: String(d.manufacturer || '').trim(),
+          id: id, n: nm, label: nm, mo: [d.manufacturer, d.model].filter(Boolean).join(' · '), mf: String(d.manufacturer || '').trim(),
           a: d.area_id && areas[d.area_id] ? areas[d.area_id].name : '', p: p, hub: hub, ents: es.filter(function (e) { return !e.hidden; }).map(function (e) { return e.entity_id; })
         };
         if (!x.ents.length) x.ents = es.map(function (e) { return e.entity_id; });
         var ie = (d.identifiers || []).map(function (i) { return String(i[1] || ''); }).filter(function (s) { return s.indexOf('zigbee2mqtt_0x') === 0; })[0];
         x.ieee = ie ? ie.slice(12) : null;
         x.trk = x.ieee ? null : findTrk(d); x.trkSure = !!x.trk && findTrk.sure; x.also = []; x.bare = !es.length; x.dis = !!d.disabled_by;
-        x.svc = d.entry_type === 'service' || ['service', 'virtual', 'system', 'entity', 'helper'].indexOf((self._man[p] || {}).integration_type) >= 0;
+        x.svc = d.entry_type === 'service' || (p !== 'mqtt' && p !== 'proxmoxve' && ['service', 'virtual', 'system', 'entity', 'helper'].indexOf((self._man[p] || {}).integration_type) >= 0);
         // the companion app reports how the phone is connected (Android: network_type, iOS: connection_type)
         if (p === 'mobile_app') x.net = (es.filter(function (e) { return /^sensor\..*_(network|connection)_type$/.test(e.entity_id); })[0] || {}).entity_id || null;
         // battery devices sleep between reports: see _status
@@ -1734,12 +1823,11 @@
       var one = function (id) {
         var d = devices[id];
         if (cfg.exclude_devices.indexOf(id) >= 0) return;
-        if (d.entry_type === 'service' && d.via_device_id) return; // virtual rooms/zones/groups exposed by a hub
         // A device switched off in Home Assistant ("Enable device") is still set up there: it is only drawn on request
         var dis = !!d.disabled_by, es = dis ? [] : (byDev[id] || []), p = primary(es), bare = false;
         if (dis) {
           var dp = platOf(id);
-          if (!dp || d.entry_type === 'service' || ROUTER_INTS.indexOf(dp) >= 0 || COORD_INTS.indexOf(dp) >= 0 || SKIP.indexOf(dp) >= 0 || cfg.exclude_integrations.indexOf(dp) >= 0) return;
+          if (!dp || isVirtualChild(d, dp) || d.entry_type === 'service' || ROUTER_INTS.indexOf(dp) >= 0 || COORD_INTS.indexOf(dp) >= 0 || self._isSkip(dp) || cfg.exclude_integrations.indexOf(dp) >= 0) return;
           self._nDis++; if (!incDis) return;
         }
         if (!p) {
@@ -1749,13 +1837,14 @@
           if (es.length || !p) return;
           if (!dis && ROUTER_INTS.indexOf(p) < 0 && (cfg.devices_without_entities === false || d.entry_type === 'service' || p === 'bluetooth')) return; // a gateway without entities is still the gateway
         }
+        if (isVirtualChild(d, p)) return; // virtual rooms/zones/groups/storage exposed by a hub
         var nm = (d.name_by_user || d.name || id).trim();
         if (COORD_INTS.indexOf(p) >= 0) { coords.push(nm.replace(/\s*\([^)]*\)\s*$/, '').replace(/^Home Assistant\s+/, '')); return; }
         if (p === 'mqtt' && /zigbee2mqtt/i.test(d.manufacturer || '')) self._z2mBridge = d;
         var doms = es.map(function (e) { return e.entity_id.split('.')[0]; });
         if (!bare && doms.every(function (x) { return x === 'update'; })) return;
         if (!bare && !cfg.show_trackers && p !== 'mobile_app' && doms.every(function (x) { return x === 'device_tracker' || x === 'update'; })) return;
-        if (SKIP.indexOf(p) >= 0 || cfg.exclude_integrations.indexOf(p) >= 0 || p === 'unifi_wan') return;
+        if (self._isSkip(p) || cfg.exclude_integrations.indexOf(p) >= 0 || p === 'unifi_wan') return;
         // UniFi registers WLANs and firewall rules as service entries, and every client as a device (with 0 entities when
         // trackers are disabled, or a block switch alongside its tracker). Only real gateways, switches and APs are network nodes.
         if (p === 'unifi' || p === 'unifi_insights') {
@@ -1825,6 +1914,16 @@
           hub = hubFor('int:' + p + (pc ? '-pc' : '') + ':' + medium + (ap ? '@' + ap : ''), hn, medium, 'int', p); if (ap) hub.apHint = ap;
           if (pc) hub.pc = true;
           hub.sub = hn;
+          if (!hub.trk && medium === 'local') {
+            (d.config_entries || []).forEach(function (cid) {
+              if (hub.trk || !entries[cid] || !entries[cid].title) return;
+              var mIps = String(entries[cid].title).match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/g) || [];
+              mIps.forEach(function (mip) {
+                if (hub.trk || !isLanIp(mip)) return;
+                trk.forEach(function (teid) { var tm0 = trkMeta(teid); if (!hub.trk && tm0.ip === mip) hub.trk = teid; });
+              });
+            });
+          }
         }
         // only Zigbee goes through the Zigbee coordinator: Z-Wave, EnOcean, 433 MHz... have a radio of their own
         if (hub.m === 'radio' && !hub.own && ZIGBEE.indexOf(p) < 0 && p !== 'mqtt') hub.own = hub.plain = true;
@@ -1876,7 +1975,7 @@
         Object.keys(byBase).forEach(function (k) {
           var l = byBase[k]; if (l.length < 2) return;
           for (var i = 0; i < l.length; i++) for (var j = i + 1; j < l.length; j++) {
-            var a = l[i], b = l[j]; if (a.p === b.p) continue;
+            var a = l[i], b = l[j]; if (a.p === b.p || (a.a && b.a && a.a !== b.a)) continue;
             var ma = a.mf.split(/\s+/)[0].toLowerCase(), mb = b.mf.split(/\s+/)[0].toLowerCase();
             if (ma && mb ? ma === mb : (k.split('_').length >= 3 || /\d/.test(k))) suspect(a, b, 'name');
           }
@@ -1908,7 +2007,7 @@
         if (!plat || cfg.exclude_integrations.indexOf(plat) >= 0) return false;
         if (plat === 'mqtt') return cfg.mqtt_entities !== false;
         var m = self._man[plat]; // needs the integration list (admin); "hub" is what an integration is when it does not say
-        return cfg.entities_without_device !== false && !!m && ['device', 'hub'].indexOf(m.integration_type || 'hub') >= 0 && SKIP.indexOf(plat) < 0 && ROUTER_INTS.indexOf(plat) < 0 && COORD_INTS.indexOf(plat) < 0 && plat !== 'mobile_app';
+        return cfg.entities_without_device !== false && !!m && ['device', 'hub'].indexOf(m.integration_type || 'hub') >= 0 && !self._isSkip(plat) && ROUTER_INTS.indexOf(plat) < 0 && COORD_INTS.indexOf(plat) < 0 && plat !== 'mobile_app';
       };
       Object.keys(entities).forEach(function (eid) { var e = entities[eid]; if (!e.device_id && wants(e.platform)) loose[eid] = e.platform; });
       Object.keys(src).forEach(function (eid) { if (!loose[eid] && src[eid] && !(entities[eid] && (entities[eid].device_id || entities[eid].platform)) && wants(src[eid].domain)) loose[eid] = src[eid].domain; });
@@ -1934,6 +2033,16 @@
       if (this._physical()) devs.slice().forEach(function (x) {
         if (!x.svc && !x.integration) return;
         x.hub.dv.splice(x.hub.dv.indexOf(x), 1); devs.splice(devs.indexOf(x), 1);
+      });
+      // If all children of a physical host/bridge were virtual (e.g. VMs/containers on a Proxmox node), keep the host itself on the map.
+      Object.keys(hubs).forEach(function (k) {
+        var h = hubs[k]; if (h.kind !== 'hub' || !h.devId || h.dv.length) return;
+        var vd = devices[h.devId], vp = primary(byDev[h.devId] || []) || h.p;
+        if (vd && vd.entry_type !== 'service') {
+          var gh = hubFor('int:' + vp + ':' + h.m, self._intName(vp), h.m, 'int', vp); gh.sub = self._intName(vp); gh.noFold = true;
+          mk(h.devId, vd, byDev[h.devId] || [], vp, gh);
+        }
+        delete hubs[k];
       });
       // A parent that is just another device of the same integration (a power strip and its outlets) is not a bridge.
       // When the integration has at least as many devices of its own, the parent and its children are drawn inside the integration's group.
@@ -1986,7 +2095,7 @@
       if (cfg.group_small == null || cfg.group_small === 1) { if (intCount > 30) small = Math.max(small, 3); else if (intCount > 18) small = Math.max(small, 2); }
       Object.keys(hubs).forEach(function (k) {
         var h = hubs[k];
-        if (h.kind === 'int' && h.dv.length <= small && h.m !== 'radio' && h.p !== 'mobile_app') {
+        if (h.kind === 'int' && !h.noFold && h.dv.length <= small && h.m !== 'radio' && h.p !== 'mobile_app') {
           // services (a Spotify account, a translation API) and things in the house (an air conditioner that reports
           // through its maker's cloud) are different kinds of connection: they are never folded into the same group
           var vs = cfg.separate_services !== false && virtual(h); // separate_services: false folds everything into one group per side
@@ -1995,6 +2104,9 @@
           delete hubs[k];
         }
       });
+      var renCnt = {};
+      devs.forEach(function (x) { var k = String(x.n || '').toLowerCase(); if (k) renCnt[k] = (renCnt[k] || 0) + 1; });
+      devs.forEach(function (x) { x.label = x.a && (renCnt[String(x.n || '').toLowerCase()] || 0) > 1 && x.n.toLowerCase().indexOf(x.a.toLowerCase()) < 0 ? x.a + ' · ' + x.n : x.n; });
       this._hubs = Object.keys(hubs).map(function (k) { return hubs[k]; }).filter(function (h) { return h.dv.length; });
       var rename = cfg.names || {};
       this._hubs.forEach(function (h) { if (rename[h.n]) h.n = rename[h.n]; });
@@ -2661,7 +2773,9 @@
         var b = box(e); if (free(b, true)) placed.push(b); else e.style.display = 'none';
       });
       seen.forEach(function (d) {
-        if (!d.lab) { d.lab = document.createElementNS(NS, 'text'); d.lab.setAttribute('class', 'dl'); d.lab.textContent = d.n.length > 22 ? d.n.slice(0, 21) + '…' : d.n; self._gL.appendChild(d.lab); }
+        var dtxt = d.parentNode && d.parentNode.isArea ? d.n : (d.label || d.n);
+        if (!d.lab) { d.lab = document.createElementNS(NS, 'text'); d.lab.setAttribute('class', 'dl'); self._gL.appendChild(d.lab); }
+        d.lab.textContent = dtxt.length > 24 ? dtxt.slice(0, 23) + '…' : dtxt;
         var right = d.x >= d.hub.x, r = null, me = placed.filter(function (p) { return p.d === d; })[0];
         d.lab.style.display = '';
         [right, !right].forEach(function (rt) {
@@ -2766,7 +2880,9 @@
 
     _item(d) {
       var M = this._M, t = this._t.bind(this);
-      return '<button class="item' + (this._S.sel === d ? ' sel' : '') + '" data-id="' + esc(d.id) + '"><i style="' + (d.off ? 'border:2px solid var(--cm-bad)' : d.recent ? 'border:2px solid var(--cm-recent)' : d.away ? 'border:2px dashed var(--cm-away)' : d.dis ? 'border:2px dotted var(--cm-bare)' : d.bare ? 'background:var(--cm-bare);opacity:.6' : 'background:' + M[d.hub.m]) + '"></i><span class="nm">' + esc(d.n) + '</span><small class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away)' : '') + '">' + (d.off ? esc(t('offline')) : d.recent ? esc(this._ago(d.seen)) : d.remote ? esc(t('remote')) : d.away ? esc(t('away')) : esc(d.hub.kind === 'other' ? (d.via || d.a || d.hub.n) : (d.a || d.hub.n))) + '</small></button>';
+      var sub = d.off ? t('offline') : d.recent ? this._ago(d.seen) : d.remote ? t('remote') : d.away ? t('away') : (d.hub.kind === 'other' ? (d.via || d.a || d.hub.n) : (d.a || d.hub.n));
+      var nm = sub === d.a ? d.n : (d.label || d.n);
+      return '<button class="item' + (this._S.sel === d ? ' sel' : '') + '" data-id="' + esc(d.id) + '"><i style="' + (d.off ? 'border:2px solid var(--cm-bad)' : d.recent ? 'border:2px solid var(--cm-recent)' : d.away ? 'border:2px dashed var(--cm-away)' : d.dis ? 'border:2px dotted var(--cm-bare)' : d.bare ? 'background:var(--cm-bare);opacity:.6' : 'background:' + M[d.hub.m]) + '"></i><span class="nm">' + esc(nm) + '</span><small class="' + (d.off ? 'off' : '') + '" style="' + (d.recent ? 'color:var(--cm-recent);font-weight:600' : d.away ? 'color:var(--cm-away)' : '') + '">' + esc(sub) + '</small></button>';
     }
     _bind() {
       var self = this, p = this._$('panel');
