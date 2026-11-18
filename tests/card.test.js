@@ -1341,3 +1341,27 @@ test('UniFi / UniFi Insights: switches are SW nodes, bare and blocked clients ar
   assert.deepEqual(page.errors, []);
   await page.close();
 });
+
+test('show_label_warning: false hides the zoom label notice while keeping other notices and diagnostics', async () => {
+  const page = await H.newPage(browser, { width: 420, height: 700 });
+  await H.mountDemo(page, { demo: 'large' }, { settle: false });
+  const r1 = await page.evaluate(() => {
+    window.card._zoom(2.2);
+    const note = window.card.shadowRoot.getElementById('note');
+    return { hidden: window.card._hiddenNames, shown: note.style.display !== 'none', text: note.innerText };
+  });
+  assert.ok(r1.hidden > 0);
+  assert.equal(r1.shown, true);
+  assert.match(r1.text, /labels? (is|are) hidden at this zoom/);
+  const r2 = await page.evaluate(() => {
+    window.card.setConfig({ demo: 'large', show_label_warning: false });
+    window.card._zoom(2.2);
+    const note = window.card.shadowRoot.getElementById('note');
+    return { hidden: window.card._hiddenNames, diag: window.card._diagnostics().totals.labels_hidden, shown: note.style.display !== 'none', text: note.innerText };
+  });
+  assert.ok(r2.hidden > 0);
+  assert.equal(r2.diag, r2.hidden, 'diagnostics still count hidden labels');
+  assert.doesNotMatch(r2.text, /hidden at this zoom/);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});

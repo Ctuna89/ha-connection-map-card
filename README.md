@@ -131,6 +131,7 @@ Option names are **stable from 1.0**: they will not be renamed or removed withou
 | `show_panel` | boolean | `true` | Show the side panel with the summary and details. |
 | `minimap` | boolean | `true` | Show the overview map while part of the map is out of view. |
 | `device_labels` | boolean | `true` | Show device names when zoomed in far enough. |
+| `show_label_warning` | boolean | `true` | Show the notice under the map when labels are hidden at the current zoom. |
 | `show_export` | boolean | `true` | Show the ⤓ button. |
 | `animations` | boolean | `true` | Data flowing along the links, pop-in and hover effects. The system's reduced-motion setting is respected either way. |
 

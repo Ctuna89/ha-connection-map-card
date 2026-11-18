@@ -356,7 +356,7 @@
   // Every option the card takes. Names are stable from 1.0; the replaced ones keep working.
   // Router integrations that register every client of the network as a device of its own, linked to the gateway.
   var CLIENTS_AS_DEVICES = ['netgear', 'sagemcom_fast'];
-  var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'height', 'sort', 'group_by_area', 'group_small', 'separate_services', 'physical_only', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'show_disabled', 'minimap', 'device_labels', 'animations',
+  var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'height', 'sort', 'group_by_area', 'group_small', 'separate_services', 'physical_only', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'show_disabled', 'minimap', 'device_labels', 'show_label_warning', 'animations',
     'colors', 'lines', 'sizes', 'names', 'overrides', 'exclude_integrations', 'exclude_devices', 'computers', 'merge_duplicates', 'entities_without_device', 'devices_without_entities', 'recent_hours',
     'main_router', 'router_name', 'coordinator_name', 'thread_via_border_router', 'z2m_base_topic', 'grid_options', 'layout_options', 'view_layout', 'visibility', 'card_mod'];
   var DEPRECATED = { core_size: 'sizes.core', mqtt_entities: 'entities_without_device' };
@@ -652,7 +652,7 @@
         show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', physical_only: false, group_by_area: false, mqtt_entities: true, entities_without_device: true, devices_without_entities: true, merge_duplicates: true, recent_hours: 24, layout: 'detailed', show_export: true
       }, config || {});
       // look-only options are applied by drawing again; anything else needs the model to be rebuilt
-      var LOOK = ['title', 'height', 'colors', 'lines', 'sizes', 'core_size', 'minimap', 'device_labels', 'animations', 'show_panel', 'layout', 'show_export', 'group_by_area', 'grid_options', 'layout_options', 'view_layout'];
+      var LOOK = ['title', 'height', 'colors', 'lines', 'sizes', 'core_size', 'minimap', 'device_labels', 'show_label_warning', 'animations', 'show_panel', 'layout', 'show_export', 'group_by_area', 'grid_options', 'layout_options', 'view_layout'];
       if (this._S) { this._S.layout = null; this._S.physical = null; } // what was chosen with the buttons gives way to the configuration
       function rest(c) { var o = {}; Object.keys(c || {}).sort().forEach(function (k) { if (LOOK.indexOf(k) < 0) o[k] = c[k]; }); return JSON.stringify(o); }
       var same = this._built && this._modelKey === rest(this._cfg);
@@ -2853,7 +2853,7 @@
       if (sk) h += '<div><span>⚠ ' + (sk === 1 ? esc(t('skipped1')) : sk + ' ' + esc(t('skipped'))) + '</span><button id="noteDiag2">' + esc(t('details')) + '</button></div>';
       if (du) h += '<div><span>⚠ ' + (du === 1 ? esc(t('dupNote1')) : du * 2 + ' ' + esc(t('dupNote'))) + '</span><button id="noteDup">' + esc(t('dupReview')) + '</button></div>';
       if (a) h += '<div><span>⚠ ' + (a === 1 ? esc(t('noRoomAp1')) : a + ' ' + esc(t('noRoomAp'))) + '</span><button id="noteAp">' + esc(t('noRoomSee')) + '</button></div>';
-      if (n) h += '<div><span>⚠ ' + (n === 1 ? esc(t('noRoomName1')) : n + ' ' + esc(t('noRoomName'))) + '</span><button id="noteZoom">' + esc(t('noRoomZoom')) + '</button></div>';
+      if (n && (!this._cfg || this._cfg.show_label_warning !== false)) h += '<div><span>⚠ ' + (n === 1 ? esc(t('noRoomName1')) : n + ' ' + esc(t('noRoomName'))) + '</span><button id="noteZoom">' + esc(t('noRoomZoom')) + '</button></div>';
       if (el.innerHTML !== h) el.innerHTML = h;
       el.style.display = h ? 'block' : 'none';
       var b1 = el.querySelector('#noteAp'), b2 = el.querySelector('#noteZoom');
@@ -3190,6 +3190,7 @@
       sdevice: 'Devices',
       show_disabled: 'Devices disabled in Home Assistant, in grey',
       show_export: 'Button to save the map as an image',
+      show_label_warning: 'Notice when labels are hidden at the current zoom',
       show_mesh: 'Zigbee and Thread mesh routes',
       show_panel: 'Side panel',
       show_trackers: 'Devices that only have a device tracker',
@@ -3257,6 +3258,7 @@
       sdevice: 'Equipos',
       show_disabled: 'Equipos desactivados en Home Assistant, en gris',
       show_export: 'Botón para guardar el mapa como imagen',
+      show_label_warning: 'Aviso cuando se ocultan etiquetas con el zoom actual',
       show_mesh: 'Rutas de la malla Zigbee y Thread',
       show_panel: 'Panel lateral',
       show_trackers: 'Equipos que solo tienen device tracker',
@@ -3275,7 +3277,7 @@
   var FIELDS = [
     { sec: 'general' }, { p: 'title', k: 'text' }, { p: 'language', k: 'select', o: [['', 'auto'], ['en', 'English'], ['es', 'Español']], d: '' },
     { p: 'layout', k: 'select', o: [['detailed', 'detailed'], ['compact', 'compact']], d: 'detailed' }, { p: 'height', k: 'number', min: 0, max: 2400, d: 0 }, { p: 'group_by_area', k: 'bool', d: false }, { p: 'sort', k: 'select', o: [['area', 'byArea'], ['name', 'byName']], d: 'area' }, { p: 'show_panel', k: 'bool', d: true }, { p: 'animations', k: 'bool', d: true },
-    { p: 'minimap', k: 'bool', d: true }, { p: 'show_export', k: 'bool', d: true }, { p: 'device_labels', k: 'bool', d: true },
+    { p: 'minimap', k: 'bool', d: true }, { p: 'show_export', k: 'bool', d: true }, { p: 'device_labels', k: 'bool', d: true }, { p: 'show_label_warning', k: 'bool', d: true },
     { sec: 'colors' }, { p: 'colors.cloud', k: 'color', d: '#7c5cff', l: 'cloud' }, { p: 'colors.local', k: 'color', d: '#0b8a77', l: 'local' }, { p: 'colors.radio', k: 'color', d: '#b86e00', l: 'radio' },
     { p: 'colors.core', k: 'color', d: '#03a9f4', l: 'core' }, { p: 'colors.offline', k: 'color', d: '#db4437', l: 'offline' }, { p: 'colors.away', k: 'color', d: '#a86400', l: 'away' }, { p: 'colors.recent', k: 'color', d: '#d9a900', l: 'crecent' }, { p: 'colors.no_entities', k: 'color', d: '#9e9e9e', l: 'cbare' },
     { sec: 'lines' }, { p: 'lines.cloud', k: 'select', o: LINE, d: 'dashed', l: 'lcloud' }, { p: 'lines.local', k: 'select', o: LINE, d: 'solid', l: 'llocal' },
