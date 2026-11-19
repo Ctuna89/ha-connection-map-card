@@ -356,7 +356,7 @@
   // Every option the card takes. Names are stable from 1.0; the replaced ones keep working.
   // Router integrations that register every client of the network as a device of its own, linked to the gateway.
   var CLIENTS_AS_DEVICES = ['netgear', 'sagemcom_fast'];
-  var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'height', 'sort', 'group_by_area', 'group_small', 'separate_services', 'physical_only', 'show_bt_proxies', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'show_disabled', 'minimap', 'device_labels', 'show_label_warning', 'animations',
+  var OPTIONS = ['type', 'title', 'language', 'demo', 'layout', 'height', 'aspect_ratio', 'sort', 'group_by_area', 'group_small', 'separate_services', 'physical_only', 'show_bt_proxies', 'show_panel', 'show_export', 'show_mesh', 'show_trackers', 'show_disabled', 'minimap', 'device_labels', 'show_label_warning', 'animations',
     'colors', 'lines', 'sizes', 'names', 'overrides', 'exclude_integrations', 'exclude_devices', 'computers', 'merge_duplicates', 'entities_without_device', 'devices_without_entities', 'recent_hours',
     'main_router', 'router_name', 'coordinator_name', 'thread_via_border_router', 'z2m_base_topic', 'grid_options', 'layout_options', 'view_layout', 'visibility', 'card_mod'];
   var DEPRECATED = { core_size: 'sizes.core', mqtt_entities: 'entities_without_device' };
@@ -550,7 +550,7 @@
     '.main{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}',
     '.main.wide{grid-template-columns:minmax(0,1fr) 300px;align-items:start}',
     '.map{position:relative;border:1px solid var(--cm-line);border-radius:14px;overflow:hidden;min-width:0}',
-    '.map>svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}',
+    '.map>svg{display:block;width:100%;height:auto;touch-action:pan-y;user-select:none;-webkit-user-select:none}',
     '.zoom{position:absolute;right:8px;top:8px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:132px}.zoom .btn.on{border-color:var(--cm-core);color:var(--cm-core)}',
     '.xmenu{position:absolute;right:8px;top:84px;z-index:4;display:none;flex-direction:column;gap:6px;background:var(--cm-bg);border:1px solid var(--cm-line);border-radius:12px;padding:10px;max-width:230px;box-shadow:0 2px 10px rgba(0,0,0,.18)}',
     '.xmenu p{margin:0;font-size:12px;color:var(--cm-muted)}.xmenu .btn{text-align:left;cursor:pointer}',
@@ -648,11 +648,11 @@
       if (noteKey && noteKey !== ConnectionMapCard._warned) { ConnectionMapCard._warned = noteKey; console.warn('connection-map-card options — ' + this._optNotes.join(', ')); }
       this._given = given; config = given;
       this._cfg = Object.assign({
-        title: null, height: null, group_small: 1, exclude_integrations: [], exclude_devices: [], computers: [], show_bt_proxies: true, show_trackers: false,
+        title: null, height: null, aspect_ratio: null, group_small: 1, exclude_integrations: [], exclude_devices: [], computers: [], show_bt_proxies: true, show_trackers: false,
         show_panel: true, colors: {}, show_mesh: true, z2m_base_topic: 'zigbee2mqtt', overrides: {}, animations: true, sort: 'area', core_size: 'large', physical_only: false, group_by_area: false, mqtt_entities: true, entities_without_device: true, devices_without_entities: true, merge_duplicates: true, recent_hours: 24, layout: 'detailed', show_export: true
       }, config || {});
       // look-only options are applied by drawing again; anything else needs the model to be rebuilt
-      var LOOK = ['title', 'height', 'colors', 'lines', 'sizes', 'core_size', 'minimap', 'device_labels', 'show_label_warning', 'animations', 'show_panel', 'layout', 'show_export', 'group_by_area', 'grid_options', 'layout_options', 'view_layout'];
+      var LOOK = ['title', 'height', 'aspect_ratio', 'colors', 'lines', 'sizes', 'core_size', 'minimap', 'device_labels', 'show_label_warning', 'animations', 'show_panel', 'layout', 'show_export', 'group_by_area', 'grid_options', 'layout_options', 'view_layout'];
       if (this._S) { this._S.layout = null; this._S.physical = null; } // what was chosen with the buttons gives way to the configuration
       function rest(c) { var o = {}; Object.keys(c || {}).sort().forEach(function (k) { if (LOOK.indexOf(k) < 0) o[k] = c[k]; }); return JSON.stringify(o); }
       var same = this._built && this._modelKey === rest(this._cfg);
@@ -662,6 +662,7 @@
       this._modelKey = rest(this._cfg);
       if (!this._root) { if (needLoad) { this._built = false; this._demoHass = null; } return; }
       this._applyCfg();
+      if (prevCfg && String(prevCfg.aspect_ratio || '') !== String(this._cfg.aspect_ratio || '')) this._vb = null;
       var ttl = (this._cfg.title || this._t('title')) + (this._hass && this._hass.demo ? ' · demo: ' + this._cfg.demo : '');
       if (same) { this._$('title').textContent = ttl; this._render(); }
       else if (!needLoad) { this._$('title').textContent = ttl; this._vb = null; this._remodel(); }
@@ -693,6 +694,26 @@
       }
       return !!(go && typeof go.rows === 'number' && go.rows > 0 && this.clientHeight > 120);
     }
+    _aspectRatio() {
+      var raw = this._cfg && this._cfg.aspect_ratio;
+      if (raw != null && raw !== '' && String(raw).trim().toLowerCase() !== 'auto') {
+        var s = String(raw).trim(), m = /^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/.exec(s);
+        var v = m ? parseFloat(m[1]) / (parseFloat(m[2]) || 1) : parseFloat(s);
+        if (!isNaN(v) && v > 0) return Math.max(0.55, Math.min(2.2, v));
+      }
+      var mapEl = this._root && this._$('map'), mw = (mapEl && mapEl.getBoundingClientRect().width) || 800;
+      if (this._mapHeight() || this._isGridFill()) {
+        var svgEl = this._$('svg'), sh = (svgEl && svgEl.getBoundingClientRect().height) || 0;
+        if (sh > 120) return Math.max(0.65, Math.min(1.85, mw / sh));
+      }
+      var winH = (typeof window !== 'undefined' && window.innerHeight) || 900;
+      if (mw < 600) {
+        var mobH = Math.max(320, Math.round(Math.min(winH * 0.68, 640)));
+        return Math.max(0.66, Math.min(1.2, mw / mobH));
+      }
+      var vh = Math.max(480, winH - 240);
+      return Math.max(1, Math.min(1.55, mw / vh));
+    }
     _syncFill() {
       if (!this._root) return;
       var card = this._root.querySelector('ha-card'); if (!card) return;
@@ -719,6 +740,7 @@
       var m = this._$('main'); if (m) m.classList.toggle('wide', m.getBoundingClientRect().width > 860 && cfg.show_panel !== false);
     }
     connectedCallback() { this._syncFill(); }
+    disconnectedCallback() { if (this._clearPtrs) this._clearPtrs(); }
     getCardSize() { return 12; }
     getGridOptions() { return { columns: 'full', rows: 14, min_rows: 4 }; }
 
@@ -744,7 +766,14 @@
       this._ro = new ResizeObserver(function () {
         self._syncFill();
         var m = self._$('main'); if (m) m.classList.toggle('wide', m.getBoundingClientRect().width > 860 && self._cfg.show_panel !== false);
-        if (self._vb) requestAnimationFrame(function () { self._setVB(); if (self._labs) self._declutter(); });
+        if (self._vb) requestAnimationFrame(function () {
+          var mapEl = self._$('map'), nar = ((mapEl && mapEl.getBoundingClientRect().width) || 800) < 600;
+          if (self._built && !self._inLayout && self._lastAr && (Math.abs(self._aspectRatio() - self._lastAr) > 0.12 || nar !== self._wasNar)) {
+            if (self._isFullView() || nar !== self._wasNar) self._vb = null;
+            self._render(); return;
+          }
+          self._setVB(); if (self._labs) self._declutter();
+        });
       });
       this._ro.observe(this);
       this._ro.observe(this._$('main'));
@@ -1436,7 +1465,8 @@
       var ENUM = ['layout', 'sort', 'language', 'demo', 'merge_duplicates', 'core_size'], conf = {};
       Object.keys(cfg).sort().forEach(function (k) {
         var v = cfg[k];
-        conf[k] = typeof v === 'boolean' || typeof v === 'number' ? v : typeof v === 'string' ? (ENUM.indexOf(k) >= 0 ? v : '<text>') : Array.isArray(v) ? v.length + ' items'
+        var okStr = ENUM.indexOf(k) >= 0 || (k === 'aspect_ratio' && /^(?:auto|\d+(?:\.\d+)?(?:\s*[:/]\s*\d+(?:\.\d+)?)?)$/i.test(String(v).trim()));
+        conf[k] = typeof v === 'boolean' || typeof v === 'number' ? v : typeof v === 'string' ? (okStr ? v : '<text>') : Array.isArray(v) ? v.length + ' items'
           : v && typeof v === 'object' ? (['colors', 'lines', 'sizes'].indexOf(k) >= 0 ? v : Object.keys(v).length + ' entries') : String(v);
       });
       var ints = {};
@@ -2334,16 +2364,25 @@
       // One sector only (for example a home with nothing but its local network): its node goes to the centre of the map,
       // with its hubs all around it, and Home Assistant moves out into the free space. Nothing stands between the node
       // and that space, so there is room there for the access points too.
+      var ar = this._aspectRatio(); this._lastAr = ar;
+      var mapEl0 = this._root && this._$('map'); this._wasNar = ((mapEl0 && mapEl0.getBoundingClientRect().width) || 800) < 600;
+      var sx = Math.abs(ar - 1) < 0.02 ? 1 : Math.pow(ar, 0.44), sy = 1 / sx, minS = Math.min(sx, sy);
+      function ef(ang) { var rd = deg(ang), ax = sx * Math.sin(rd), ay = sy * Math.cos(rd); return Math.sqrt(ax * ax + ay * ay); }
+      function arcLen(a0, sp0) {
+        if (sp0 <= 0) return 0;
+        var steps = 16, da = sp0 / steps, s = 0;
+        for (var q = 0; q < steps; q++) s += ef(a0 + (q + 0.5) * da);
+        return s * deg(da);
+      }
       var radioMix0 = !!this._coord && hubs.some(function (x) { return x.m === 'radio' && !x.own; }) && hubs.some(function (x) { return x.own; });
       var single = present.length === 1 && !(present[0] === 'radio' && radioMix0), gapMid = 180, apR0 = Z.net * 0.72, coreD = Z.core * 1.25 + Z.net + 46;
       if (single) {
         var noHub = 0;
         if (present[0] === 'local') (this._routers || []).forEach(function (r) { if (r !== me._router && !hubs.some(function (h) { var c = me._hubConn(h); return h.m === 'local' && c && c.via === r.n; })) noHub++; });
-        gap = Math.min(170, 2 * Math.asin(Math.min(1, (Z.core * 1.25 + 14) / coreD)) * 180 / Math.PI + 14 + 24 * Math.min(6, noHub));
+        gap = Math.min(170, 2 * Math.asin(Math.min(1, (Z.core * 1.25 + 14) / (coreD * minS))) * 180 / Math.PI + 14 + 24 * Math.min(6, noHub));
         spans[present[0]] = 360 - gap;
       }
-      var start, mnodes, rn, loc, ringR = 0, banned = {}, again = true, pass = 0, lonely = [], self = this;
-      var core = this._core = single ? { x: coreD * Math.cos(deg(gapMid)), y: coreD * Math.sin(deg(gapMid)) } : { x: 0, y: 0 };
+      var start, mnodes, rn, loc, ringR = 0, banned = {}, again = true, pass = 0, lonely = [], self = this, core;
       var allAps = (this._routers || []).filter(function (r) { return r !== me._router; }).slice(0, 12).map(function (r) { return r.n; });
       var radioMixed = !!this._coord && hubs.some(function (x) { return x.m === 'radio' && !x.own; });
       // Rule: two links never cross, and a link never runs over a bubble that is not one of its ends.
@@ -2379,12 +2418,24 @@
         });
         return n;
       }
+      function discTouch() {
+        var D = discs();
+        for (var i = 0; i < D.length; i++) for (var j = i + 1; j < D.length; j++) {
+          var a = D[i], b = D[j], dx = a[0].x - b[0].x, dy = a[0].y - b[0].y, lim = a[1] + b[1] - 1.5;
+          if (dx * dx + dy * dy < lim * lim) return true;
+        }
+        return false;
+      }
       function around(node) { // problems caused by a node being where it is: its own links, other links running over it, bubbles touching it
         var n = problems(links().filter(function (e) { return e[0] === node || e[1] === node; }));
         links().forEach(function (e) { if (over(e[0], e[1], node, node.r + 3)) n++; });
         discs().forEach(function (d) { if (d[0] !== node && Math.sqrt((d[0].x - node.x) * (d[0].x - node.x) + (d[0].y - node.y) * (d[0].y - node.y)) < d[1] + node.r + 4) n++; });
         return n;
       }
+      var apR = Z.net * 0.72, ring = 0;
+      while (true) {
+      core = this._core = single ? { x: coreD * sx * Math.cos(deg(gapMid)), y: coreD * sy * Math.sin(deg(gapMid)) } : { x: 0, y: 0 };
+      banned = {}; again = true; pass = 0;
       while (again && pass++ < 8) {
       again = false; start = single ? gapMid + gap / 2 : -90 - (spans.cloud || 0) / 2; mnodes = {}; lonely = [];
       var apNames = allAps.filter(function (k) { return !banned[k]; });
@@ -2392,11 +2443,11 @@
       present.forEach(function (m) {
         var span = spans[m], g = groups[m];
         var maxOuter = g.reduce(function (s, h) { return Math.max(s, h.outer); }, 0);
-        var R = single ? Math.max(170, g.w / deg(span), Z.net + apR0 + 96 + maxOuter)
-          : Math.max(dist + 110, g.w / deg(span), dist + Z.net + 47 + maxOuter); // never closer to the centre than the medium node + the biggest cluster
+        var minR = single ? Math.max(170, Z.net + apR0 + 96 + maxOuter) : Math.max(dist + 110, dist + Z.net + 47 + maxOuter);
+        var uArc = arcLen(start, span) || deg(span);
+        var R = Math.max(minR / minS, g.w / uArc); // never closer to the centre than the medium node + the biggest cluster
         ringR = R;
-        var totalDeg = g.w / R * 180 / Math.PI, scale = Math.min(1, span / totalDeg);
-        var a = start + (span - totalDeg * scale) / 2, mid = start + span / 2;
+        var mid = start + span / 2;
         // centre the heaviest hubs in the sector, smaller ones towards the edges
         var arranged = [];
         if (m === 'local' && apNames.length) {
@@ -2409,11 +2460,27 @@
             .forEach(function (k, i) { if (i % 2) right = right.concat(centred(by[k])); else left = centred(by[k]).concat(left); });
           arranged = left.concat(centred(by[''] || []), right);
         } else { g.forEach(function (h, i) { if (h.own) return; if (i % 2) arranged.push(h); else arranged.unshift(h); }); g.forEach(function (h) { if (h.own) arranged.push(h); }); }
+        var rawAws = [], curA = start;
         arranged.forEach(function (h) {
-          var aw = h.w / R * 180 / Math.PI * scale;
+          var est = curA + (h.w / g.w) * span * 0.5;
+          rawAws.push(h.w / (R * ef(est)) * 180 / Math.PI);
+          curA += (h.w / g.w) * span;
+        });
+        var totalDeg = rawAws.reduce(function (s2, v) { return s2 + v; }, 0);
+        if (totalDeg > span && sx !== 1) {
+          R *= totalDeg / span; ringR = R; rawAws = []; curA = start;
+          arranged.forEach(function (h) {
+            var est = curA + (h.w / g.w) * span * 0.5, aw0 = h.w / (R * ef(est)) * 180 / Math.PI;
+            rawAws.push(aw0); curA += aw0;
+          });
+          totalDeg = rawAws.reduce(function (s2, v) { return s2 + v; }, 0);
+        }
+        var scale = Math.min(1, span / (totalDeg || 1)), a = start + (span - totalDeg * scale) / 2;
+        arranged.forEach(function (h, idx) {
+          var aw = rawAws[idx] * scale;
           var ac = a + aw / 2; a += aw;
-          var rr = R + (arranged.length > 4 && arranged.indexOf(h) % 2 ? h.outer * 0.9 : 0);
-          h.x = C.x + rr * Math.cos(deg(ac)); h.y = C.y + rr * Math.sin(deg(ac)); h.ac = ac;
+          var rr = R + (arranged.length > 4 && idx % 2 ? (h.outer * 0.9) / minS : 0);
+          h.x = C.x + rr * sx * Math.cos(deg(ac)); h.y = C.y + rr * sy * Math.sin(deg(ac)); h.ac = ac;
           h.dv.forEach(function (d) { d.x = h.x + d.rx; d.y = h.y + d.ry; });
         });
         // Bluetooth and Thread groups link straight to the centre when the radio node is a Zigbee coordinator:
@@ -2425,22 +2492,27 @@
         var g0 = m === 'local' && apNames.length ? arranged.filter(function (h) { return !h.ap; }) : [];
         if (g0.length && !single) mid = (g0[0].ac + g0[g0.length - 1].ac) / 2; // the router sits in front of its own hubs
         var nd = single ? 0 : dist;
-        mnodes[m] = { m: m, x: C.x + nd * Math.cos(deg(mid)), y: C.y + nd * Math.sin(deg(mid)), r: Z.net, ac: single ? gapMid + 180 : mid, lo: start, hi: start + span };
+        mnodes[m] = { m: m, x: C.x + nd * sx * Math.cos(deg(mid)), y: C.y + nd * sy * Math.sin(deg(mid)), r: Z.net, ac: single ? gapMid + 180 : mid, lo: start, hi: start + span };
         start += span + gap;
       });
       loc = mnodes.local; rn = {};
       if (this._router && loc) rn[this._router.n] = loc;
       hubs.forEach(function (h) { h.direct = !!(h.own && radioMixed); h.from = h.direct ? core : mnodes[h.m]; });
-      var apR = Z.net * 0.72, rb = single ? 0 : dist, ring = rb + (single ? Z.net + apR + 62 : 75);
-      hubs.forEach(function (h) { if (h.ap) ring = Math.min(ring, Math.sqrt(h.x * h.x + h.y * h.y) - h.outer - 34); });
-      ring = Math.max(ring, rb + Z.net + apR + 12);
+      var rb = single ? 0 : dist; ring = rb + (single ? (Z.net + apR + 62) / minS : 75 / minS);
+      hubs.forEach(function (h) {
+        if (!h.ap) return;
+        var ur = Math.sqrt(sx * sx * Math.cos(deg(h.ac)) * Math.cos(deg(h.ac)) + sy * sy * Math.sin(deg(h.ac)) * Math.sin(deg(h.ac))) || 1;
+        var er = Math.sqrt((h.x / sx) * (h.x / sx) + (h.y / sy) * (h.y / sy));
+        ring = Math.min(ring, er - (h.outer + 34) / ur);
+      });
+      ring = Math.max(ring, rb + (Z.net + apR + 12) / minS);
       if (loc) (this._routers || []).forEach(function (r) {
         if (allAps.indexOf(r.n) < 0) return;
         var hs = hubs.filter(function (h) { return h.ap === r.n; }), node = { r: apR, router: r };
         if (!hs.length) { lonely.push(node); return; }
         // all access points on one ring, each in front of its own hubs
         var a = hs.reduce(function (s2, h) { return s2 + h.ac; }, 0) / hs.length;
-        node.ac = a; node.x = ring * Math.cos(deg(a)); node.y = ring * Math.sin(deg(a)); rn[r.n] = node;
+        node.ac = a; node.x = ring * sx * Math.cos(deg(a)); node.y = ring * sy * Math.sin(deg(a)); rn[r.n] = node;
         hs.forEach(function (h) { h.from = node; });
         if (around(node) !== 0) { banned[r.n] = 1; again = true; }
       });
@@ -2450,12 +2522,12 @@
       // the map, the warning under the map says so, and the router's panel lists them all anyway.
       lonely.forEach(function (node) {
         var cand = [], ia = loc.ac + 180, q = Z.net + apR + 16, ok = false;
-        var step = 2 * Math.asin(Math.min(1, (apR + 9) / ring)) * 180 / Math.PI, half = gap / 2, slots = [];
+        var step = 2 * Math.asin(Math.min(1, (apR + 9) / (ring * minS))) * 180 / Math.PI, half = gap / 2, slots = [];
         if (half < step * 1.5) slots = [half]; else for (var o1 = step * 0.75; o1 <= half - step * 0.4; o1 += step) slots.push(o1);
         if (single) { // around the centre node: anywhere in the free wedge, beside Home Assistant
           slots = []; for (var o2 = 9; o2 <= gap / 2; o2 += 9) slots.push(o2);
-          [ringR, ring, coreD, (ring + ringR) / 2].forEach(function (rad) { slots.forEach(function (o1) { [loc.lo - o1, loc.lo - gap + o1].forEach(function (a) { cand.push([rad * Math.cos(deg(a)), rad * Math.sin(deg(a)), a]); }); }); });
-        } else [ring, ring + 2 * apR + 16, ring - 40].forEach(function (rad) { slots.forEach(function (o1) { [loc.hi + o1, loc.lo - o1].forEach(function (a) { cand.push([rad * Math.cos(deg(a)), rad * Math.sin(deg(a)), a]); }); }); });
+          [ringR, ring, coreD, (ring + ringR) / 2].forEach(function (rad) { slots.forEach(function (o1) { [loc.lo - o1, loc.lo - gap + o1].forEach(function (a) { cand.push([rad * sx * Math.cos(deg(a)), rad * sy * Math.sin(deg(a)), a]); }); }); });
+        } else [ring, ring + (2 * apR + 16) / minS, ring - 40 / minS].forEach(function (rad) { slots.forEach(function (o1) { [loc.hi + o1, loc.lo - o1].forEach(function (a) { cand.push([rad * sx * Math.cos(deg(a)), rad * sy * Math.sin(deg(a)), a]); }); }); });
         if (!single) [40, -40, 75, -75].forEach(function (o) { cand.push([loc.x + q * Math.cos(deg(ia + o)), loc.y + q * Math.sin(deg(ia + o)), loc.ac]); });
         rn[node.router.n] = node;
         cand.forEach(function (c) { if (ok) return; node.x = c[0]; node.y = c[1]; node.ac = c[2]; ok = around(node) === 0; });
@@ -2464,6 +2536,10 @@
       // last line of defence: whatever still crosses is attached one level up, where it cannot cross
       if (problems()) { hubs.forEach(function (h) { if (h.from.router) { h.from = loc; h.ap = ''; } }); Object.keys(rn).forEach(function (k) { if (rn[k].router) delete rn[k]; }); }
       if (problems()) { hubs.forEach(function (h) { if (h.direct) { h.direct = false; h.from = mnodes[h.m]; } }); }
+      if ((!problems() && !discTouch()) || Math.abs(sx - 1) < 0.01) break;
+      sx = 1 + (sx - 1) * 0.65; sy = 1 / sx; minS = Math.min(sx, sy);
+      if (single) { gap = Math.min(170, 2 * Math.asin(Math.min(1, (Z.core * 1.25 + 14) / (coreD * minS))) * 180 / Math.PI + 14 + 24 * Math.min(6, noHub)); spans[present[0]] = 360 - gap; }
+      }
       // every group was laid out with a free lane at angle 0: turn it so the lane points at the group's own link,
       // which then reaches the bubble without running over its dots or their lines
       if (!compact) hubs.forEach(function (h) {
@@ -2480,6 +2556,7 @@
       this._vb0 = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
       // keep the user's zoom/pan when the map is redrawn, unless they were looking at the whole map
       var v = this._vb;
+      if (!v) this._needFit = true;
       if (!v || (old && Math.abs(v.x - old.x) + Math.abs(v.y - old.y) + Math.abs(v.w - old.w) + Math.abs(v.h - old.h) < 1)) this._vb = Object.assign({}, this._vb0);
     }
 
@@ -2664,7 +2741,7 @@
       });
       obst.push({ x: core.x, y: core.y, r: cr * 1.25 + 2, hr: cr + 2 });
       this._miniDraw();
-      if (first) this._fit(); else this._setVB();
+      if (first || this._needFit) { this._needFit = false; this._fit(); } else this._setVB();
       this._declutter();
       this._entered = true;
       this._wire();
@@ -2700,24 +2777,109 @@
       this._$('map').addEventListener('click', function () { self._$('xmenu').style.display = 'none'; });
       this._$('zin').onclick = function () { self._zoom(0.75); };
       this._$('zout').onclick = function () { self._zoom(1.33); };
-      this._$('zfit').onclick = function () { self._fit(); };
-      svg.addEventListener('wheel', function (e) { e.preventDefault(); var p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; var s = p.matrixTransform(svg.getScreenCTM().inverse()); self._zoom(e.deltaY > 0 ? 1.12 : 0.89, s.x, s.y); }, { passive: false });
-      svg.addEventListener('pointerdown', function (e) { drag.on = true; drag.moved = false; drag.x = e.clientX; drag.y = e.clientY; drag.vb = Object.assign({}, self._vb); });
-      window.addEventListener('pointermove', function (e) {
-        if (!drag.on) return; var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-        if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true; if (!drag.moved) return;
-        var sc = 1 / (self._k || (svg.getBoundingClientRect().width / self._vb.w) || 1); self._vb.x = drag.vb.x - dx * sc; self._vb.y = drag.vb.y - dy * sc; self._setVB();
+      this._$('zfit').onclick = function () { self._fit(true); };
+      svg.addEventListener('wheel', function (e) {
+        if (!(e.ctrlKey || e.metaKey) && self._isFullView()) return;
+        e.preventDefault();
+        var ctm = svg.getScreenCTM(); if (!ctm) return;
+        var p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; var s = p.matrixTransform(ctm.inverse());
+        var dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? (window.innerHeight || 800) : 1);
+        var f = e.ctrlKey || e.metaKey ? Math.exp(Math.max(-0.45, Math.min(0.45, dy * 0.01))) : (dy > 0 ? 1.12 : 0.89);
+        self._zoom(f, s.x, s.y);
+      }, { passive: false });
+      ['gesturestart', 'gesturechange'].forEach(function (evName) { svg.addEventListener(evName, function (ev) { ev.preventDefault(); }); });
+      svg.addEventListener('touchmove', function (ev) { if (ev.touches && ev.touches.length > 1 && ev.cancelable) ev.preventDefault(); }, { passive: false });
+      ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(function (evName) {
+        svg.addEventListener(evName, function (ev) { if (!self._isFullView() || drag.pinched) ev.stopPropagation(); }, { passive: true });
+      });
+      var ptrs = {}, lastTap = null;
+      function hyp(dx, dy) { return Math.sqrt(dx * dx + dy * dy); }
+      function toSvg(cx, cy, inv) { var p = svg.createSVGPoint(); p.x = cx; p.y = cy; return p.matrixTransform(inv); }
+      this._clearPtrs = function () { ptrs = {}; drag.on = false; drag.moved = false; drag.pinched = false; drag.cap = false; drag.swallow = false; };
+      function beginGesture() {
+        var ids = Object.keys(ptrs), ctm = svg.getScreenCTM();
+        if (!ids.length || !ctm) { drag.on = false; return; }
+        if (ids.length >= 2) {
+          var a = ptrs[ids[0]], b = ptrs[ids[1]], mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          var dist = hyp(a.x - b.x, a.y - b.y), inv = ctm.inverse();
+          drag.on = true; drag.mode = 'pinch'; drag.pinched = true; drag.moved = true;
+          drag.mx = mx; drag.my = my; drag.dist = dist; drag.vb = Object.assign({}, self._vb); drag.anchor = toSvg(mx, my, inv);
+          return;
+        }
+        var p0 = ptrs[ids[0]];
+        if (p0.type === 'touch' && self._isFullView() && !drag.pinched) { drag.on = false; return; }
+        drag.on = true; drag.mode = 'pan'; drag.x = p0.x; drag.y = p0.y; drag.vb = Object.assign({}, self._vb);
+      }
+      svg.addEventListener('pointerdown', function (e) {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (!Object.keys(ptrs).length) { drag.moved = false; drag.pinched = false; drag.cap = false; drag.swallow = false; }
+        ptrs[e.pointerId] = { x: e.clientX, y: e.clientY, type: e.pointerType };
+        if (Object.keys(ptrs).length <= 2) beginGesture();
+      });
+      svg.addEventListener('pointermove', function (e) {
+        if (!ptrs[e.pointerId]) return;
+        if (e.pointerType === 'mouse' && !(e.buttons & 1)) { delete ptrs[e.pointerId]; beginGesture(); return; }
+        ptrs[e.pointerId].x = e.clientX; ptrs[e.pointerId].y = e.clientY;
+        var ids = Object.keys(ptrs);
+        if (drag.on && drag.mode === 'pinch' && ids.length >= 2 && self._vb0) {
+          var a = ptrs[ids[0]], b = ptrs[ids[1]], mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, dist = hyp(a.x - b.x, a.y - b.y);
+          var f = drag.dist > 8 && dist > 8 ? drag.dist / dist : 1;
+          var nw = Math.min(self._vb0.w * 1.6, Math.max(self._vb0.w * 0.12, drag.vb.w * f)), rk = nw / drag.vb.w, nh = drag.vb.h * rk;
+          var rect = svg.getBoundingClientRect(), kNew = rect.width && nw ? Math.min(rect.width / nw, (rect.height || rect.width) / nh) : 1;
+          self._vb = {
+            x: drag.anchor.x - nw / 2 - (mx - (rect.left + rect.width / 2)) / (kNew || 1),
+            y: drag.anchor.y - nh / 2 - (my - (rect.top + (rect.height || rect.width) / 2)) / (kNew || 1),
+            w: nw, h: nh
+          };
+          self._setVB(); self._$('tip').style.display = 'none';
+          return;
+        }
+        if (!drag.on || drag.mode !== 'pan') return;
+        var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+        if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
+        if (!drag.moved) return;
+        if (!drag.cap && e.pointerType === 'mouse') { drag.cap = true; try { svg.setPointerCapture(e.pointerId); } catch (err) { /* gone */ } }
+        var sc = 1 / (self._k || (svg.getBoundingClientRect().width / self._vb.w) || 1);
+        self._vb.x = drag.vb.x - dx * sc; self._vb.y = drag.vb.y - dy * sc; self._setVB();
         self._$('tip').style.display = 'none';
       });
-      window.addEventListener('pointerup', function () { if (drag.on && drag.moved) setTimeout(function () { self._declutter(); }, 30); drag.on = false; setTimeout(function () { drag.moved = false; }, 0); });
+      function endPtr(e) {
+        if (!ptrs[e.pointerId]) return;
+        delete ptrs[e.pointerId];
+        if (Object.keys(ptrs).length) { beginGesture(); return; }
+        var acted = drag.moved || drag.pinched;
+        if (acted) { drag.swallow = true; setTimeout(function () { self._declutter(); }, 30); setTimeout(function () { drag.swallow = false; }, 80); }
+        drag.on = false; drag.cap = false;
+        setTimeout(function () { drag.moved = false; drag.pinched = false; }, 0);
+      }
+      svg.addEventListener('pointerup', endPtr);
+      svg.addEventListener('pointercancel', endPtr);
+      svg.addEventListener('lostpointercapture', function (e) { if (e.target === svg) endPtr(e); });
+      svg.addEventListener('click', function (e) {
+        if (!drag.swallow) return;
+        drag.swallow = false; e.stopPropagation(); e.preventDefault();
+      }, true);
       // taps anywhere pick the nearest device or hub within ~24 px, so tiny dots are easy to hit on a phone
       svg.addEventListener('click', function (e) {
-        if (drag.moved) return;
-        var p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; var s = p.matrixTransform(svg.getScreenCTM().inverse());
+        if (drag.moved || drag.pinched) return;
+        var ctm = svg.getScreenCTM(); if (!ctm) return;
+        var p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; var s = p.matrixTransform(ctm.inverse());
         var bd = 24 / (self._k || 1), best = null;
         (self._devs || []).forEach(function (d) { if (d.x == null || d.vis === false) return; var dd = Math.sqrt((d.x - s.x) * (d.x - s.x) + (d.y - s.y) * (d.y - s.y)); if (dd < bd) { bd = dd; best = { d: d }; } });
         (self._hubs || []).forEach(function (h) { if (Math.sqrt((h.x - s.x) * (h.x - s.x) + (h.y - s.y) * (h.y - s.y)) <= self._sz.hub + 3) best = { h: h }; }); // inside a hub disc wins
-        if (best && best.d) self._selDev(best.d); else if (best && best.h) self._selHub(best.h); else self._reset();
+        if (best && best.d) { lastTap = null; self._selDev(best.d); }
+        else if (best && best.h) { lastTap = null; self._selHub(best.h); }
+        else {
+          var now = Date.now();
+          if (lastTap && now - lastTap.t < 340 && hyp(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) {
+            lastTap = null;
+            if (!self._isFullView()) { self._vb = Object.assign({}, self._vb0); self._setVB(); }
+            else self._zoom(0.42, s.x, s.y);
+            return;
+          }
+          lastTap = { t: now, x: e.clientX, y: e.clientY };
+          self._reset();
+        }
       });
       this._$('q').addEventListener('input', function (e) { self._S.q = e.target.value.trim().toLowerCase(); self._apply(); self._list(); });
       this._$('area').onchange = function (e) { self._S.area = e.target.value; self._apply(); self._list(); };
@@ -2729,6 +2891,12 @@
         self._apply(); self._list();
       };
     }
+    _isFullView() {
+      var v = this._view, a = this._vb0;
+      if (!v || !a) return true;
+      var tol = Math.max(a.w, a.h) * 0.03;
+      return v.x <= a.x + tol && v.y <= a.y + tol && v.x + v.w >= a.x + a.w - tol && v.y + v.h >= a.y + a.h - tol;
+    }
     _setVB() {
       var v = this._vb, svg = this._$('svg'); svg.setAttribute('viewBox', v.x + ' ' + v.y + ' ' + v.w + ' ' + v.h);
       var r = svg.getBoundingClientRect(), k = r.width && v.w ? Math.min(r.width / v.w, (r.height || r.width) / v.h) : 1;
@@ -2736,6 +2904,7 @@
       // what is really on screen (the viewBox is letterboxed to keep its proportions)
       var vw = r.width / this._k, vh = (r.height || r.width) / this._k;
       this._view = { x: v.x + v.w / 2 - vw / 2, y: v.y + v.h / 2 - vh / 2, w: vw, h: vh };
+      svg.style.touchAction = this._isFullView() ? 'pan-y' : 'none';
       this._miniView();
       // labels change size relative to the map when the zoom changes, and device names depend on what is in view: place them again
       var zoomed = Math.abs(this._k - (this._dk || 0)) > this._k * 0.02;
@@ -2786,7 +2955,7 @@
         img.src = url;
       });
     }
-    _dlMin() { var z = this._sz || this._sizes(); return 26 / Math.max(15, z.dev * 2 + 2.6); }
+    _dlMin() { var z = this._sz || this._sizes(); return 23 / Math.max(15, z.dev * 2 + 2.6); }
     // Overview: the whole map in a corner with the visible part marked. Click or drag on it to move.
     _miniDraw() {
       var mini = this._$('mini'), v = this._vb0, M = this._M, self = this;
@@ -2812,18 +2981,19 @@
     _miniView() {
       var mini = this._$('mini'), r = mini && mini.querySelector('#miniView'), v = this._view, a = this._vb0;
       if (!r || !v || !a) return;
-      var tol = Math.max(a.w, a.h) * 0.03;
-      var all = v.x <= a.x + tol && v.y <= a.y + tol && v.x + v.w >= a.x + a.w - tol && v.y + v.h >= a.y + a.h - tol;
-      mini.style.display = all ? 'none' : 'block';
+      mini.style.display = this._isFullView() ? 'none' : 'block';
       var x0 = Math.max(a.x, v.x), y0 = Math.max(a.y, v.y), x1 = Math.min(a.x + a.w, v.x + v.w), y1 = Math.min(a.y + a.h, v.y + v.h);
       r.setAttribute('x', x0); r.setAttribute('y', y0); r.setAttribute('width', Math.max(0, x1 - x0)); r.setAttribute('height', Math.max(0, y1 - y0));
     }
-    // narrow screens: taller map, starting zoomed in on Home Assistant so labels and dots are usable
-    _fit() {
+    // narrow screens: taller portrait map; Fit toggles between the whole map and a closer view around Home Assistant
+    _fit(toggle) {
       var svg = this._$('svg'), W = this._$('map').getBoundingClientRect().width || 800, v0 = this._vb0;
       if (W < 600 && !this._mapHeight() && !this._isGridFill()) {
         var H = Math.round(Math.min(window.innerHeight * 0.68, 640)); svg.style.height = H + 'px';
-        var w = v0.w * 0.58, h = w * H / W; var co = this._core || { x: 0, y: 0 }; this._vb = { x: co.x / 2 - w / 2, y: co.y / 2 - h / 2 + 30, w: w, h: h };
+        if (toggle && this._isFullView()) {
+          var w = v0.w * 0.62, h = w * H / W, co = this._core || { x: 0, y: 0 };
+          this._vb = { x: co.x / 2 - w / 2, y: co.y / 2 - h / 2 + 20, w: w, h: h };
+        } else this._vb = Object.assign({}, v0);
       } else { svg.style.height = ''; this._vb = Object.assign({}, v0); }
       this._setVB();
     }
@@ -3242,6 +3412,7 @@
   var ED = {
     en: {
       animations: 'Animations',
+      aspect_ratio: 'Map aspect ratio',
       auto: 'Automatic',
       away: 'Off the network',
       byArea: 'By area',
@@ -3311,6 +3482,7 @@
     },
     es: {
       animations: 'Animaciones',
+      aspect_ratio: 'Proporción del mapa',
       auto: 'Automático',
       away: 'Fuera de la red',
       byArea: 'Por pieza',
@@ -3382,7 +3554,7 @@
   var LINE = ['solid', 'dashed', 'dotted'];
   var FIELDS = [
     { sec: 'general' }, { p: 'title', k: 'text' }, { p: 'language', k: 'select', o: [['', 'auto'], ['en', 'English'], ['es', 'Español']], d: '' },
-    { p: 'layout', k: 'select', o: [['detailed', 'detailed'], ['compact', 'compact']], d: 'detailed' }, { p: 'height', k: 'number', min: 0, max: 2400, d: 0 }, { p: 'group_by_area', k: 'bool', d: false }, { p: 'sort', k: 'select', o: [['area', 'byArea'], ['name', 'byName']], d: 'area' }, { p: 'show_panel', k: 'bool', d: true }, { p: 'animations', k: 'bool', d: true },
+    { p: 'layout', k: 'select', o: [['detailed', 'detailed'], ['compact', 'compact']], d: 'detailed' }, { p: 'height', k: 'number', min: 0, max: 2400, d: 0 }, { p: 'aspect_ratio', k: 'select', o: [['', 'auto'], ['9:16', '9:16'], ['3:4', '3:4'], ['1:1', '1:1'], ['4:3', '4:3'], ['16:10', '16:10'], ['16:9', '16:9']], d: '' }, { p: 'group_by_area', k: 'bool', d: false }, { p: 'sort', k: 'select', o: [['area', 'byArea'], ['name', 'byName']], d: 'area' }, { p: 'show_panel', k: 'bool', d: true }, { p: 'animations', k: 'bool', d: true },
     { p: 'minimap', k: 'bool', d: true }, { p: 'show_export', k: 'bool', d: true }, { p: 'device_labels', k: 'bool', d: true }, { p: 'show_label_warning', k: 'bool', d: true },
     { sec: 'colors' }, { p: 'colors.cloud', k: 'color', d: '#7c5cff', l: 'cloud' }, { p: 'colors.local', k: 'color', d: '#0b8a77', l: 'local' }, { p: 'colors.radio', k: 'color', d: '#b86e00', l: 'radio' },
     { p: 'colors.core', k: 'color', d: '#03a9f4', l: 'core' }, { p: 'colors.offline', k: 'color', d: '#db4437', l: 'offline' }, { p: 'colors.away', k: 'color', d: '#a86400', l: 'away' }, { p: 'colors.recent', k: 'color', d: '#d9a900', l: 'crecent' }, { p: 'colors.no_entities', k: 'color', d: '#9e9e9e', l: 'cbare' },
@@ -3453,6 +3625,7 @@
         if (f.sec) return; var e = root.getElementById('f' + i), r = root.getElementById('f' + i + 'r'), o = root.getElementById('f' + i + 'o'), v = self._get(f.p);
         if (f.p === 'sizes.core' && v === undefined && self._c.core_size === 'compact') v = 28;
         if (f.p === 'merge_duplicates') v = v === false ? 'off' : v === true ? undefined : v;
+        if (f.p === 'aspect_ratio' && v != null) v = v === 'auto' ? '' : v === 1 || v === '1' ? '1:1' : v;
         if (r) r.disabled = v === undefined;
         if (e !== act) {
           if (f.k === 'bool') e.checked = v === undefined ? f.d : !!v;
