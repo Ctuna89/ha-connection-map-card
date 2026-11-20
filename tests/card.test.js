@@ -1490,8 +1490,10 @@ test('elliptical aspect_ratio adapts to desktop and mobile, and pinch / wheel / 
     const c = window.card, svg = c.shadowRoot.getElementById('svg');
     const plainWheel = new WheelEvent('wheel', { deltaY: 120, clientX: 200, clientY: 300, bubbles: true, cancelable: true });
     svg.dispatchEvent(plainWheel);
+    const wheelTip = c.shadowRoot.getElementById('tip').style.display !== 'none' ? c.shadowRoot.getElementById('tip').textContent : '';
     const ctrlWheel = new WheelEvent('wheel', { deltaY: -120, ctrlKey: true, clientX: 200, clientY: 300, bubbles: true, cancelable: true });
     svg.dispatchEvent(ctrlWheel);
+    const tipAfterZoom = c.shadowRoot.getElementById('tip').style.display;
     const zoomedTouch = svg.style.touchAction, zoomedFull = c._isFullView();
     c.shadowRoot.getElementById('zfit').click();
     const fit1Full = c._isFullView(), fit1Touch = svg.style.touchAction;
@@ -1500,6 +1502,9 @@ test('elliptical aspect_ratio adapts to desktop and mobile, and pinch / wheel / 
     c.shadowRoot.getElementById('zfit').click();
     return {
       r: c._vb0.w / c._vb0.h,
+      zinTitle: c.shadowRoot.getElementById('zin').title,
+      wheelTip,
+      tipAfterZoom,
       plainPrevented: plainWheel.defaultPrevented,
       ctrlPrevented: ctrlWheel.defaultPrevented,
       zoomedFull, zoomedTouch,
@@ -1509,6 +1514,9 @@ test('elliptical aspect_ratio adapts to desktop and mobile, and pinch / wheel / 
     };
   });
   assert.ok(m1.r < 0.88, 'mobile auto layout is portrait: ' + m1.r);
+  assert.match(m1.zinTitle, /Ctrl \+ wheel/);
+  assert.match(m1.wheelTip, /Ctrl \+ wheel/);
+  assert.equal(m1.tipAfterZoom, 'none');
   assert.equal(m1.plainPrevented, false, 'plain wheel at full view scrolls the page');
   assert.equal(m1.ctrlPrevented, true, 'Ctrl/pinch wheel zooms the map');
   assert.equal(m1.zoomedFull, false);

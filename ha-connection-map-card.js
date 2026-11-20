@@ -168,9 +168,10 @@
       title: 'Connection map',
       version: 'Version',
       vm: 'Virtual machine',
+      wheelHint: 'Ctrl + wheel or double-click to zoom',
       wifi: 'Wi-Fi',
       wired: 'Ethernet',
-      zoomIn: 'Zoom in',
+      zoomIn: 'Zoom in (Ctrl + wheel or double-click)',
       zoomOut: 'Zoom out'
     },
     es: {
@@ -326,9 +327,10 @@
       title: 'Mapa de conexiones',
       version: 'Versión',
       vm: 'Máquina virtual',
+      wheelHint: 'Ctrl + rueda o doble clic para acercar',
       wifi: 'Wi-Fi',
       wired: 'Cable (Ethernet)',
-      zoomIn: 'Acercar',
+      zoomIn: 'Acercar (Ctrl + rueda o doble clic)',
       zoomOut: 'Alejar'
     }
   };
@@ -2779,7 +2781,17 @@
       this._$('zout').onclick = function () { self._zoom(1.33); };
       this._$('zfit').onclick = function () { self._fit(true); };
       svg.addEventListener('wheel', function (e) {
-        if (!(e.ctrlKey || e.metaKey) && self._isFullView()) return;
+        if (!(e.ctrlKey || e.metaKey) && self._isFullView()) {
+          if (!self._wheelHinted) {
+            self._wheelHinted = true;
+            var b0 = self._$('map').getBoundingClientRect(), tip0 = self._$('tip');
+            tip0.style.left = Math.max(80, Math.min((b0.width || 300) - 80, e.clientX - b0.left)) + 'px';
+            tip0.style.top = Math.max(40, Math.min((b0.height || 200) - 16, e.clientY - b0.top)) + 'px';
+            tip0.innerHTML = '<span>' + esc(self._t('wheelHint')) + '</span>'; tip0.style.display = 'block';
+            clearTimeout(self._whT); self._whT = setTimeout(function () { tip0.style.display = 'none'; }, 1800);
+          }
+          return;
+        }
         e.preventDefault();
         var ctm = svg.getScreenCTM(); if (!ctm) return;
         var p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; var s = p.matrixTransform(ctm.inverse());
@@ -3112,6 +3124,7 @@
     _zoom(f, cx, cy) {
       var v = this._vb; if (cx == null) { cx = v.x + v.w / 2; cy = v.y + v.h / 2; }
       var nw = Math.min(this._vb0.w * 1.6, Math.max(this._vb0.w * 0.15, v.w * f)), k = nw / v.w;
+      this._$('tip').style.display = 'none';
       this._vb = { x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k, w: nw, h: v.h * k }; this._setVB();
     }
     _tip(x, y, title, sub) {
