@@ -1447,3 +1447,100 @@ test('show_label_warning: false hides the zoom label notice while keeping other 
   assert.deepEqual(page.errors, []);
   await page.close();
 });
+
+test('elliptical aspect_ratio adapts to desktop and mobile, and pinch / wheel / Fit gestures behave cleanly', async () => {
+  const desk = await H.newPage(browser, { width: 1400, height: 950 });
+  await H.mountDemo(desk, { demo: 'unifi' }, { settle: false });
+  const dAuto = await desk.evaluate(() => ({ r: window.card._vb0.w / window.card._vb0.h }));
+  assert.ok(dAuto.r > 1.25, 'desktop auto layout is widescreen: ' + dAuto.r);
+  assert.deepEqual(await H.linkProblems(desk), []);
+
+  const dSq = await desk.evaluate(() => {
+    window.card.setConfig({ demo: 'unifi', aspect_ratio: '1:1' });
+    return { r: window.card._vb0.w / window.card._vb0.h, diag: window.card._diagnostics().config.aspect_ratio };
+  });
+  assert.ok(dSq.r < dAuto.r - 0.15 && Math.abs(dSq.r - 1) < 0.25, '1:1 restores circular proportion: ' + dSq.r);
+  assert.equal(dSq.diag, '1:1');
+  assert.deepEqual(await H.linkProblems(desk), []);
+
+  const dPort = await desk.evaluate(() => {
+    window.card.setConfig({ demo: 'unifi', aspect_ratio: '9:16' });
+    return { r: window.card._vb0.w / window.card._vb0.h };
+  });
+  assert.ok(dPort.r < 0.85, '9:16 produces a portrait ellipse: ' + dPort.r);
+  assert.deepEqual(await H.linkProblems(desk), []);
+
+  const edCfg = await desk.evaluate(() => {
+    const ed = customElements.get('connection-map-card').getConfigElement(), seen = [];
+    ed.addEventListener('config-changed', (e) => seen.push(e.detail.config));
+    ed.setConfig({ demo: 'unifi' }); ed.hass = { language: 'en' }; document.getElementById('ed').appendChild(ed);
+    const sel = [...ed.shadowRoot.querySelectorAll('.row')].find((r) => r.querySelector('span').textContent === 'Map aspect ratio').querySelector('select');
+    sel.value = '16:9'; sel.dispatchEvent(new Event('input', { bubbles: true }));
+    const first = seen[seen.length - 1];
+    sel.value = ''; sel.dispatchEvent(new Event('input', { bubbles: true }));
+    return [first, seen[seen.length - 1]];
+  });
+  assert.deepEqual(edCfg, [{ demo: 'unifi', aspect_ratio: '16:9' }, { demo: 'unifi' }]);
+  assert.deepEqual(desk.errors, []);
+  await desk.close();
+
+  const mob = await H.newPage(browser, { width: 400, height: 850 });
+  await H.mountDemo(mob, { demo: 'unifi' }, { settle: false });
+  const m1 = await mob.evaluate(() => {
+    const c = window.card, svg = c.shadowRoot.getElementById('svg');
+    const plainWheel = new WheelEvent('wheel', { deltaY: 120, clientX: 200, clientY: 300, bubbles: true, cancelable: true });
+    svg.dispatchEvent(plainWheel);
+    const wheelTip = c.shadowRoot.getElementById('tip').style.display !== 'none' ? c.shadowRoot.getElementById('tip').textContent : '';
+    const ctrlWheel = new WheelEvent('wheel', { deltaY: -120, ctrlKey: true, clientX: 200, clientY: 300, bubbles: true, cancelable: true });
+    svg.dispatchEvent(ctrlWheel);
+    const tipAfterZoom = c.shadowRoot.getElementById('tip').style.display;
+    const zoomedTouch = svg.style.touchAction, zoomedFull = c._isFullView();
+    c.shadowRoot.getElementById('zfit').click();
+    const fit1Full = c._isFullView(), fit1Touch = svg.style.touchAction;
+    c.shadowRoot.getElementById('zfit').click();
+    const fit2Full = c._isFullView(), fit2Touch = svg.style.touchAction;
+    c.shadowRoot.getElementById('zfit').click();
+    return {
+      r: c._vb0.w / c._vb0.h,
+      zinTitle: c.shadowRoot.getElementById('zin').title,
+      wheelTip,
+      tipAfterZoom,
+      plainPrevented: plainWheel.defaultPrevented,
+      ctrlPrevented: ctrlWheel.defaultPrevented,
+      zoomedFull, zoomedTouch,
+      fit1Full, fit1Touch,
+      fit2Full, fit2Touch,
+      fit3Full: c._isFullView()
+    };
+  });
+  assert.ok(m1.r < 0.88, 'mobile auto layout is portrait: ' + m1.r);
+  assert.match(m1.zinTitle, /Ctrl \+ wheel/);
+  assert.match(m1.wheelTip, /Ctrl \+ wheel/);
+  assert.equal(m1.tipAfterZoom, 'none');
+  assert.equal(m1.plainPrevented, false, 'plain wheel at full view scrolls the page');
+  assert.equal(m1.ctrlPrevented, true, 'Ctrl/pinch wheel zooms the map');
+  assert.equal(m1.zoomedFull, false);
+  assert.equal(m1.zoomedTouch, 'none');
+  assert.equal(m1.fit1Full, true);
+  assert.equal(m1.fit1Touch, 'pan-y');
+  assert.equal(m1.fit2Full, false, 'Fit on mobile toggles to closer center view when already at full map');
+  assert.equal(m1.fit2Touch, 'none');
+  assert.equal(m1.fit3Full, true);
+
+  const pinched = await mob.evaluate(() => {
+    const c = window.card, svg = c.shadowRoot.getElementById('svg'), w0 = c._vb.w;
+    const rect = svg.getBoundingClientRect(), cy = rect.top + rect.height / 2, cx = rect.left + rect.width / 2;
+    svg.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, pointerType: 'touch', clientX: cx - 40, clientY: cy, bubbles: true }));
+    svg.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, pointerType: 'touch', clientX: cx + 40, clientY: cy, bubbles: true }));
+    svg.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, pointerType: 'touch', clientX: cx - 100, clientY: cy, bubbles: true }));
+    svg.dispatchEvent(new PointerEvent('pointermove', { pointerId: 2, pointerType: 'touch', clientX: cx + 100, clientY: cy, bubbles: true }));
+    svg.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, pointerType: 'touch', clientX: cx - 100, clientY: cy, bubbles: true }));
+    svg.dispatchEvent(new PointerEvent('pointerup', { pointerId: 2, pointerType: 'touch', clientX: cx + 100, clientY: cy, bubbles: true }));
+    return { ratio: c._vb.w / w0, touch: svg.style.touchAction };
+  });
+  assert.ok(pinched.ratio < 0.6, 'two-finger pinch zooms in: ' + pinched.ratio);
+  assert.equal(pinched.touch, 'none');
+  assert.deepEqual(await H.linkProblems(mob), []);
+  assert.deepEqual(mob.errors, []);
+  await mob.close();
+});

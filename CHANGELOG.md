@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.8.8 — 2026-11-22
+
+A map shaped like your screen, and touch gestures, by [@HaniKazmi](https://github.com/HaniKazmi) in [#30](https://github.com/Ctuna89/ha-connection-map-card/pull/30). Thank you again.
+
+**Two things behave differently after updating:**
+
+- **The mouse wheel.** While the whole map is in view, a plain wheel scrolls the page instead of zooming. Zoom with `Ctrl` / `Cmd` + wheel, a trackpad pinch, a double-click, or the buttons; once zoomed in, the plain wheel zooms as before. A short hint says so the first time.
+- **Phones.** The map opens showing the whole home in a portrait shape, not zoomed in on Home Assistant. **⤢** switches between the whole map and the closer view.
+
+### Added
+
+- `aspect_ratio` (`auto` by default): the map is laid out on an ellipse that matches the screen — wider on a desktop, taller on a phone, the box's own shape when `height` or the sections layout sets one — while hubs and device rings stay round and the layout rules still hold. Pick a fixed shape (`16:9`, `4:3`, `1:1`, `3:4`, `9:16`, or a number such as `1.5`) in YAML or in the visual editor.
+- Two-finger pinch to zoom, and double-tap or double-click on the background to zoom in on that point (again to go back to the whole map).
+
+### Changed
+
+- While the whole map is in view, a one-finger swipe scrolls the page, so the panel below the map is easy to reach; once zoomed in, one finger moves the map and no longer switches dashboard tabs.
+- Device names appear at a slightly lower zoom, so they still show at the same zoom step on the wider map.
+
+### Removed
+
+- A stray screenshot at the root of the repository.
+
 ## 0.8.7 — 2026-11-18
 
 Bluetooth proxies, by [@HaniKazmi](https://github.com/HaniKazmi) in [#27](https://github.com/Ctuna89/ha-connection-map-card/pull/27). Thank you again.

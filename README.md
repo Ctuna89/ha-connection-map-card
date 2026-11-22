@@ -78,8 +78,8 @@ Each dot is a device. Lines show the path its data takes to Home Assistant: a so
 - **Tap a device** to see its full path, for example `Bedroom lamp → Hue Bridge → Philips Hue → Local network → Home Assistant`, and to open its device page.
 - **Tap a hub or a group** to list its devices. The bridge itself is the first row.
 - **Point at anything** (or use Tab) and it grows, its path to Home Assistant stays bright and the rest fades. Rows in the side panel highlight their device on the map.
-- **Zoom and pan** with the mouse wheel, by dragging, or with the buttons. Device names appear when you zoom in far enough. While part of the map is out of view, a small overview appears in the corner; click or drag on it to move.
-- On a phone the map starts zoomed in on Home Assistant, and a tap selects the nearest device.
+- **Zoom and pan** by pinching with two fingers, double-tapping (or double-clicking) the background, using `Ctrl` / `Cmd` + mouse wheel (or a plain wheel once zoomed in), dragging, or using the buttons. At the full-map view a single-finger vertical swipe or plain mouse wheel scrolls the page normally; once zoomed in, one finger pans the map. Device names appear when you zoom in far enough. While part of the map is out of view, a small overview appears in the corner; click or drag on it to move.
+- On a phone the map adapts to a portrait shape so the whole home fits the screen, **⤢** toggles between the whole map and a closer view around Home Assistant, and a tap selects the nearest device.
 
 **Filters**
 
@@ -127,6 +127,7 @@ Option names are **stable from 1.0**: they will not be renamed or removed withou
 | `language` | string | Home Assistant's | Force the card language: `en` or `es`. |
 | `layout` | string | `detailed` | `detailed` draws every device as a dot; `compact` draws one bubble per hub or integration. The ◎ button switches without changing the configuration. |
 | `height` | number / string | automatic | Map height in pixels (for example `520`) or CSS length (`70vh`). In a sections view the card is 14 rows high by default and fills them; the **Layout** tab of the card changes the rows (`grid_options.rows`) or sets *Fit height*. |
+| `aspect_ratio` | number / string | `auto` | Proportion of the map (`auto`, `16:9`, `16:10`, `4:3`, `1:1`, `3:4`, `9:16`, or any width/height number such as `1.5`). `auto` uses a widescreen ellipse on desktop, matches the container when a height is set, and switches to a portrait ellipse on phones while keeping every hub and device ring round. |
 | `group_by_area` | boolean | `false` | Inside each hub, hang the devices of an area with more than one device from a small area node (hub → area → devices). Clicking the node filters the map to that area. A Zigbee mesh keeps its own shape instead. |
 | `sort` | string | `area` | Order of the device lists: `area` (by area, then name) or `name`. The list of a hub has a button to switch. |
 | `colors` | map | | Override colours: `cloud`, `local`, `radio`, `core` (Home Assistant), `offline`, `recent`, `away`, `no_entities`. |
