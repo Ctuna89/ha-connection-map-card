@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '0.8.7';
+  var VERSION = '0.8.8';
 
   // Texts of the card, one per line and in alphabetical order, the same in every language.
   // To add a language: copy the whole "en" block, name it with the two-letter code Home Assistant uses ("de", "fr", ...)
