@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.9 — 2026-11-26
+
+### Fixed
+
+- Devices behind a Matter bridge (an IKEA DIRIGERA, or another hub shared with Home Assistant over Matter) were merged into one dot behind the bridge. Home Assistant answers the network diagnostics of such a device with those of the bridge, so the card took them all for the same device on the network. Those diagnostics are no longer asked for each bridged device, and every one is drawn behind its bridge again.
+
 ## 0.8.8 — 2026-11-22
 
 A map shaped like your screen, and touch gestures, by [@HaniKazmi](https://github.com/HaniKazmi) in [#30](https://github.com/Ctuna89/ha-connection-map-card/pull/30). Thank you again.

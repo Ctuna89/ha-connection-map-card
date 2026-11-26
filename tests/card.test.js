@@ -1180,6 +1180,40 @@ test('Matter over Thread is classified from the entity registry without waking s
   await page.close();
 });
 
+test('devices behind a Matter bridge (DIRIGERA) are each drawn behind it, not merged by the bridge address', async () => {
+  const page = await H.newPage(browser);
+  const r = await page.evaluate(async () => {
+    const devices = {}, entities = {}, states = {}, pinged = [];
+    const dev = (id, name, o = {}) => { devices[id] = { id, name, manufacturer: o.mf || '', model: o.mo || '', via_device_id: o.via || null, connections: o.mac ? [['mac', o.mac]] : [], identifiers: [[o.dom || 'matter', id]], disabled_by: null, area_id: null }; };
+    const ent = (eid, device_id, platform, state, attributes) => { entities[eid] = { entity_id: eid, device_id, platform }; states[eid] = { entity_id: eid, state, attributes: attributes || {} }; };
+    dev('gw', 'Primary router', { dom: 'huawei_mesh_router', mac: 'aa:00:00:00:00:01' }); ent('sensor.gw_a', 'gw', 'huawei_mesh_router', '1'); ent('sensor.gw_b', 'gw', 'huawei_mesh_router', '1');
+    // the router knows the bridge by its MAC address
+    ent('device_tracker.dirigera', null, 'huawei_mesh_router', 'home', { mac: 'aa:bb:cc:00:00:10', ip: '10.0.0.10', connected_via: 'Primary router', interface_type: 'LAN' });
+    dev('dirigera', 'DIRIGERA', { mf: 'IKEA of Sweden', mo: 'DIRIGERA Hub for smart products' }); ent('sensor.dirigera_x', 'dirigera', 'matter', 'ok');
+    ['Kitchen lamp', 'Desk lamp', 'Hall lamp', 'Bedroom lamp'].forEach((n, i) => { const id = 'b' + i; dev(id, n, { mf: 'IKEA of Sweden', mo: 'TRADFRI bulb', via: 'dirigera' }); ent('light.' + id, id, 'matter', 'on'); });
+    const man = [{ domain: 'matter', name: 'Matter', iot_class: 'local_push', integration_type: 'hub' }, { domain: 'huawei_mesh_router', name: 'Huawei Mesh Router', iot_class: 'local_polling' }];
+    const c = document.createElement('connection-map-card'); c.setConfig({ animations: false, merge_duplicates: 'auto' }); document.getElementById('host').appendChild(c); window.card = c;
+    c.hass = { language: 'en', states, devices, entities, areas: {}, config: { version: '1' }, connection: { subscribeMessage: async () => () => {} },
+      callWS: async (m) => {
+        if (m.type === 'manifest/list') return man;
+        // Home Assistant answers with the diagnostics of the node: for a bridged device, those of the bridge
+        if (m.type === 'matter/node_diagnostics') { pinged.push(m.device_id); return { network_type: 'ethernet', node_type: 'end_device', mac_address: 'AA:BB:CC:00:00:10', ip_addresses: ['10.0.0.10'] }; }
+        throw new Error('not in test');
+      } };
+    for (let i = 0; i < 80 && !(c._built && c._mnodes); i++) await new Promise((res) => setTimeout(res, 25));
+    await new Promise((res) => setTimeout(res, 120));
+    const hub = c._hubs.find((h) => h.n === 'DIRIGERA');
+    return { hub: hub && hub.dv.map((d) => d.n).sort(), merged: c._devs.filter((d) => d.also && d.also.length).map((d) => d.n), pinged: pinged.sort(),
+      hubPath: hub && c._pathOf(hub.dv[0]).join(' > ') };
+  });
+  assert.deepEqual(r.hub, ['Bedroom lamp', 'Desk lamp', 'Hall lamp', 'Kitchen lamp'], 'every bulb behind the bridge');
+  assert.deepEqual(r.merged, [], 'the address of the bridge does not make its bulbs one device');
+  assert.deepEqual(r.pinged, ['dirigera'], 'only the bridge itself is asked for its network diagnostics');
+  assert.equal(r.hubPath, "Bedroom lamp > DIRIGERA > Matter > Primary router (Ethernet) > Home Assistant");
+  assert.deepEqual(await H.linkProblems(page), []);
+  await page.close();
+});
+
 test('Thread mesh places end devices behind their Matter router plug with RSSI and LQI', async () => {
   const page = await H.newPage(browser);
   await page.evaluate(async () => {
