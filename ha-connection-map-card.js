@@ -1041,6 +1041,12 @@
       Object.keys(devices).forEach(function (id) { if ((devices[id].identifiers || []).some(function (i) { return i[0] === 'matter'; })) mat[id] = 1; });
       return Object.keys(mat).filter(function (id) { return devices[id] && !devices[id].disabled_by; }).slice(0, 250);
     }
+    // A device behind a Matter bridge (DIRIGERA, a Hue Bridge shared over Matter...) is an endpoint of the bridge's node:
+    // its network diagnostics, MAC and IP are those of the bridge, and say nothing about the device itself.
+    _matterBridged(id) {
+      var devices = (this._hass && this._hass.devices) || {}, d = devices[id], v = d && d.via_device_id && devices[d.via_device_id];
+      return !!(v && (v.identifiers || []).some(function (i) { return i[0] === 'matter'; }));
+    }
     _matterCacheKey() { var u = this._hass && !this._hass.demo && this._hass.user && this._hass.user.id; return u ? 'connection-map-card-matter:' + u : ''; }
     // Instant Thread vs Wi-Fi classification from the entity registry and Thread dataset list, without waking sleepy Thread sensors.
     async _matterFast() {
@@ -1083,7 +1089,7 @@
       if (!ids.length || !H || !H.callWS) return false;
       function low(x) { return String(x || '').toLowerCase(); }
       var before = JSON.stringify(this._matter || {}), res = Object.assign({}, this._matter || {}), dead = false;
-      var fastIds = ids.filter(function (id) { return !sleepy[id]; });
+      var self = this, fastIds = ids.filter(function (id) { return !sleepy[id] && !self._matterBridged(id); });
       for (var i = 0; i < fastIds.length && !dead; i += 8) {
         await Promise.all(fastIds.slice(i, i + 8).map(function (id) {
           var req = H.callWS({ type: 'matter/node_diagnostics', device_id: id });
@@ -1802,7 +1808,7 @@
         if (!dev) return null;
         var dp = platOf(dev.id);
         if (dev.entry_type === 'service' && !(dp === 'proxmoxve' && /^(vm|container|qemu|lxc)$/i.test(dev.model || ''))) return null;
-        var md = self._matter && self._matter[dev.id];
+        var md = self._matter && !self._matterBridged(dev.id) ? self._matter[dev.id] : null;
         if (!trk.length) return md && md.net === 'wifi' ? 'matter:' + dev.id : null;
         var best = null, macs = [], wild = [];
         [dev.connections || [], dev.identifiers || []].forEach(function (lst) {
